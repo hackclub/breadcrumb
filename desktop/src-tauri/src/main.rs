@@ -114,6 +114,42 @@ fn sidecar(name: &str) -> Result<PathBuf, String> {
         "Missing native binary {name}; run scripts/desktop-build.sh --prepare"
     ))
 }
+// Transparent menu-bar artwork: the recording indicator is independent of the Dock icon.
+fn status_icon(recording: bool) -> tauri::image::Image<'static> {
+    let size = 44usize;
+    let mut rgba = vec![0u8; size * size * 4];
+    let circles = [
+        (13.0f32, 13.0f32, 6.0f32),
+        (29.0, 15.0, 4.5),
+        (18.0, 31.0, 4.5),
+    ];
+    for y in 0..size {
+        for x in 0..size {
+            let mut color = [0, 0, 0, 0];
+            for (cx, cy, r) in circles {
+                let coverage = (r + 0.5
+                    - ((x as f32 - cx).powi(2) + (y as f32 - cy).powi(2)).sqrt())
+                .clamp(0.0, 1.0);
+                if coverage > 0.0 {
+                    color = [245, 245, 245, (coverage * 255.0) as u8];
+                }
+            }
+            if recording {
+                let distance = ((x as f32 - 35.0).powi(2) + (y as f32 - 35.0).powi(2)).sqrt();
+                if distance < 6.0 {
+                    color = [
+                        239,
+                        85,
+                        85,
+                        ((6.0 - distance).clamp(0.0, 1.0) * 255.0) as u8,
+                    ];
+                }
+            }
+            rgba[(y * size + x) * 4..(y * size + x) * 4 + 4].copy_from_slice(&color);
+        }
+    }
+    tauri::image::Image::new_owned(rgba, size as u32, size as u32)
+}
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -163,7 +199,9 @@ fn main() {
             )?;
             let quit = MenuItem::with_id(app, "quit", "Quit Breadcrumb", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &toggle, &quit])?;
-            let mut tray = TrayIconBuilder::new()
+            let tray = TrayIconBuilder::with_id("recording-status")
+                .icon(status_icon(false))
+                .icon_as_template(true)
                 .menu(&menu)
                 .tooltip("Breadcrumb")
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -182,10 +220,31 @@ fn main() {
                     "quit" => app.exit(0),
                     _ => {}
                 });
-            if let Some(icon) = app.default_window_icon() {
-                tray = tray.icon(icon.clone())
-            }
             tray.build(app)?;
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let mut previous = None;
+                loop {
+                    let state = handle.state::<Engine>().request("status", json!({}));
+                    if let Ok(state) = state {
+                        let recording = state["recording"].as_bool().unwrap_or(false);
+                        if let Some(tray) = handle.tray_by_id("recording-status") {
+                            if previous != Some(recording) {
+                                let _ = tray.set_icon_with_as_template(
+                                    Some(status_icon(recording)),
+                                    !recording,
+                                );
+                                previous = Some(recording);
+                            }
+                            let _ = tray.set_tooltip(Some(format!(
+                                "Breadcrumb · {}",
+                                state["status"].as_str().unwrap_or("Paused")
+                            )));
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                }
+            });
             if std::env::args().any(|a| a == "--smoke-test") {
                 let state = app
                     .state::<Engine>()

@@ -179,6 +179,8 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 	switch command {
 	case "state":
 		return e.state(), nil
+	case "status":
+		return map[string]any{"recording": e.recording, "status": e.status}, nil
 	case "toggle":
 		e.recording = !e.recording
 		if e.demo {

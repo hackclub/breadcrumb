@@ -1,10 +1,11 @@
 :root {
+  color-scheme: dark;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #25382d;
-  background: #f5f5ef;
+  color: #eeeeee;
+  background: #000000;
   font-synthesis: none;
-  --green: #315d45;
-  --border: #dde1d5;
+  --green: #8ac7a2;
+  --border: #252525;
 }
 * {
   box-sizing: border-box;
@@ -23,30 +24,30 @@ button {
   cursor: pointer;
   border: 0;
   background: var(--green);
-  color: white;
+  color: #08140c;
   font-weight: 600;
   padding: 11px 16px;
   border-radius: 8px;
   white-space: nowrap;
 }
 button:hover {
-  filter: brightness(0.96);
+  filter: brightness(1.12);
 }
 button:disabled {
   opacity: 0.45;
   cursor: default;
 }
 button.outline {
-  background: #fffdf7;
-  border: 1px solid #d7decf;
-  color: #3f5a44;
+  background: #101010;
+  border: 1px solid #303030;
+  color: #dedede;
 }
 button.quiet {
   background: transparent;
-  color: #63715f;
+  color: #b1b1b1;
 }
 button.danger {
-  color: #a34439;
+  color: #ff8980;
 }
 button.compact {
   font-size: 12px;
@@ -60,10 +61,10 @@ input:not([type="range"]):not([type="checkbox"]),
 select,
 textarea {
   padding: 10px 12px;
-  border: 1px solid #d4dccd;
+  border: 1px solid #333333;
   border-radius: 7px;
-  background: #fffefb;
-  color: #2c4030;
+  background: #0b0b0b;
+  color: #ededed;
   min-width: 0;
 }
 input[type="checkbox"] {
@@ -76,7 +77,7 @@ button:focus-visible,
 select:focus-visible,
 summary:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid #91b29b;
+  outline: 3px solid #95d2ad;
   outline-offset: 3px;
 }
 label {
@@ -98,7 +99,7 @@ textarea {
 }
 p {
   line-height: 1.65;
-  color: #72806d;
+  color: #a0a0a0;
 }
 .desktop {
   display: grid;
@@ -109,7 +110,7 @@ p {
   position: fixed;
   inset: 0 auto 0 0;
   width: 210px;
-  background: #ecefe5;
+  background: #050505;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -127,7 +128,7 @@ p {
 .logo {
   font-size: 42px;
   line-height: 1;
-  color: #436d48;
+  color: #b0d8bd;
 }
 nav {
   display: grid;
@@ -139,7 +140,7 @@ nav button,
   align-items: center;
   gap: 12px;
   background: transparent;
-  color: #78836e;
+  color: #a4a4a4;
   text-align: left;
   font-weight: 500;
   padding: 12px 14px;
@@ -148,12 +149,12 @@ nav button,
 nav button span {
   font-size: 20px;
   width: 18px;
-  color: #7c8c71;
+  color: #909090;
 }
 nav button.selected,
 .settings.selected {
-  background: #dce5d4;
-  color: #315437;
+  background: #15241b;
+  color: #c7ead3;
   font-weight: 650;
 }
 nav small {
@@ -170,25 +171,25 @@ nav small {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: #7f8b73;
+  color: #999999;
   margin-bottom: 9px;
 }
 .storage small {
   display: block;
   font-size: 10px;
-  color: #8e9885;
+  color: #909090;
   margin-top: 8px;
 }
 .meter {
   height: 5px;
-  background: #e4e8dc;
+  background: #1e1e1e;
   overflow: hidden;
   border-radius: 10px;
 }
 .meter i {
   display: block;
   height: 100%;
-  background: #7c9c6a;
+  background: #8ac7a2;
   border-radius: 10px;
 }
 .settings {
@@ -205,7 +206,7 @@ nav small {
   align-items: center;
   justify-content: space-between;
   padding: 0 32px;
-  background: #f8f8f2;
+  background: #000000;
   position: sticky;
   top: 0;
   z-index: 2;
@@ -215,24 +216,24 @@ nav small {
   gap: 8px;
   align-items: center;
   font-size: 11px;
-  color: #77836e;
+  color: #a5a5a5;
 }
 .record-status i {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #a4aa9b;
+  background: #777777;
 }
 .record-status i.live {
-  background: #6c9760;
-  box-shadow: 0 0 0 3px #e7eddf;
+  background: #f35c5c;
+  box-shadow: 0 0 0 3px #251313;
 }
 .record-status b {
   font-size: 9px;
   letter-spacing: 1px;
   font-weight: 600;
   padding: 3px 5px;
-  background: #e5e9da;
+  background: #222222;
   border-radius: 3px;
 }
 .page {
@@ -251,7 +252,7 @@ nav small {
   font-size: 9px;
   letter-spacing: 1.7px;
   font-weight: 700;
-  color: #8e9b7e;
+  color: #a0a0a0;
 }
 .page-title h1 {
   font-family: Georgia, serif;
@@ -274,10 +275,10 @@ nav small {
   aspect-ratio: 1.6;
   border-radius: 12px;
   overflow: hidden;
-  background: #25332c;
+  background: #000000;
   display: grid;
   place-items: center;
-  border: 1px solid #cfd8c9;
+  border: 1px solid #292929;
   min-height: 150px;
 }
 .preview img {
@@ -287,14 +288,14 @@ nav small {
   object-fit: contain;
 }
 .preview > span {
-  color: #c5d2bd;
+  color: #b0b0b0;
   font-size: 12px;
 }
 .preview-badge {
   position: absolute;
   right: 12px;
   bottom: 12px;
-  background: #17251fd9;
+  background: #000000d9;
   border-radius: 5px;
   padding: 5px 8px;
   color: white !important;
@@ -318,7 +319,7 @@ nav small {
 }
 .capture-caption > div > span {
   font-size: 11px;
-  color: #88917d;
+  color: #a1a1a1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -327,8 +328,8 @@ nav small {
   display: inline-block;
   font-size: 10px;
   padding: 5px 9px;
-  background: #e8edde;
-  color: #6c805c;
+  background: #14231a;
+  color: #b7d9c2;
   border-radius: 5px;
   white-space: nowrap;
 }
@@ -337,7 +338,7 @@ nav small {
 }
 .scrubber input {
   width: 100%;
-  accent-color: #738f5e;
+  accent-color: #8ac7a2;
   height: 4px;
   display: block;
   margin: 0 0 12px;
@@ -346,7 +347,7 @@ nav small {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: #929a87;
+  color: #999999;
 }
 .context-grid {
   display: grid;
@@ -355,7 +356,7 @@ nav small {
   margin-bottom: 16px;
 }
 .card {
-  background: #fffef8;
+  background: #080808;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 23px;
@@ -376,7 +377,7 @@ nav small {
 }
 .context small {
   font-size: 9px;
-  color: #9aa18f;
+  color: #969696;
   display: block;
   line-height: 1.5;
   margin-top: 12px;
@@ -389,7 +390,7 @@ nav small {
   font-size: 10px;
 }
 .alongside span {
-  color: #8b957e;
+  color: #a2a2a2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -401,7 +402,7 @@ nav small {
 .details summary {
   font-size: 12px;
   font-weight: 500;
-  color: #687b59;
+  color: #b8cdbf;
   cursor: pointer;
 }
 .details p {
@@ -412,7 +413,7 @@ nav small {
 }
 .details pre {
   font-size: 10px;
-  background: #f0f3e9;
+  background: #111111;
   padding: 12px;
   max-height: 260px;
   overflow: auto;
@@ -450,7 +451,7 @@ nav small {
   justify-content: space-between;
   align-items: center;
   text-align: left;
-  color: #314a35;
+  color: #ededed;
   white-space: normal;
   font-weight: 400;
 }
@@ -467,7 +468,7 @@ nav small {
 }
 .session > span {
   font-size: 23px;
-  color: #8e9b7e;
+  color: #a0a0a0;
 }
 .tags {
   display: flex;
@@ -501,12 +502,12 @@ nav small {
 }
 .activity-row span {
   font-size: 11px;
-  color: #8a977f;
+  color: #a2a2a2;
   font-weight: 400;
 }
 .muted {
   font-size: 11px;
-  color: #8a957e;
+  color: #9c9c9c;
   line-height: 1.7;
 }
 .settings-page {
@@ -532,7 +533,7 @@ nav small {
   font-size: 12px;
 }
 .setting-row > span:last-child {
-  color: #8a947f;
+  color: #a2a2a2;
   font-size: 11px;
   text-align: right;
 }
@@ -542,7 +543,7 @@ nav small {
 .settings-page summary {
   font-size: 12px;
   cursor: pointer;
-  color: #748762;
+  color: #b1c6b8;
 }
 .settings-page .card > button {
   font-size: 12px;
@@ -553,8 +554,8 @@ nav small {
   overflow-wrap: anywhere;
 }
 .permission {
-  background: #eaf0df;
-  border: 1px solid #d2dec6;
+  background: #101914;
+  border: 1px solid #293b2f;
   border-radius: 10px;
   padding: 17px;
   display: flex;
@@ -578,13 +579,13 @@ nav small {
   margin: 15px 30px 0;
   padding: 10px 13px;
   border-radius: 8px;
-  background: #e7eddf;
+  background: #251313;
   font-size: 12px;
-  color: #526b45;
+  color: #e0b5b5;
 }
 .notice button {
   background: transparent;
-  color: #68815b;
+  color: #d0b4b4;
   font-size: 17px;
   padding: 0 3px;
 }
@@ -594,13 +595,13 @@ nav small {
 }
 .empty > div {
   font-size: 65px;
-  color: #94a684;
+  color: #90ad9a;
 }
 .empty h2 {
   font-family: Georgia, serif;
   font-size: 26px;
   font-weight: 400;
-  color: #607655;
+  color: #d0dfd5;
 }
 .empty p {
   max-width: 400px;
