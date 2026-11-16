@@ -37,7 +37,7 @@ function App() {
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => {
-      if (!document.hidden) void refresh();
+      if (isNative || !document.hidden) void refresh();
     }, 3000);
     return () => clearInterval(timer);
   }, []);

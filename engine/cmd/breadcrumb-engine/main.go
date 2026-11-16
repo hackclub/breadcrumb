@@ -391,6 +391,9 @@ func main() {
 			defer capture.Close()
 		}
 	}
+	if e.recording {
+		e.status = "Starting capture…"
+	}
 	if *demo {
 		e.recording = false
 		seed(lib)
