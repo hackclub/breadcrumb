@@ -116,3 +116,41 @@ func TestSwiftManifestRoundTripKeepsUnknownMetadata(t *testing.T) {
 		t.Fatal("metadata not preserved")
 	}
 }
+
+func TestAgentInboxPreservesManualCorrection(t *testing.T) {
+	l, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err := l.Append(record(id1, now), Payload{JPEG: []byte{1}, Tree: []Node{}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Correct(id1, "Reading"); err != nil {
+		t.Fatal(err)
+	}
+	inbox := filepath.Join(l.Dir, "inbox")
+	os.Mkdir(inbox, 0700)
+	path := filepath.Join(inbox, "suggestions.json")
+	b, _ := json.Marshal([]map[string]any{{"id": id1, "activity": "Coding", "reason": "Editor title", "flags": []string{"review"}}})
+	os.WriteFile(path, b, 0600)
+	if err := l.ImportSuggestions(); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := Open(l.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Index.Observations[0].Activity() != "Reading" {
+		t.Fatal("agent replaced manual correction")
+	}
+	if err := restored.Correct(id1, ""); err != nil {
+		t.Fatal(err)
+	}
+	if restored.Index.Observations[0].Activity() != "Coding" {
+		t.Fatal("agent suggestion not persisted")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("processed inbox file retained")
+	}
+}

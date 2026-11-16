@@ -55,6 +55,17 @@ def main():
                 continue
             print(json.dumps({'completed': completed, 'status': 'no claimable jobs'}))
             return
+        if job.get('captureURL'):
+            url = urllib.parse.urlparse(job['captureURL'])
+            if url.scheme != 'https' or url.username or url.password:
+                raise ValueError('Invalid signed capture URL')
+            # Signed R2 URLs authorize only this object. Never forward the review token.
+            with opener.open(urllib.request.Request(job['captureURL']), timeout=90) as response:
+                raw = response.read(13 * 1024 * 1024)
+            if len(raw) > 12 * 1024 * 1024:
+                raise ValueError('Capture exceeds 12 MiB')
+            job['capture'] = json.loads(raw)
+            del job['captureURL']
         # No shell evaluation and no hidden model destination. The configured command
         # chooses how/where to run its model. Credentials are not passed on stdin.
         command_env = {key: os.environ[key] for key in (

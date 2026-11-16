@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-bash "$ROOT/scripts/build.sh"
+bash "$ROOT/scripts/desktop-build.sh"
 PARENT="$HOME/Applications"
 if [[ ! -d "$PARENT/Breadcrumb.app" && -d /Applications/Breadcrumb.app ]]; then
   PARENT=/Applications
@@ -11,7 +11,7 @@ fi
 TARGET="$PARENT/Breadcrumb.app"
 PREVIOUS="$TARGET"
 if [[ ! -d "$PREVIOUS" && -d "$PARENT/Rewind.app" ]]; then PREVIOUS="$PARENT/Rewind.app"; fi
-SOURCE="$ROOT/build/Breadcrumb.app"
+SOURCE="$ROOT/desktop/src-tauri/target/release/bundle/macos/Breadcrumb.app"
 SOURCE_DETAILS="$(codesign -dv "$SOURCE" 2>&1)"
 if [[ "$SOURCE_DETAILS" == *Signature=adhoc* ]]; then
   echo "Refusing to install an ad-hoc build. Configure BREADCRUMB_SIGN_IDENTITY first." >&2

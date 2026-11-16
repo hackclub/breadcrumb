@@ -31,7 +31,7 @@ func TestDeleteRecentPersistsPause(t *testing.T) {
 func TestDemoBlocksUploadsAndMaintainsSessions(t *testing.T) {
 	lib, _ := library.Open(t.TempDir())
 	seed(lib)
-		if len(lib.Index.Observations) != 12 {
+	if len(lib.Index.Observations) != 12 {
 		t.Fatal("demo frames missing")
 	}
 	if len(library.Sessions(lib.Index.Observations)) != 1 {

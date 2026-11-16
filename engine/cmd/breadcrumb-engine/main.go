@@ -58,8 +58,19 @@ func defaultDirectory() (string, error) {
 			return "", e
 		}
 		root = filepath.Join(home, "Library", "Application Support")
+	} else if runtime.GOOS == "windows" {
+		root = os.Getenv("LOCALAPPDATA")
+		if root == "" {
+			root, e = os.UserConfigDir()
+		}
 	} else {
-		root, e = os.UserConfigDir()
+		root = os.Getenv("XDG_DATA_HOME")
+		if root == "" {
+			var home string
+			home, e = os.UserHomeDir()
+			root = filepath.Join(home, ".local", "share")
+		}
+
 		if e != nil {
 			return "", e
 		}
@@ -356,6 +367,7 @@ func main() {
 		Recording  bool     `json:"recording"`
 		Exclusions []string `json:"exclusions"`
 	}
+	_, stateErr := os.Stat(filepath.Join(*dir, "desktop-state.json"))
 	if data, err := os.ReadFile(filepath.Join(*dir, "desktop-state.json")); err == nil {
 		json.Unmarshal(data, &previous)
 		e.recording = previous.Recording
@@ -370,6 +382,12 @@ func main() {
 			e.status = "Native capture adapter could not start"
 		} else {
 			e.capture = capture
+			if probe, err := capture.Request("probe", lib.Settings, e.exclusions); err == nil {
+				e.capabilities = probe.Capabilities
+				if os.IsNotExist(stateErr) && probe.RecordingPreference != nil {
+					e.recording = *probe.RecordingPreference
+				}
+			}
 			defer capture.Close()
 		}
 	}
@@ -387,6 +405,9 @@ func main() {
 			e.mu.Lock()
 			if time.Since(lastMaintenance) > 30*time.Second {
 				lastMaintenance = time.Now()
+				if err := e.lib.ImportSuggestions(); err != nil {
+					e.status = err.Error()
+				}
 				if err := e.lib.Expire(time.Now()); err != nil {
 					e.status = err.Error()
 				}

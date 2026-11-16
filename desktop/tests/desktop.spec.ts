@@ -27,7 +27,9 @@ test("sessions open their capture set", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /Sessions/ }).click();
   await page.locator(".session").first().click();
-  await expect(page.getByRole("heading", { name: "Breadcrumb", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Breadcrumb", exact: true, level: 1 }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "All history", exact: true })).toBeVisible();
 });
 test("logging settings persist within the preview and reductions request confirmation", async ({

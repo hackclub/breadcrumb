@@ -21,12 +21,13 @@ type Capabilities struct {
 	Permission    string `json:"permission"`
 }
 type Response struct {
-	OK           bool            `json:"ok"`
-	Error        string          `json:"error"`
-	ContextKey   string          `json:"contextKey"`
-	Record       library.Record  `json:"record"`
-	Payload      library.Payload `json:"payload"`
-	Capabilities Capabilities    `json:"capabilities"`
+	RecordingPreference *bool           `json:"recordingPreference"`
+	OK                  bool            `json:"ok"`
+	Error               string          `json:"error"`
+	ContextKey          string          `json:"contextKey"`
+	Record              library.Record  `json:"record"`
+	Payload             library.Payload `json:"payload"`
+	Capabilities        Capabilities    `json:"capabilities"`
 }
 type Adapter interface {
 	Request(command string, settings library.Settings, exclusions []string) (Response, error)
@@ -76,7 +77,8 @@ func (p *Process) Request(command string, settings library.Settings, exclusions 
 		err  error
 	}
 	completed := make(chan output, 1)
-	go func() { line, err := p.out.ReadBytes('\n'); completed <- output{line, err} }()
+	reader := p.out
+	go func() { line, err := reader.ReadBytes('\n'); completed <- output{line, err} }()
 	timeout := 10 * time.Second
 	if command != "probe" {
 		timeout = 45 * time.Second
@@ -85,13 +87,12 @@ func (p *Process) Request(command string, settings library.Settings, exclusions 
 	select {
 	case out := <-completed:
 		if out.err != nil {
+			p.reset()
 			return response, out.err
 		}
 		line = out.line
 	case <-time.After(timeout):
-		p.cmd.Process.Kill()
-		p.cmd.Wait()
-		p.cmd = nil
+		p.reset()
 		return response, errors.New("native capture adapter timed out; retrying next interval")
 	}
 	if e := json.Unmarshal(line, &response); e != nil {
@@ -102,4 +103,12 @@ func (p *Process) Request(command string, settings library.Settings, exclusions 
 	}
 	return response, nil
 }
-func (p *Process) Close() error { p.in.Close(); return p.cmd.Wait() }
+func (p *Process) reset() {
+	if p.cmd != nil {
+		p.in.Close()
+		p.cmd.Process.Kill()
+		p.cmd.Wait()
+		p.cmd = nil
+	}
+}
+func (p *Process) Close() error { p.mu.Lock(); defer p.mu.Unlock(); p.reset(); return nil }

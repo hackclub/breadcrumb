@@ -2,6 +2,7 @@
 """Local agent interface. Never edits the live manifest. Python 3 standard library only."""
 import argparse
 import base64
+import hashlib
 import importlib.util
 import json
 import os
@@ -69,11 +70,28 @@ def main():
         token = os.environ.get(args.token_env, '')
         if not token:
             parser.error(f'Set {args.token_env} to your upload token')
-        req = urllib.request.Request(args.server.rstrip('/') + '/v1/ingest', data=data,
-                                     headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token})
-        # Do not forward a capture or credentials through an unexpected redirect.
-        with http_opener().open(req, timeout=45) as response:
-            print(response.read().decode())
+        def request(path, body, extra=None):
+            req = urllib.request.Request(args.server.rstrip('/') + path, data=body,
+                headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, **(extra or {})})
+            with http_opener().open(req, timeout=90) as response:
+                raw = response.read()
+                return json.loads(raw) if raw else None
+        if len(data) < 4 * 1024 * 1024:
+            result = request('/v1/ingest', data)
+        else:
+            body = json.dumps(payload, ensure_ascii=False).encode()
+            if len(body) > 12 * 1024 * 1024:
+                parser.error('Capture payload exceeds 12 MiB')
+            pending = request('/v1/uploads/start', json.dumps(dict(schemaVersion=1, consent=True,
+                record=record, size=len(body), sha256=hashlib.sha256(body).hexdigest())).encode())
+            size = pending['chunkSize']
+            if not isinstance(size, int) or not 1 <= size <= 3 * 1024 * 1024:
+                raise ValueError('Invalid server chunk size')
+            for index, offset in enumerate(range(0, len(body), size)):
+                request('/v1/uploads/chunk?index=' + str(index), body[offset:offset+size],
+                    {'Content-Type': 'application/octet-stream', 'X-Upload-ID': pending['uploadId']})
+            result = request('/v1/uploads/complete', json.dumps({'uploadId': pending['uploadId']}).encode())
+        print(json.dumps(result))
         return
     if args.command == 'sessions':
         sessions = []

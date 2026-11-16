@@ -34,9 +34,12 @@ fn perform(request: &Value) -> Result<Value, String> {
                 .collect()
         })
         .unwrap_or_default();
-    let windows = xcap::Window::all().map_err(|e| format!("Window context unavailable: {e}"))?;
+    let windows = xcap::Window::all().map_err(|e| format!("Window context unavailable: {e}. Linux requires an X11 session for reliable foreground metadata."))?;
     let focused = windows.iter().find(|w| w.is_focused().unwrap_or(false));
     let Some(focused) = focused else {
+        if cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some() {
+            return Err("This Wayland session does not expose foreground windows. Use an X11 session for capture with exclusions.".into());
+        }
         return Ok(json!({"ok":true,"contextKey":"","capabilities":capabilities()}));
     };
     let app = focused.app_name().unwrap_or_default();

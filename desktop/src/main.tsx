@@ -605,6 +605,7 @@ function SettingsPage({
     <label className="setting-row">
       <span>{label}</span>
       <select
+        aria-label={label}
         value={String(draft[key])}
         onChange={(e) => field(key, Number(e.target.value) as never)}
       >

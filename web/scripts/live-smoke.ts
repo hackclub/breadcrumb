@@ -15,7 +15,19 @@ const context: Context = process.argv.includes("--cleanup")
   : { keys: [], ids: [], browserLink: "" };
 async function cleanup() {
   for (const key of context.keys) await store.remove(key);
-  for (const id of context.ids) {
+  let captures = await store.list(`captures/${participant}/`);
+  for (;;) {
+    for (const key of captures.keys)
+      context.ids.push(
+        key
+          .split("/")
+          .at(-1)!
+          .replace(/\.json$/, ""),
+      );
+    if (!captures.cursor) break;
+    captures = await store.list(`captures/${participant}/`, captures.cursor);
+  }
+  for (const id of new Set(context.ids)) {
     const captureKey = `captures/${participant}/${id}.json`,
       job = sha(captureKey);
     await store.remove(captureKey);

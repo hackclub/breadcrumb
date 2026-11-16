@@ -16,6 +16,7 @@ export type Capture = {
   bundleID: string;
   windowTitle: string;
   correction?: string;
+  agentLabel?: { activity: string; reason: string; flags: string[] };
   classification?: { activity: string; reason: string };
   context?: { domain?: string; project?: string; document?: string };
   visibleWindows?: { windowID: number; app: string; title: string; focused: boolean }[];
@@ -79,7 +80,7 @@ export const activities = [
 export const date = (value: number) => new Date((value + 978307200) * 1000);
 export const timestamp = (value: Date) => value.getTime() / 1000 - 978307200;
 export const activity = (r: Capture) =>
-  r.correction || r.classification?.activity || "Unclassified";
+  r.correction || r.agentLabel?.activity || r.classification?.activity || "Unclassified";
 export const shortActivity = (v: string) =>
   ({
     "Terminal work": "Terminal",
