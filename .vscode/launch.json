@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "name": "Debug Breadcrumb",
+      "target": "Breadcrumb",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug Breadcrumb"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "name": "Release Breadcrumb",
+      "target": "Breadcrumb",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release Breadcrumb"
+    }
+  ]
+}

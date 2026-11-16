@@ -1,0 +1,22 @@
+BREADCRUMB — LOCAL DEVELOPMENT BUILD
+
+1. Drag Breadcrumb into Applications. Eject this disk image.
+2. Open Breadcrumb from Applications. Look for its circular history icon in the menu bar, not the Dock.
+3. Click Start and review the recording consent.
+4. Enable Screen Recording in Breadcrumb's setup card. In System Settings, enable the installed Breadcrumb app.
+5. Accessibility is optional; enable it to include a bounded, filtered window tree.
+6. Quit and reopen Breadcrumb if macOS requests it. Return to another app and allow a full minute for capture.
+
+This build is for Apple silicon and macOS 26 or later. The normal build uses the configured Developer ID identity. It is NOT notarized.
+If macOS blocks it, review the source and use System Settings > Privacy & Security > Open Anyway, or build from source.
+Never disable Gatekeeper or edit the privacy database. Permission and Keychain dialogs require your approval.
+Switching from older ad-hoc builds can require a one-time permission grant. Keep the same signing identity and app location for future updates. Never share your login-keychain password.
+
+Breadcrumb stores unencrypted captures locally in ~/Library/Application Support/Breadcrumb. Captures and metadata are readable JSON files.
+Default history is kept until you delete it, with a 20 GiB history limit. At that limit, capture stops instead of deleting old history. Settings includes shorter retention options, interval, OCR, image size/quality, storage limits, and launch at login. Saved clips have a separate limit and persist until deleted.
+Screenshots may contain sensitive content. Pause or exclude apps before private work. No automatic redaction is provided.
+Exports are unencrypted copies. Deleting the local library does not delete exports.
+
+To stop recording: click Pause in Breadcrumb. To uninstall: quit, then move Breadcrumb.app to Trash.
+Uninstalling the app does not delete your local history.
+Notarization and clean-machine distribution testing are still prerequisites for public release.

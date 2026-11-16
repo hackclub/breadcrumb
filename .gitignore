@@ -1,0 +1,18 @@
+.amp/
+PROJECTS.md
+.DS_Store
+.build/
+build/
+*.xcodeproj/xcuserdata/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+server/data/
+server/breadcrumb-server
+
+.breadcrumb-signing-identity
+
+# Legacy local signing configuration is never published.
+.rewind-signing-identity
