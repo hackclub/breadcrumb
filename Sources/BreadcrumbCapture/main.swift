@@ -12,7 +12,8 @@ private struct Request: Decodable {
 @main struct CaptureAgent {
     @MainActor static func main() async {
         _ = NSApplication.shared
-        while let line = readLine() {
+        // Keep AppKit's main run loop responsive to foreground-app changes.
+        while let line = await Task.detached(operation: { readLine() }).value {
             do {
                 let request = try JSONDecoder().decode(Request.self, from: Data(line.utf8))
                 let response = try await perform(request)

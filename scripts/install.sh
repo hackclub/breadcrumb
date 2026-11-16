@@ -30,7 +30,11 @@ if [[ -d "$PREVIOUS" ]]; then
     echo "Switching from ad-hoc signing may require one final permission grant."
   fi
   # This identifier deliberately survives the product rename to preserve TCC/preferences.
-  osascript -e 'tell application id "app.rewind.local" to quit'
+  if [[ -x "$PREVIOUS/Contents/MacOS/breadcrumb-desktop" ]]; then
+    pkill -TERM -f "$PREVIOUS/Contents/MacOS/breadcrumb-desktop" || true
+  else
+    osascript -e 'tell application id "app.rewind.local" to quit'
+  fi
   for ((attempt=0; attempt<50; attempt++)); do
     if ! pgrep -f "$PREVIOUS/Contents/MacOS/" >/dev/null; then break; fi
     sleep 0.1
