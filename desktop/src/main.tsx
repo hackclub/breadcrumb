@@ -218,7 +218,7 @@ function App() {
                 </button>
               </div>
             </div>
-            {!state.capabilities.screenshot && (
+            {!state.demo && !state.capabilities.screenshot && (
               <div className="card">
                 <h2>Native capture is not ready</h2>
                 <p>{state.status}</p>
