@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Local desktop controls; capture and storage stay behind the engine command",
+  "windows": ["main"],
+  "permissions": ["core:default", "autostart:default", "dialog:allow-save", "opener:default"]
+}

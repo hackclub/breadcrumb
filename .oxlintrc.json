@@ -1,0 +1,4 @@
+{
+  "categories": { "correctness": "error" },
+  "ignorePatterns": ["**/node_modules/**", "**/target/**", "web/.next/**", "desktop/dist/**"]
+}

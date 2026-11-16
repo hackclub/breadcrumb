@@ -7,11 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10000000000000000000001 /* FocusMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* FocusMonitor.swift */; };
+		A20000000000000000000001 /* BreadcrumbCaptureSupport in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000002 /* BreadcrumbCaptureSupport */; };
 		0B007A8C9CFC5F24EF2C6412 /* Recorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C8E36C967542CBC351C42B /* Recorder.swift */; };
 		1F48304679706C0805F5D89A /* BreadcrumbUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D59862383A36E4FB89448C8 /* BreadcrumbUITests.swift */; };
 		29418DABF53BBB338375BAC0 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0CAA1BDF288EB50E3E06D6 /* Keychain.swift */; };
-		3B76C71EF5DAF439C08510C5 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BAF022400E7DFAAB0808179 /* Capture.swift */; };
 		5F7F8B5554B9CB863C53BCAF /* BreadcrumbApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DC670DF4093C534B1A39AE /* BreadcrumbApp.swift */; };
 		A0931576D3797B24A178B023 /* TimeLapseExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29EC548481777725DC9F2F9C /* TimeLapseExporter.swift */; };
 		B161B04B50CEF23E00967C40 /* BreadcrumbPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB1799F91219372EC23C40C /* BreadcrumbPanel.swift */; };
@@ -29,12 +28,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		A10000000000000000000002 /* FocusMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusMonitor.swift; sourceTree = "<group>"; };
 		29EC548481777725DC9F2F9C /* TimeLapseExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeLapseExporter.swift; sourceTree = "<group>"; };
 		44A2A53B57B44285E8A88A7E /* Breadcrumb */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Breadcrumb; path = .; sourceTree = SOURCE_ROOT; };
 		51DC670DF4093C534B1A39AE /* BreadcrumbApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbApp.swift; sourceTree = "<group>"; };
 		5C0CAA1BDF288EB50E3E06D6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
-		8BAF022400E7DFAAB0808179 /* Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>"; };
 		8D59862383A36E4FB89448C8 /* BreadcrumbUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbUITests.swift; sourceTree = "<group>"; };
 		A6C8E36C967542CBC351C42B /* Recorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recorder.swift; sourceTree = "<group>"; };
 		ACB1799F91219372EC23C40C /* BreadcrumbPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbPanel.swift; sourceTree = "<group>"; };
@@ -48,6 +45,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F5BA992D97608953CA44B91D /* BreadcrumbCore in Frameworks */,
+				A20000000000000000000001 /* BreadcrumbCaptureSupport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -66,8 +64,6 @@
 		24861F9D9DEAC0F949D97A08 /* Breadcrumb */ = {
 			isa = PBXGroup;
 			children = (
-				8BAF022400E7DFAAB0808179 /* Capture.swift */,
-				A10000000000000000000002 /* FocusMonitor.swift */,
 				5C0CAA1BDF288EB50E3E06D6 /* Keychain.swift */,
 				A6C8E36C967542CBC351C42B /* Recorder.swift */,
 				51DC670DF4093C534B1A39AE /* BreadcrumbApp.swift */,
@@ -121,6 +117,7 @@
 			name = BreadcrumbApp;
 			packageProductDependencies = (
 				581129CC47630975500627C3 /* BreadcrumbCore */,
+				A20000000000000000000002 /* BreadcrumbCaptureSupport */,
 			);
 			productName = BreadcrumbApp;
 			productReference = C054C00DB53693CE3DD5A003 /* BreadcrumbApp.app */;
@@ -189,8 +186,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3B76C71EF5DAF439C08510C5 /* Capture.swift in Sources */,
-				A10000000000000000000001 /* FocusMonitor.swift in Sources */,
 				29418DABF53BBB338375BAC0 /* Keychain.swift in Sources */,
 				0B007A8C9CFC5F24EF2C6412 /* Recorder.swift in Sources */,
 				5F7F8B5554B9CB863C53BCAF /* BreadcrumbApp.swift in Sources */,
@@ -456,6 +451,11 @@
 		581129CC47630975500627C3 /* BreadcrumbCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BreadcrumbCore;
+		};
+
+		A20000000000000000000002 /* BreadcrumbCaptureSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BreadcrumbCaptureSupport;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

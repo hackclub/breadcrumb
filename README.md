@@ -15,7 +15,6 @@ Builds use a stable Developer ID signing identity so ordinary updates can retain
 
 For local updates, run `bash scripts/install.sh`. It builds, checks the signing requirement, quits Breadcrumb, replaces it at its existing installation path, verifies the installed signature, and relaunches. It preserves the previous app in a temporary backup and does not reset TCC or delete capture data. Certificate-signed installs refuse an update with a changed signing requirement. Use the same signing identity with Xcode as with the scripts.
 
-
 ## Included
 
 - **Continuous history** by default: compressed full-display screenshots, filtered accessibility context, local OCR, and visible-window metadata. Changes can add samples between the minute heartbeats; this is not continuous video.
@@ -32,7 +31,6 @@ The app defaults to **Until I delete it** with a **20 GiB history limit**. Conti
 Settings also offers 4-hour, 24-hour, 7-day, and 30-day rolling retention. In rolling mode, unsaved captures expire by age and storage pressure can evict the oldest earlier. Shortening retention or reducing the rolling budget asks for confirmation because older unsaved captures may be permanently removed. Saved clips stay protected. Settings persist in `settings.json` and apply without relaunch. If the app is quit, expiry waits until next launch. Sleep/lock/inactive-session signals suspend capture; missed intervals are not filled in.
 
 Choose capture intervals from 15 seconds to 5 minutes, enable/disable change-triggered captures, adjust the minimum change interval, toggle OCR, and choose screenshot size and JPEG quality. Settings also includes launch at login, exclusion rules, storage usage, and an Open data folder button. Launch at login requires the macOS login-item registration to succeed; recording/paused intent persists across launches.
-
 
 Captures, accessibility payloads, window titles, and the manifest are **unencrypted** in `~/Library/Application Support/Breadcrumb/`. The directory is private to your macOS user and excluded from backups. Anyone or any agent running with your user's file access can read it. Payloads are `<UUID>.json` (base64 JPEG plus accessibility tree); `library.json` contains capture metadata and saved references. Dates use Swift's JSON convention: seconds since 2001-01-01 UTC.
 

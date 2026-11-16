@@ -1,0 +1,423 @@
+package main
+
+import (
+	"bufio"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"github.com/hackclub/breadcrumb/engine/internal/adapter"
+	"github.com/hackclub/breadcrumb/engine/internal/library"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"time"
+)
+
+type engine struct {
+	mu           sync.Mutex
+	lib          *library.Library
+	capture      adapter.Adapter
+	recording    bool
+	status       string
+	capabilities adapter.Capabilities
+	exclusions   []string
+	lastContext  string
+	pending      string
+	changed      time.Time
+	lastAttempt  time.Time
+	lastSample   time.Time
+	fingerprint  string
+	credentials  credentials
+	demo         bool
+}
+type credentials struct {
+	Server string `json:"server"`
+	Token  string `json:"token"`
+}
+
+func uuid() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	b[6] = (b[6] & 15) | 64
+	b[8] = (b[8] & 63) | 128
+	h := hex.EncodeToString(b)
+	return strings.ToUpper(h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:])
+}
+func defaultDirectory() (string, error) {
+	var root string
+	var e error
+	if runtime.GOOS == "darwin" {
+		home, e := os.UserHomeDir()
+		if e != nil {
+			return "", e
+		}
+		root = filepath.Join(home, "Library", "Application Support")
+	} else {
+		root, e = os.UserConfigDir()
+		if e != nil {
+			return "", e
+		}
+	}
+	current := filepath.Join(root, "Breadcrumb")
+	legacy := filepath.Join(root, "Rewind")
+	if _, e = os.Stat(current); os.IsNotExist(e) {
+		if _, e = os.Stat(legacy); e == nil {
+			if e = os.Rename(legacy, current); e != nil {
+				return "", e
+			}
+		}
+	}
+	return current, nil
+}
+func (e *engine) state() map[string]any {
+	history, saved := e.lib.Usage()
+	rows := e.lib.Index.Observations
+	return map[string]any{"recording": e.recording, "status": e.status, "settings": e.lib.Settings, "observations": rows, "clips": e.lib.Index.Clips, "sessions": library.Sessions(rows), "historyBytes": history, "savedBytes": saved, "capabilities": e.capabilities, "exclusions": e.exclusions, "server": e.credentials.Server, "connected": e.credentials.Token != "", "directory": e.lib.Dir, "demo": e.demo}
+}
+func (e *engine) tick() {
+	e.mu.Lock()
+	if !e.recording || e.demo || e.capture == nil {
+		e.mu.Unlock()
+		return
+	}
+	settings := e.lib.Settings
+	exclusions := append([]string(nil), e.exclusions...)
+	e.mu.Unlock()
+	probe, err := e.capture.Request("probe", settings, exclusions)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.capabilities = probe.Capabilities
+	if err != nil {
+		e.status = err.Error()
+		return
+	}
+	if !e.recording {
+		return
+	}
+	now := time.Now()
+	if probe.ContextKey == "" {
+		e.status = "Waiting for an eligible foreground app"
+		return
+	}
+	if probe.ContextKey != e.pending {
+		e.pending = probe.ContextKey
+		e.changed = now
+	}
+	interval := now.Sub(e.lastSample) >= time.Duration(settings.IntervalSeconds)*time.Second
+	changed := settings.CaptureChanges && e.pending != e.lastContext && now.Sub(e.changed) >= 2*time.Second && now.Sub(e.lastAttempt) >= time.Duration(settings.MinimumEventInterval)*time.Second
+	if !interval && !changed {
+		return
+	}
+	if free, err := library.Available(e.lib.Dir); err != nil || free < 5*uint64(library.GiB) {
+		e.status = "Capture paused: less than 5 GiB free disk space"
+		return
+	}
+	e.lastAttempt = now
+	e.mu.Unlock()
+	response, err := e.capture.Request("capture", settings, exclusions)
+	e.mu.Lock()
+	e.capabilities = response.Capabilities
+	if err != nil {
+		e.status = err.Error()
+		return
+	}
+	if !e.recording || e.lib.Settings != settings || strings.Join(e.exclusions, "\n") != strings.Join(exclusions, "\n") {
+		return
+	}
+	if response.ContextKey != "" && response.ContextKey != probe.ContextKey {
+		e.status = "Context changed during capture; skipped"
+		return
+	}
+	r := response.Record
+	if r == nil {
+		e.status = "Capture adapter returned no record"
+		return
+	}
+	r["id"] = uuid()
+	r["date"] = library.Timestamp(time.Now())
+	if changed {
+		r["captureReason"] = "contextChanged"
+	} else {
+		r["captureReason"] = "interval"
+	}
+	library.Enrich(r)
+	digest := sha256.Sum256(response.Payload.JPEG)
+	fingerprint := probe.ContextKey + hex.EncodeToString(digest[:])
+	if changed && !interval && e.fingerprint == fingerprint {
+		e.lastContext = probe.ContextKey
+		return
+	}
+	if err = e.lib.Append(r, response.Payload, time.Now()); err != nil {
+		e.status = err.Error()
+		return
+	}
+	e.fingerprint = fingerprint
+	e.lastContext = probe.ContextKey
+	e.lastSample = time.Now()
+	e.status = "Recording desktop activity"
+}
+func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	switch command {
+	case "state":
+		return e.state(), nil
+	case "toggle":
+		e.recording = !e.recording
+		if e.demo {
+			e.recording = false
+		}
+		if e.recording {
+			e.status = "Starting capture…"
+		} else {
+			e.status = "Paused"
+		}
+		if err := writePrivate(filepath.Join(e.lib.Dir, "desktop-state.json"), map[string]any{"recording": e.recording, "exclusions": e.exclusions}); err != nil {
+			return nil, err
+		}
+		return e.state(), nil
+	case "settings":
+		var s library.Settings
+		if err := json.Unmarshal(args, &s); err != nil {
+			return nil, err
+		}
+		if err := e.lib.SetSettings(s); err != nil {
+			return nil, err
+		}
+		return e.state(), nil
+	case "exclusions":
+		var input struct {
+			Bundles []string `json:"bundles"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		if len(input.Bundles) > 100 {
+			return nil, errors.New("too many exclusions")
+		}
+		e.exclusions = input.Bundles
+		if err := writePrivate(filepath.Join(e.lib.Dir, "desktop-state.json"), map[string]any{"recording": e.recording, "exclusions": e.exclusions}); err != nil {
+			return nil, err
+		}
+		return e.state(), nil
+	case "payload":
+		var input struct {
+			ID string `json:"id"`
+		}
+		json.Unmarshal(args, &input)
+		return e.lib.Payload(input.ID)
+	case "save":
+		var input struct {
+			Name  string  `json:"name"`
+			Start float64 `json:"start"`
+			End   float64 `json:"end"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		_, err := e.lib.Save(uuid(), input.Name, input.Start, input.End)
+		return e.state(), err
+	case "deleteClip":
+		var input struct {
+			ID string `json:"id"`
+		}
+		json.Unmarshal(args, &input)
+		err := e.lib.DeleteClip(input.ID)
+		return e.state(), err
+	case "deleteRecent":
+		e.recording = false
+		e.status = "Paused"
+		if err := writePrivate(filepath.Join(e.lib.Dir, "desktop-state.json"), map[string]any{"recording": false, "exclusions": e.exclusions}); err != nil {
+			return nil, err
+		}
+		err := e.lib.DeleteSince(library.Timestamp(time.Now().Add(-time.Hour)))
+		return e.state(), err
+	case "correct":
+		var input struct {
+			ID       string `json:"id"`
+			Activity string `json:"activity"`
+		}
+		json.Unmarshal(args, &input)
+		allowed := map[string]bool{"": true, "Coding": true, "Terminal work": true, "Reading": true, "Video page": true, "Meeting app": true, "Messaging interface": true, "AI assistant page": true, "Social page": true, "Calendar interface": true, "Developer page": true, "Browser settings": true, "Browsing": true, "Music app": true, "Email app": true, "Unclassified": true}
+		if !allowed[input.Activity] {
+			return nil, errors.New("invalid activity")
+		}
+		err := e.lib.Correct(input.ID, input.Activity)
+		return e.state(), err
+	case "export":
+		var input struct {
+			ID   string `json:"id"`
+			Path string `json:"path"`
+		}
+		json.Unmarshal(args, &input)
+		if err := library.ValidateExportPath(input.Path); err != nil {
+			return nil, err
+		}
+		err := e.lib.Export(input.ID, input.Path)
+		return map[string]string{"path": input.Path}, err
+	case "connect":
+		var c credentials
+		if err := json.Unmarshal(args, &c); err != nil {
+			return nil, err
+		}
+		if err := validateServer(c.Server); err != nil {
+			return nil, err
+		}
+		e.credentials = c
+		if err := writePrivate(filepath.Join(e.lib.Dir, "connection.json"), c); err != nil {
+			return nil, err
+		}
+		return e.state(), nil
+	case "upload":
+		var input struct {
+			ID      string `json:"id"`
+			Consent bool   `json:"consent"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		if !input.Consent {
+			return nil, errors.New("explicit contribution consent required")
+		}
+		var record library.Record
+		for _, r := range e.lib.Index.Observations {
+			if r.ID() == input.ID {
+				record = r
+			}
+		}
+		if record == nil {
+			return nil, errors.New("capture not found")
+		}
+		payload, err := e.lib.Payload(input.ID)
+		if err != nil {
+			return nil, err
+		}
+		return e.upload(record, payload)
+	case "permissions":
+		if e.capture == nil {
+			return nil, errors.New("capture adapter unavailable")
+		}
+		response, err := e.capture.Request("permissions", e.lib.Settings, e.exclusions)
+		return response, err
+	}
+	return nil, fmt.Errorf("unknown engine command %q", command)
+}
+func writePrivate(path string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".desktop-state-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if err = f.Chmod(0600); err == nil {
+		_, err = f.Write(b)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
+}
+func main() {
+	dir := flag.String("data-dir", "", "Local library directory")
+	helper := flag.String("capture-helper", "", "Native capture executable")
+	demo := flag.Bool("demo", false, "Synthetic library; never records or uploads")
+	flag.Parse()
+	if *dir == "" {
+		value, err := defaultDirectory()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		*dir = value
+	}
+	lib, err := library.Open(*dir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	e := &engine{lib: lib, status: "Paused", demo: *demo, exclusions: []string{}}
+	var previous struct {
+		Recording  bool     `json:"recording"`
+		Exclusions []string `json:"exclusions"`
+	}
+	if data, err := os.ReadFile(filepath.Join(*dir, "desktop-state.json")); err == nil {
+		json.Unmarshal(data, &previous)
+		e.recording = previous.Recording
+		e.exclusions = previous.Exclusions
+	}
+	if data, err := os.ReadFile(filepath.Join(*dir, "connection.json")); err == nil {
+		json.Unmarshal(data, &e.credentials)
+	}
+	if *helper != "" && !*demo {
+		capture, err := adapter.Start(*helper)
+		if err != nil {
+			e.status = "Native capture adapter could not start"
+		} else {
+			e.capture = capture
+			defer capture.Close()
+		}
+	}
+	if *demo {
+		e.recording = false
+		seed(lib)
+		e.status = "Demo · synthetic captures"
+	}
+	go func() {
+		lastMaintenance := time.Time{}
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			e.tick()
+			e.mu.Lock()
+			if time.Since(lastMaintenance) > 30*time.Second {
+				lastMaintenance = time.Now()
+				if err := e.lib.Expire(time.Now()); err != nil {
+					e.status = err.Error()
+				}
+			}
+			e.mu.Unlock()
+		}
+	}()
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 4096), 1<<20)
+	encoder := json.NewEncoder(os.Stdout)
+	for scanner.Scan() {
+		var request struct {
+			ID      int             `json:"id"`
+			Command string          `json:"command"`
+			Args    json.RawMessage `json:"args"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
+			encoder.Encode(map[string]any{"id": 0, "error": "invalid command JSON"})
+			continue
+		}
+		var result any
+		var err error
+		if *demo && (request.Command == "upload" || request.Command == "connect" || request.Command == "permissions") {
+			err = errors.New("disabled in demo mode")
+		} else {
+			result, err = e.dispatch(request.Command, request.Args)
+		}
+		if err != nil {
+			encoder.Encode(map[string]any{"id": request.ID, "error": err.Error()})
+		} else {
+			encoder.Encode(map[string]any{"id": request.ID, "result": result})
+		}
+	}
+}

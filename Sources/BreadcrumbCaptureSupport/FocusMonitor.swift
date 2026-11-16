@@ -2,12 +2,14 @@ import AppKit
 import ApplicationServices
 
 /// Watches only the front app/window, without polling or reading keystrokes.
-@MainActor final class FocusMonitor {
-    var changed: (() -> Void)?
+@MainActor public final class FocusMonitor {
+    public var changed: (() -> Void)?
     private var observer: AXObserver?
     private var pid: pid_t = 0
 
-    func watch(_ process: pid_t?) {
+    public init() {}
+
+    public func watch(_ process: pid_t?) {
         if let observer { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes) }
         observer = nil
         guard let process, AXIsProcessTrusted() else { return }

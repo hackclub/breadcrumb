@@ -16,3 +16,16 @@ server/breadcrumb-server
 
 # Legacy local signing configuration is never published.
 .rewind-signing-identity
+node_modules/
+.next/
+.vercel/
+desktop/src-tauri/target/
+web/.env.local
+*.tsbuildinfo
+engine/breadcrumb-engine
+engine/breadcrumb-engine.exe
+native/capture/target/
+desktop/src-tauri/binaries/
+desktop/dist/
+test-results/
+playwright-report/

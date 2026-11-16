@@ -18,6 +18,8 @@ targets:
     dependencies:
       - package: BreadcrumbPackage
         product: BreadcrumbCore
+      - package: BreadcrumbPackage
+        product: BreadcrumbCaptureSupport
     settings:
       base:
         PRODUCT_NAME: Breadcrumb

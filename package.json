@@ -1,0 +1,19 @@
+{
+  "name": "breadcrumb",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "lint": "oxlint web/app web/lib web/tests web/scripts desktop/src desktop/vite.config.ts",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "test:web": "bun run --cwd web test",
+    "build:web": "bun run --cwd web build",
+    "build:desktop": "bun run --cwd desktop build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "oxfmt": "latest",
+    "oxlint": "latest"
+  },
+  "packageManager": "bun@1.4.4"
+}

@@ -1,0 +1,15 @@
+{
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/target/**",
+    ".build/**",
+    "build/**",
+    "desktop/dist/**",
+    "web/.next/**",
+    ".vercel/**",
+    "**/.env*",
+    "**/pnpm-lock.yaml",
+    "**/bun.lock",
+    "Breadcrumb.xcodeproj/**"
+  ]
+}

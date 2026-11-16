@@ -6,11 +6,15 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .library(name: "BreadcrumbCore", targets: ["BreadcrumbCore"]),
+        .library(name: "BreadcrumbCaptureSupport", targets: ["BreadcrumbCaptureSupport"]),
+        .executable(name: "BreadcrumbCapture", targets: ["BreadcrumbCapture"]),
         .executable(name: "Breadcrumb", targets: ["Breadcrumb"])
     ],
     targets: [
         .target(name: "BreadcrumbCore"),
-        .executableTarget(name: "Breadcrumb", dependencies: ["BreadcrumbCore"]),
+        .target(name: "BreadcrumbCaptureSupport", dependencies: ["BreadcrumbCore"]),
+        .executableTarget(name: "BreadcrumbCapture", dependencies: ["BreadcrumbCore", "BreadcrumbCaptureSupport"]),
+        .executableTarget(name: "Breadcrumb", dependencies: ["BreadcrumbCore", "BreadcrumbCaptureSupport"]),
         .testTarget(name: "BreadcrumbCoreTests", dependencies: ["BreadcrumbCore"])
     ],
     swiftLanguageModes: [.v5]

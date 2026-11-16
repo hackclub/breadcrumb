@@ -4,10 +4,10 @@ import ScreenCaptureKit
 import Vision
 import BreadcrumbCore
 
-struct CaptureTarget: Sendable {
-    let pid: pid_t
-    let bundleID: String
-    let app: String
+public struct CaptureTarget: Sendable {
+    public let pid: pid_t
+    public let bundleID: String
+    public let app: String
 }
 
 struct AXSnapshot: Sendable {
@@ -18,26 +18,26 @@ struct AXSnapshot: Sendable {
     var documentURL: String?
 }
 
-enum CaptureFailure: LocalizedError {
+public enum CaptureFailure: LocalizedError {
     case unavailable(String)
-    var errorDescription: String? { if case .unavailable(let reason) = self { reason } else { nil } }
+    public var errorDescription: String? { if case .unavailable(let reason) = self { reason } else { nil } }
 }
 
-enum CaptureService {
-    static let excludedDefaults: Set<String> = [
+public enum CaptureService {
+    public static let excludedDefaults: Set<String> = [
         "com.1password.1password", "com.agilebits.onepassword7", "com.agilebits.onepassword-osx",
         "com.bitwarden.desktop", "com.apple.keychainaccess", "com.apple.Passwords", "com.lastpass.LastPass",
         "com.apple.loginwindow", "com.apple.ScreenSaver.Engine", "app.rewind.local"
     ]
 
-    @MainActor static func eligibleTarget(exclusions: Set<String>) -> CaptureTarget? {
+    @MainActor public static func eligibleTarget(exclusions: Set<String>) -> CaptureTarget? {
         guard let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
               !exclusions.contains(bundle), !excludedDefaults.contains(bundle) else { return nil }
         return CaptureTarget(pid: app.processIdentifier, bundleID: bundle, app: app.localizedName ?? bundle)
     }
 
-    static func capture(_ target: CaptureTarget, exclusions: Set<String> = [], settings: LoggingSettings = LoggingSettings()) async throws -> (CaptureRecord, CapturePayload) {
+    public static func capture(_ target: CaptureTarget, exclusions: Set<String> = [], settings: LoggingSettings = LoggingSettings()) async throws -> (CaptureRecord, CapturePayload) {
         let date = Date()
         guard CGPreflightScreenCaptureAccess() else {
             throw CaptureFailure.unavailable("Screen Recording permission is missing. Enable it in Settings; nothing new is captured.")
@@ -226,9 +226,9 @@ enum CaptureService {
     }
 }
 
-@MainActor enum SessionSafety {
-    static var suspended = false
-    static var locked: Bool {
+@MainActor public enum SessionSafety {
+    public static var suspended = false
+    public static var locked: Bool {
         if suspended { return true }
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any],
               session[kCGSessionOnConsoleKey as String] as? Bool == true else { return true }

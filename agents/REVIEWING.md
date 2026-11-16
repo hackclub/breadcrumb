@@ -13,8 +13,18 @@ Return:
   "summary": "AI conversation in focus, with a YouTube page visible beside it.",
   "session": "optional-stable-task-or-project-name",
   "labels": [
-    {"activity": "AI conversation", "role": "focused", "evidence": "Focused app/title and assistant UI", "confidence": "high"},
-    {"activity": "YouTube page", "role": "alongside", "evidence": "Visible side window; playback not established", "confidence": "medium"}
+    {
+      "activity": "AI conversation",
+      "role": "focused",
+      "evidence": "Focused app/title and assistant UI",
+      "confidence": "high"
+    },
+    {
+      "activity": "YouTube page",
+      "role": "alongside",
+      "evidence": "Visible side window; playback not established",
+      "confidence": "medium"
+    }
   ],
   "flags": ["playback-unverified"]
 }

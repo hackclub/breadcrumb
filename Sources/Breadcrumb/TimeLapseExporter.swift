@@ -1,3 +1,4 @@
+import BreadcrumbCaptureSupport
 import AVFoundation
 import CoreText
 import ImageIO

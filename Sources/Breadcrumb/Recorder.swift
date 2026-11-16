@@ -4,6 +4,7 @@ import ApplicationServices
 import CryptoKit
 import ServiceManagement
 import BreadcrumbCore
+import BreadcrumbCaptureSupport
 
 @MainActor @Observable
 final class Recorder {
