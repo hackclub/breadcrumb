@@ -2,6 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import type { State, Payload } from "./types";
 const native = Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
 export const isNative = native;
+export async function setPanelExpanded(expanded: boolean) {
+  if (native) await invoke("panel_size", { expanded });
+}
+export async function onPanelOpen(callback: () => void) {
+  if (!native) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("panel-compact", callback);
+}
+export async function hidePanel() {
+  if (native) await invoke("hide_panel");
+}
 let demoState: State = {
   recording: false,
   status: "Browser preview · synthetic data",

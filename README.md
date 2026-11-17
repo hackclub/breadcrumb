@@ -31,6 +31,8 @@ Bun manages all JavaScript dependencies. Oxlint checks JavaScript/TypeScript and
 
 ## Desktop
 
+Breadcrumb lives in the menu bar/system tray, with no Dock/taskbar icon. Click its status icon to open a 360 × 400 overview with recording controls, a recent preview, and Save last hour. Open history or Settings expands the panel; Back returns to the overview. Close or Escape hides the panel while recording continues. Right-click the tray icon for pause/resume and Quit. Normal startup stays in the tray; `--show` opens the overview.
+
 History has a desktop preview and scrubber. Sessions group nearby project/domain/app context. Saved ranges pin captures, and export as ZIP. Activity reports capture counts rather than claiming attention or hours worked. Settings control retention, storage, capture intervals, change detection, image size/quality, OCR, exclusions, and startup.
 
 Screenshots cover the full display containing the focused window. Focused activity and other visible windows are recorded separately: talking to an AI with YouTube visible alongside can represent both without claiming playback or attention. No audio or keystrokes are recorded.

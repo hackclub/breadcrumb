@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 test("history scrubbing keeps alongside context attached to the capture", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Open history", exact: true }).click();
   await expect(page.getByText("12 captures · kept until you delete them")).toBeVisible();
   await expect(page.getByRole("img", { name: /Desktop capture/ })).toBeVisible();
   await page.getByRole("slider", { name: "Capture timeline" }).focus();
@@ -10,6 +11,7 @@ test("history scrubbing keeps alongside context attached to the capture", async 
 });
 test("save and review a clip; correct a focused activity label", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Open history", exact: true }).click();
   await page.getByRole("button", { name: "Save last hour", exact: true }).click();
   await page.getByRole("button", { name: /Saved/ }).click();
   await expect(page.getByRole("heading", { name: "Last hour", exact: true })).toBeVisible();
@@ -25,6 +27,7 @@ test("save and review a clip; correct a focused activity label", async ({ page }
 });
 test("sessions open their capture set", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Open history", exact: true }).click();
   await page.getByRole("button", { name: /Sessions/ }).click();
   await page.locator(".session").first().click();
   await expect(
@@ -36,6 +39,7 @@ test("logging settings persist within the preview and reductions request confirm
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Open history", exact: true }).click();
   await page.getByRole("button", { name: /Settings/ }).click();
   await page.getByLabel("Keep history").selectOption("168");
   await page.getByLabel("History storage", { exact: true }).selectOption("50");
@@ -52,4 +56,16 @@ test("logging settings persist within the preview and reductions request confirm
   await page.getByRole("button", { name: /Settings/ }).click();
   await expect(page.getByLabel("Keep history")).toHaveValue("168");
   await expect(page.getByLabel("Capture interval", { exact: true })).toHaveValue("30");
+});
+
+test("starts as a small overview and opens full history on demand", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 400 });
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Recording overview" })).toBeVisible();
+  await expect(page.getByRole("navigation")).not.toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+  await page.getByRole("button", { name: "Open history", exact: true }).click();
+  await expect(page.getByRole("navigation")).toBeVisible();
+  await page.getByRole("button", { name: "Back to overview" }).click();
+  await expect(page.getByRole("region", { name: "Recording overview" })).toBeVisible();
 });

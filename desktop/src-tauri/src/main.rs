@@ -8,8 +8,8 @@ use std::{
 };
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
-    Manager,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager,
 };
 struct EngineIO {
     child: Child,
@@ -150,13 +150,82 @@ fn status_icon(recording: bool) -> tauri::image::Image<'static> {
     }
     tauri::image::Image::new_owned(rgba, size as u32, size as u32)
 }
+#[tauri::command]
+fn hide_panel(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.hide().map_err(|error| error.to_string())
+}
+#[tauri::command]
+fn panel_size(window: tauri::WebviewWindow, expanded: bool) -> Result<(), String> {
+    let (width, height) = if expanded {
+        (640.0, 700.0)
+    } else {
+        (360.0, 400.0)
+    };
+    window
+        .set_size(tauri::LogicalSize::new(width, height))
+        .map_err(|error| error.to_string())?;
+    if let (Ok(Some(monitor)), Ok(size), Ok(position)) = (
+        window.current_monitor(),
+        window.outer_size(),
+        window.outer_position(),
+    ) {
+        let area = monitor.work_area();
+        let x = position.x.clamp(
+            area.position.x,
+            (area.position.x + area.size.width as i32 - size.width as i32).max(area.position.x),
+        );
+        let y = position.y.clamp(
+            area.position.y,
+            (area.position.y + area.size.height as i32 - size.height as i32).max(area.position.y),
+        );
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    Ok(())
+}
+fn open_panel(app: &tauri::AppHandle, point: Option<tauri::PhysicalPosition<f64>>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = panel_size(window.clone(), false);
+        let _ = window.emit("panel-compact", ());
+        let _ = window.unminimize();
+        if let Some(point) = point {
+            if let (Ok(monitors), Ok(size)) = (window.available_monitors(), window.outer_size()) {
+                if let Some(monitor) = monitors.iter().find(|m| {
+                    let p = m.position();
+                    let s = m.size();
+                    point.x >= p.x as f64
+                        && point.x < (p.x as f64 + s.width as f64)
+                        && point.y >= p.y as f64
+                        && point.y < (p.y as f64 + s.height as f64)
+                }) {
+                    let area = monitor.work_area();
+                    let gap = (8.0 * monitor.scale_factor()) as i32;
+                    let min_x = area.position.x + gap;
+                    let min_y = area.position.y + gap;
+                    let max_x =
+                        (area.position.x + area.size.width as i32 - size.width as i32 - gap)
+                            .max(min_x);
+                    let max_y =
+                        (area.position.y + area.size.height as i32 - size.height as i32 - gap)
+                            .max(min_y);
+                    let x = (point.x as i32 - size.width as i32 / 2).clamp(min_x, max_x);
+                    let y = if point.y > area.position.y as f64 + area.size.height as f64 / 2.0 {
+                        point.y as i32 - size.height as i32 - gap
+                    } else {
+                        point.y as i32 + gap * 2
+                    };
+                    let _ =
+                        window.set_position(tauri::PhysicalPosition::new(x, y.clamp(min_y, max_y)));
+                }
+            }
+        }
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
+            open_panel(app, None);
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -165,6 +234,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let binary = sidecar("breadcrumb-engine").map_err(std::io::Error::other)?;
             let capture = sidecar("breadcrumb-capture").map_err(std::io::Error::other)?;
             let mut command = Command::new(binary);
@@ -203,13 +274,31 @@ fn main() {
                 .icon(status_icon(false))
                 .icon_as_template(true)
                 .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        position,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false)
+                                && window.is_focused().unwrap_or(false)
+                            {
+                                let _ = window.hide();
+                            } else {
+                                open_panel(app, Some(position));
+                            }
+                        }
+                    }
+                })
                 .tooltip("Breadcrumb")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+                        open_panel(app, None);
                     }
                     "toggle" => {
                         let app = app.clone();
@@ -221,6 +310,12 @@ fn main() {
                     _ => {}
                 });
             tray.build(app)?;
+            if std::env::args().any(|arg| arg == "--show" || arg == "--demo") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.center();
+                }
+                open_panel(app.handle(), None);
+            }
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut previous = None;
@@ -263,7 +358,7 @@ fn main() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![engine])
+        .invoke_handler(tauri::generate_handler![engine, hide_panel, panel_size])
         .run(tauri::generate_context!())
         .expect("Breadcrumb could not start");
 }

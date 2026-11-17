@@ -13,13 +13,16 @@
     "windows": [
       {
         "title": "Breadcrumb",
-        "width": 1050,
-        "height": 760,
-        "minWidth": 760,
-        "minHeight": 580,
-        "visible": true,
+        "width": 360,
+        "height": 400,
+        "minWidth": 340,
+        "minHeight": 360,
+        "visible": false,
         "theme": "Dark",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#000000",
+        "skipTaskbar": true,
+        "decorations": false,
+        "resizable": false
       }
     ],
     "security": {

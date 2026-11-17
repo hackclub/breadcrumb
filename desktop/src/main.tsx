@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { engine, isNative } from "./bridge";
+import { engine, isNative, hidePanel, setPanelExpanded, onPanelOpen } from "./bridge";
 import {
   activities,
   activity,
@@ -17,6 +17,7 @@ const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", mi
 function App() {
   const [state, setState] = useState<State | null>(null),
     [tab, setTab] = useState("history"),
+    [compact, setCompact] = useState(true),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState(""),
@@ -27,6 +28,30 @@ function App() {
     [name, setName] = useState(""),
     [rangeStart, setRangeStart] = useState(""),
     [rangeEnd, setRangeEnd] = useState("");
+  function overview() {
+    setCompact(true);
+    setSelected("");
+    setFilter(null);
+    setFilterName("");
+    void setPanelExpanded(false);
+  }
+  function expand(destination = "history") {
+    setCompact(false);
+    setTab(destination);
+    void setPanelExpanded(true);
+  }
+  useEffect(() => {
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    void onPanelOpen(overview).then((stop) => {
+      if (disposed) stop();
+      else unsubscribe = stop;
+    });
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
   async function refresh() {
     try {
       setState(await engine("state"));
@@ -34,6 +59,13 @@ function App() {
       setMessage(String(e));
     }
   }
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") void hidePanel();
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, []);
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => {
@@ -100,18 +132,61 @@ function App() {
     }, {}),
   ).sort((a, b) => b[1] - a[1]);
   return (
-    <div className="desktop">
-      <aside className="sidebar">
-        <a className="wordmark" href="#" onClick={() => history(null)}>
-          <span className="logo">◌</span> breadcrumb
-        </a>
-        <nav aria-label="Main navigation">
+    <div className={compact ? "desktop compact-panel" : "desktop"}>
+      <main className="workspace">
+        <header className="topbar" data-tauri-drag-region>
+          <div className="app-heading" data-tauri-drag-region>
+            <strong data-tauri-drag-region>
+              {!compact && (
+                <button className="back-button" aria-label="Back to overview" onClick={overview}>
+                  ‹
+                </button>
+              )}
+              Breadcrumb
+            </strong>
+            <div className="record-status">
+              <i className={state.recording ? "live" : ""} />
+              <span title={state.status}>
+                {compact ? (state.recording ? "Recording" : "Paused") : state.status}
+              </span>
+              {state.demo && <b>DEMO</b>}
+            </div>
+          </div>
+          <div className="actions">
+            <button
+              className="outline compact"
+              disabled={busy || state.demo}
+              aria-label={state.recording ? "Pause recording" : "Start recording"}
+              onClick={() => action(() => engine("toggle"))}
+            >
+              {state.recording ? "Pause" : "Start"}
+            </button>
+            <button
+              className={tab === "settings" ? "icon-button selected" : "icon-button"}
+              aria-label="Settings"
+              title="Settings"
+              onClick={() => expand("settings")}
+            >
+              ⚙
+            </button>
+            <button
+              className="icon-button"
+              aria-label="Hide to menu bar"
+              title="Hide to menu bar"
+              disabled={!isNative}
+              onClick={() => void hidePanel()}
+            >
+              ×
+            </button>
+          </div>
+        </header>
+        <nav className="panel-nav" aria-label="Main navigation">
           {[
-            ["history", "▧", "History"],
-            ["sessions", "≋", "Sessions"],
-            ["saved", "⌑", "Saved"],
-            ["activity", "◴", "Activity"],
-          ].map(([id, icon, label]) => (
+            ["history", "History"],
+            ["sessions", "Sessions"],
+            ["saved", "Saved"],
+            ["activity", "Activity"],
+          ].map(([id, label]) => (
             <button
               key={id}
               className={tab === id ? "selected" : ""}
@@ -123,58 +198,11 @@ function App() {
                 }
               }}
             >
-              <span>{icon}</span>
               {label}
               {id === "saved" && state.clips.length > 0 && <small>{state.clips.length}</small>}
             </button>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="storage">
-            <div>
-              <span>Local history</span>
-              <span>{bytes(state.historyBytes)}</span>
-            </div>
-            <div className="meter">
-              <i
-                style={{
-                  width:
-                    Math.min(
-                      100,
-                      (state.historyBytes / (state.settings.storageGiB * 1024 ** 3)) * 100,
-                    ) + "%",
-                }}
-              />
-            </div>
-            <small>
-              {state.settings.retentionHours === 0
-                ? "Kept until you delete it"
-                : `${state.settings.retentionHours} hour retention`}
-            </small>
-          </div>
-          <button
-            className={tab === "settings" ? "settings selected" : "settings"}
-            onClick={() => setTab("settings")}
-          >
-            ⚙ <span>Settings</span>
-          </button>
-        </div>
-      </aside>
-      <main className="workspace">
-        <header className="topbar">
-          <div className="record-status">
-            <i className={state.recording ? "live" : ""} />
-            <span>{state.status}</span>
-            {state.demo && <b>DEMO</b>}
-          </div>
-          <button
-            className="outline compact"
-            disabled={busy || state.demo}
-            onClick={() => action(() => engine("toggle"))}
-          >
-            {state.recording ? "Pause recording" : "Start recording"}
-          </button>
-        </header>
         {message && (
           <div className="notice" role="status">
             <span>{message}</span>
@@ -183,11 +211,61 @@ function App() {
             </button>
           </div>
         )}
-        {tab === "history" && (
+        {compact && (
+          <section className="quick-panel" aria-label="Recording overview">
+            <div className="quick-preview">
+              {payload && current ? (
+                <img
+                  src={`data:image/jpeg;base64,${payload.jpeg}`}
+                  alt={`Latest desktop capture from ${current.app}`}
+                />
+              ) : (
+                <span>Your first capture will appear here.</span>
+              )}
+            </div>
+            <div className="quick-caption">
+              <strong>{current?.app || "No captures yet"}</strong>
+              <time>{current ? time(current.date) : ""}</time>
+            </div>
+            <p className="quick-title">
+              {current?.windowTitle || "Start recording, then return to another app."}
+            </p>
+            {state.capabilities.permission === "required" && (
+              <button className="outline compact" onClick={() => expand("settings")}>
+                Allow Screen Recording
+              </button>
+            )}
+            <div className="quick-actions">
+              <button
+                disabled={busy || !state.observations.length}
+                onClick={() =>
+                  action(
+                    () =>
+                      engine("save", {
+                        name: "Last hour",
+                        start: timestamp(new Date(Date.now() - 3600000)),
+                        end: timestamp(new Date()),
+                      }),
+                    "Last hour saved.",
+                  )
+                }
+              >
+                Save last hour
+              </button>
+              <button className="outline" onClick={() => expand()}>
+                Open history
+              </button>
+            </div>
+            <div className="quick-footer">
+              <span>{state.observations.length} captures</span>
+              <span>{bytes(state.historyBytes)} · local</span>
+            </div>
+          </section>
+        )}
+        {!compact && tab === "history" && (
           <section className="page">
             <div className="page-title">
               <div>
-                <div className="eyebrow">YOUR DESKTOP, REMEMBERED</div>
                 <h1>{filterName || "History"}</h1>
                 <p>
                   {rows.length} captures
@@ -428,13 +506,9 @@ function App() {
             )}
           </section>
         )}
-        {tab === "sessions" && (
+        {!compact && tab === "sessions" && (
           <section className="page">
-            <PageTitle
-              label="FOLLOW THE THREAD"
-              title="Sessions"
-              text="Related captures, grouped by task and context."
-            />
+            <PageTitle title="Sessions" text="Related captures, grouped by task and context." />
             {[...state.sessions].reverse().map((session) => (
               <button
                 className="session card"
@@ -460,10 +534,9 @@ function App() {
             {!state.sessions.length && <p>No sessions yet. They appear as you record.</p>}
           </section>
         )}
-        {tab === "saved" && (
+        {!compact && tab === "saved" && (
           <section className="page">
             <PageTitle
-              label="WORTH KEEPING"
               title="Saved clips"
               text="Pinned captures stay protected from rolling retention."
             />
@@ -519,10 +592,9 @@ function App() {
             )}
           </section>
         )}
-        {tab === "activity" && (
+        {!compact && tab === "activity" && (
           <section className="page">
             <PageTitle
-              label="A LITTLE PERSPECTIVE"
               title="Activity"
               text="Capture counts describe visible context, not verified time worked."
             />
@@ -549,7 +621,7 @@ function App() {
             </p>
           </section>
         )}
-        {tab === "settings" && (
+        {!compact && tab === "settings" && (
           <SettingsPage
             state={state}
             busy={busy}
@@ -562,11 +634,10 @@ function App() {
     </div>
   );
 }
-function PageTitle({ label, title, text }: { label: string; title: string; text: string }) {
+function PageTitle({ title, text }: { title: string; text: string }) {
   return (
     <div className="page-title">
       <div>
-        <div className="eyebrow">{label}</div>
         <h1>{title}</h1>
         <p>{text}</p>
       </div>
@@ -619,11 +690,7 @@ function SettingsPage({
   );
   return (
     <section className="page settings-page">
-      <PageTitle
-        label="MAKE IT YOURS"
-        title="Settings"
-        text="Choose what to capture and how long to keep it."
-      />
+      <PageTitle title="Settings" text="Choose what to capture and how long to keep it." />
       <div className="card">
         <h2>Logging</h2>
         {number("retentionHours", "Keep history", [

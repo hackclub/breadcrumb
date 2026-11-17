@@ -11,7 +11,7 @@ private struct Request: Decodable {
 
 @main struct CaptureAgent {
     @MainActor static func main() async {
-        _ = NSApplication.shared
+        NSApplication.shared.setActivationPolicy(.prohibited)
         // Keep AppKit's main run loop responsive to foreground-app changes.
         while let line = await Task.detached(operation: { readLine() }).value {
             do {

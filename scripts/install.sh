@@ -53,5 +53,5 @@ if ! mv "$STAGE/Breadcrumb.app" "$TARGET"; then
 fi
 rmdir "$STAGE"
 codesign --verify --deep --strict -R="$REQUIREMENT" "$TARGET"
-open "$TARGET"
+open "$TARGET" --args --show
 echo "Installed and reopened $TARGET; previous app: $BACKUP/previous.app"
