@@ -152,6 +152,7 @@ func (e *engine) tick() {
 	}
 	r["id"] = uuid()
 	r["date"] = library.Timestamp(time.Now())
+	r["sampleIntervalSeconds"] = settings.IntervalSeconds
 	if changed {
 		r["captureReason"] = "contextChanged"
 	} else {
@@ -177,6 +178,25 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	switch command {
+	case "appIcon":
+		var input struct {
+			BundleID string `json:"bundleID"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		id := input.BundleID
+		if id == "" || len(id) > 512 || strings.ContainsAny(id, "/\\\x00") {
+			return nil, fmt.Errorf("Invalid app identifier")
+		}
+		if e.demo || e.capture == nil {
+			return map[string]string{"icon": ""}, nil
+		}
+		response, err := e.capture.Request("icon:"+id, e.lib.Settings, nil)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"icon": response.Icon}, nil
 	case "state":
 		return e.state(), nil
 	case "status":

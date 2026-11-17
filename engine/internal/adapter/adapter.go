@@ -21,6 +21,7 @@ type Capabilities struct {
 	Permission    string `json:"permission"`
 }
 type Response struct {
+	Icon                string          `json:"icon,omitempty"`
 	RecordingPreference *bool           `json:"recordingPreference"`
 	OK                  bool            `json:"ok"`
 	Error               string          `json:"error"`

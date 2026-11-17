@@ -12,6 +12,7 @@ export type Settings = {
 export type Capture = {
   id: string;
   date: number;
+  sampleIntervalSeconds?: number;
   app: string;
   bundleID: string;
   windowTitle: string;
@@ -19,7 +20,13 @@ export type Capture = {
   agentLabel?: { activity: string; reason: string; flags: string[] };
   classification?: { activity: string; reason: string };
   context?: { domain?: string; project?: string; document?: string };
-  visibleWindows?: { windowID: number; app: string; title: string; focused: boolean }[];
+  visibleWindows?: {
+    windowID: number;
+    app: string;
+    bundleID?: string;
+    title: string;
+    focused: boolean;
+  }[];
   treeStatus?: string;
 };
 export type Clip = { id: string; name: string; created: number; frameIDs: string[] };

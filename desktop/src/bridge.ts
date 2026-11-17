@@ -83,6 +83,7 @@ export async function engine<T = State>(command: string, args: unknown = {}): Pr
   if (native) return invoke<T>("engine", { command, args });
   // Explicit browser preview never touches a real library or starts recording.
   await new Promise((resolve) => setTimeout(resolve, 20));
+  if (command === "appIcon") return { icon: "" } as T;
   if (command === "state") return structuredClone(demoState) as T;
   if (command === "toggle")
     throw Error("Recording is only available in the installed desktop app.");

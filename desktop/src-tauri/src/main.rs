@@ -86,6 +86,7 @@ async fn engine(
         "connect",
         "upload",
         "permissions",
+        "appIcon",
     ];
     if !commands.contains(&command.as_str()) {
         return Err("Unknown desktop command".into());

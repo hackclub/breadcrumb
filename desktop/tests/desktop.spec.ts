@@ -23,12 +23,20 @@ test("save and review a clip; correct a focused activity label", async ({ page }
   await expect(page.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
   await expect(
     page.locator(".activity-row").filter({ has: page.getByText("Reading", { exact: true }) }),
-  ).toContainText("5 captures");
+  ).toContainText("≈5 min");
 });
 test("sessions open their capture set", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open history", exact: true }).click();
   await page.getByRole("button", { name: /Sessions/ }).click();
+  await expect(page.locator(".session").first()).toContainText("In focus");
+  await expect(page.locator(".session").first()).toContainText("Alongside");
+  await expect(page.locator(".session-duration").first()).toContainText("min");
+  await expect(page.locator(".session .app-icon").first()).toBeVisible();
+  await expect(page.locator(".session").first()).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  expect(
+    await page.evaluate(() => document.querySelector(".workspace")!.scrollWidth),
+  ).toBeLessThanOrEqual(360);
   await page.locator(".session").first().click();
   await expect(
     page.getByRole("heading", { name: "Breadcrumb", exact: true, level: 1 }),

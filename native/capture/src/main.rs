@@ -21,6 +21,9 @@ fn excluded(app: &str, exclusions: &[String]) -> bool {
 }
 fn perform(request: &Value) -> Result<Value, String> {
     let command = request["command"].as_str().unwrap_or("");
+    if command.starts_with("icon:") {
+        return Ok(serde_json::json!({"ok":true,"icon":""}));
+    }
     if command == "permissions" {
         return Ok(
             json!({"ok":true,"capabilities":capabilities(),"message":"Use the operating system screen-sharing/accessibility settings. Wayland may show its own chooser."}),

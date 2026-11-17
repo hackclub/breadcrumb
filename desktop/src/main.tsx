@@ -13,12 +13,15 @@ import {
   type State,
 } from "./types";
 import { Icon } from "./icons";
+import { AppIcon } from "./app-icon";
+import { estimateTimeline, estimatedTime, sessionContext } from "./activity";
 import "./style.css";
 const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 function App() {
   const [state, setState] = useState<State | null>(null),
     [tab, setTab] = useState("history"),
     [compact, setCompact] = useState(true),
+    [activityRange, setActivityRange] = useState("all"),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState(""),
@@ -114,6 +117,36 @@ function App() {
     setSelected("");
     setTab("history");
   }
+  const estimates = useMemo(
+    () => estimateTimeline(state?.observations ?? []),
+    [state?.observations],
+  );
+  const recordsByID = useMemo(
+    () => new Map((state?.observations ?? []).map((row) => [row.id, row])),
+    [state?.observations],
+  );
+  const sessionDetails = useMemo(
+    () =>
+      new Map(
+        (state?.sessions ?? []).map((session) => [
+          session.id,
+          sessionContext(session, recordsByID, estimates),
+        ]),
+      ),
+    [state?.sessions, recordsByID, estimates],
+  );
+  const activitySummary = useMemo(() => {
+    const now = new Date();
+    const start =
+      activityRange === "today"
+        ? timestamp(new Date(now.getFullYear(), now.getMonth(), now.getDate()))
+        : activityRange === "week"
+          ? timestamp(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6))
+          : -Infinity;
+    return activityRange === "all"
+      ? estimates
+      : estimateTimeline(state?.observations ?? [], timestamp(now), start);
+  }, [activityRange, estimates, state?.observations]);
   if (!state)
     return (
       <main className="loading">
@@ -123,13 +156,6 @@ function App() {
         {message && <p role="alert">{message}</p>}
       </main>
     );
-  const summary = Object.entries(
-    state.observations.reduce<Record<string, number>>((counts, row) => {
-      const key = shortActivity(activity(row));
-      counts[key] = (counts[key] ?? 0) + 1;
-      return counts;
-    }, {}),
-  ).sort((a, b) => b[1] - a[1]);
   return (
     <div className={compact ? "desktop compact-panel" : "desktop"}>
       <main className="workspace">
@@ -540,28 +566,76 @@ function App() {
         {!compact && tab === "sessions" && (
           <section className="page">
             <PageTitle title="Sessions" text="Related captures, grouped by task and context." />
-            {[...state.sessions].reverse().map((session) => (
-              <button
-                className="session card"
-                key={session.id}
-                onClick={() => history(session.ids, session.title)}
-              >
-                <div>
-                  <h3>{session.title}</h3>
-                  <p>
-                    {time(session.start)} – {time(session.end)} · {session.ids.length} captures
-                  </p>
-                  <div className="tags">
-                    {session.activities.map((a) => (
-                      <span className="pill" key={a}>
-                        {shortActivity(a)}
+            {[...state.sessions].reverse().map((session, index, list) => {
+              const details = sessionDetails.get(session.id)!;
+              const primary = details.focused[0];
+              const group = sessionDay(session.start);
+              const showDay = index === 0 || group !== sessionDay(list[index - 1].start);
+              return (
+                <React.Fragment key={session.id}>
+                  {showDay && <h2 className="session-day">{group}</h2>}
+                  <button
+                    className="session session-rich"
+                    onClick={() => history(session.ids, details.title)}
+                  >
+                    <div className="session-main">
+                      <AppIcon
+                        app={primary?.app || details.title}
+                        bundleID={primary?.bundleID || ""}
+                        size={30}
+                      />
+                      <div className="session-copy">
+                        <div className="session-heading">
+                          <h3>{details.title}</h3>
+                          <span className="session-duration" title="Estimated time in focus">
+                            {estimatedTime(details.seconds)}
+                          </span>
+                        </div>
+                        {details.windowTitle && details.windowTitle !== details.title && (
+                          <p className="session-window" title={details.windowTitle}>
+                            {details.windowTitle}
+                          </p>
+                        )}
+                        <div className="session-period">
+                          {sessionTime(session.start, session.end)} · {details.captures}{" "}
+                          {details.captures === 1 ? "capture" : "captures"}
+                        </div>
+                      </div>
+                      <Icon name="chevron" size={14} />
+                    </div>
+                    <div className="session-focus">
+                      <span className="context-key">In focus</span>
+                      <span>
+                        {details.focused
+                          .slice(0, 3)
+                          .map((app) => app.app)
+                          .join(", ")}
                       </span>
-                    ))}
-                  </div>
-                </div>
-                <Icon name="chevron" />
-              </button>
-            ))}
+                      <span className="pill">{details.activity}</span>
+                    </div>
+                    {details.alongside.length > 0 && (
+                      <div className="session-alongside">
+                        <span className="context-key">Alongside</span>
+                        <span className="alongside-apps">
+                          {details.alongside.slice(0, 3).map((app) => (
+                            <span
+                              key={app.bundleID || app.app}
+                              title={`${app.app} · visible alongside for ${estimatedTime(app.seconds)}`}
+                            >
+                              <AppIcon app={app.app} bundleID={app.bundleID} size={14} />
+                              {app.app}
+                            </span>
+                          ))}
+                          {details.alongside.length > 3 && (
+                            <span>+{details.alongside.length - 3}</span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </button>
+                </React.Fragment>
+              );
+            })}
             {!state.sessions.length && <p>No sessions yet. They appear as you record.</p>}
           </section>
         )}
@@ -627,30 +701,51 @@ function App() {
         )}
         {!compact && tab === "activity" && (
           <section className="page">
-            <PageTitle
-              title="Activity"
-              text="Capture counts describe visible context, not verified time worked."
-            />
+            <div className="activity-overview">
+              <div>
+                <strong>{estimatedTime(activitySummary.seconds)}</strong>
+                <span>Estimated time in focus</span>
+              </div>
+              <select
+                aria-label="Activity range"
+                value={activityRange}
+                onChange={(event) => setActivityRange(event.target.value)}
+              >
+                <option value="all">All history</option>
+                <option value="today">Today</option>
+                <option value="week">Last 7 days</option>
+              </select>
+            </div>
             <div className="card activity-list">
-              {summary.map(([label, count]) => (
-                <div className="activity-row" key={label}>
-                  <div>
-                    <strong>{label}</strong>
-                    <span>{count} captures</span>
+              {activitySummary.activities.map(({ label, seconds }) => {
+                const share = (seconds / Math.max(1, activitySummary.seconds)) * 100;
+                return (
+                  <div className="activity-row" key={label}>
+                    <div>
+                      <strong>{label}</strong>
+                      <span>{estimatedTime(seconds)}</span>
+                    </div>
+                    <div
+                      className="meter"
+                      role="meter"
+                      aria-label={`${label} estimated time`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={share}
+                      aria-valuetext={`${estimatedTime(seconds)}, ${Math.round(share)}%`}
+                    >
+                      <i style={{ width: share + "%" }} />
+                    </div>
                   </div>
-                  <div className="meter">
-                    <i
-                      style={{
-                        width: (count / Math.max(1, state.observations.length)) * 100 + "%",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+              {!activitySummary.activities.length && (
+                <p className="muted">Time estimates appear as captures arrive.</p>
+              )}
             </div>
             <p className="muted">
-              Focused activity is counted once per capture. Alongside windows remain attached to
-              each capture and session rather than being added as extra hours.
+              Estimated from capture spacing; gaps are excluded. Alongside apps don’t add extra
+              focused time.
             </p>
           </section>
         )}
@@ -666,6 +761,21 @@ function App() {
       </main>
     </div>
   );
+}
+function sessionDay(value: number) {
+  const day = date(value);
+  const today = new Date();
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  return day.toDateString() === today.toDateString()
+    ? "Today"
+    : day.toDateString() === yesterday.toDateString()
+      ? "Yesterday"
+      : day.toLocaleDateString([], { month: "short", day: "numeric", weekday: "short" });
+}
+function sessionTime(start: number, end: number) {
+  return Math.floor(start / 60) === Math.floor(end / 60)
+    ? time(start)
+    : `${time(start)} – ${time(end)}`;
 }
 function PageTitle({ title, text }: { title: string; text: string }) {
   return (
@@ -756,14 +866,20 @@ function SettingsPage({
             type="checkbox"
             checked={startup}
             disabled={!isNative || state.demo}
-            onChange={(e) =>
-              action(async () => {
+            onChange={(event) => {
+              const enabled = event.currentTarget.checked;
+              void action(async () => {
                 const plugin = await import("@tauri-apps/plugin-autostart");
-                if (e.target.checked) await plugin.enable();
+                if (enabled) await plugin.enable();
                 else await plugin.disable();
-                setStartup(await plugin.isEnabled());
-              })
-            }
+                const registered = await plugin.isEnabled();
+                setStartup(registered);
+                if (registered !== enabled)
+                  throw Error(
+                    "Login item could not be updated. Check Login Items in System Settings.",
+                  );
+              });
+            }}
           />
         </label>
         <details>

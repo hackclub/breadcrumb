@@ -3,12 +3,13 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "lint": "oxlint web/app web/lib web/tests web/scripts desktop/src desktop/vite.config.ts desktop/tests playwright.config.ts",
+    "lint": "oxlint web/app web/lib web/tests web/scripts desktop/src desktop/vite.config.ts desktop/tests playwright.config.ts desktop/unit",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "test:web": "bun run --cwd web test",
     "build:web": "bun run --cwd web build",
-    "build:desktop": "bun run --cwd desktop build"
+    "build:desktop": "bun run --cwd desktop build",
+    "test:desktop": "bun run --cwd desktop test"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",
