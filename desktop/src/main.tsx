@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { engine, isNative, hidePanel, withPanelDialog, confirmAction, onPanelOpen } from "./bridge";
 import {
@@ -18,6 +18,7 @@ import { estimateTimeline, estimatedTime, sessionContext } from "./activity";
 import "./style.css";
 const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 function App() {
+  const workspace = useRef<HTMLElement>(null);
   const [state, setState] = useState<State | null>(null),
     [tab, setTab] = useState("history"),
     [compact, setCompact] = useState(true),
@@ -32,6 +33,10 @@ function App() {
     [name, setName] = useState(""),
     [rangeStart, setRangeStart] = useState(""),
     [rangeEnd, setRangeEnd] = useState("");
+  // Each destination starts at its top; background refreshes keep the current position.
+  useLayoutEffect(() => {
+    workspace.current?.scrollTo(0, 0);
+  }, [compact, tab, filterName]);
   function overview() {
     setCompact(true);
     setSelected("");
@@ -158,7 +163,7 @@ function App() {
     );
   return (
     <div className={compact ? "desktop compact-panel" : "desktop"}>
-      <main className="workspace">
+      <main className="workspace" ref={workspace}>
         <header className="topbar" data-tauri-drag-region>
           <div className="app-heading" data-tauri-drag-region>
             {!compact && (
@@ -171,7 +176,12 @@ function App() {
                 <Icon name="back" />
               </button>
             )}
-            <h1 data-tauri-drag-region title={filterName || undefined}>
+            <h1
+              key={compact ? "overview" : tab}
+              className="view-heading"
+              data-tauri-drag-region
+              title={filterName || undefined}
+            >
               {compact
                 ? "Breadcrumb"
                 : tab === "settings"
