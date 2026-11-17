@@ -101,19 +101,21 @@ export default function Portal() {
     <main className="portal">
       <header>
         <a className="wordmark" href="/" aria-label="Breadcrumb home">
-          <span className="brand-icon">◌</span> breadcrumb
+          <svg className="brand-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="6" cy="6" r="3" />
+            <circle cx="17" cy="6" r="3" />
+            <circle cx="6" cy="17" r="3" />
+            <circle cx="18" cy="18" r="2.7" fill="#ed6268" />
+          </svg>{" "}
+          Breadcrumb
         </a>
         <a href="https://github.com/hackclub/breadcrumb" target="_blank" rel="noreferrer">
           Source ↗
         </a>
       </header>
       <section className="intro">
-        <div className="eyebrow">A LITTLE CONTEXT GOES A LONG WAY</div>
-        <h1>
-          The story between
-          <br />
-          your screenshots.
-        </h1>
+        <div className="eyebrow">YOUR DESKTOP, IN CONTEXT</div>
+        <h1>A little context goes a long way.</h1>
         <p>
           Keep a personal history of your desktop. Contribute selected moments to help agents
           understand what happens on screen—even when more than one thing is happening.
@@ -126,8 +128,8 @@ export default function Portal() {
       </section>
       <div className="portal-grid">
         <section className="card">
-          <div className="step">01 · YOUR ACCOUNT</div>
-          <h2>{account ? "Welcome back." : "Come on in."}</h2>
+          <div className="step">01 · Account</div>
+          <h2>{account ? "Your account" : "Sign in"}</h2>
           {account ? (
             <>
               <p>{account.email}</p>
@@ -205,12 +207,11 @@ export default function Portal() {
           </div>
         </section>
         <section className="card">
-          <div className="step">02 · CONTRIBUTE A MOMENT</div>
-          <h2>Your context, with permission.</h2>
+          <div className="step">02 · Contribute</div>
+          <h2>Upload a capture</h2>
           <p>
             Review a capture bundle from Breadcrumb before uploading. Screenshots, visible text,
-            window context, and accessibility trees will be stored in the corpus and reviewed
-            through Vercel AI Gateway.
+            window context, and accessibility trees will be stored in the corpus for AI review.
           </p>
           <form
             onSubmit={(e) => {

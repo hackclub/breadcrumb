@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { engine, isNative, hidePanel, withPanelDialog, confirmAction, onPanelOpen } from "./bridge";
 import {
@@ -15,10 +15,10 @@ import {
 import { Icon } from "./icons";
 import { AppIcon } from "./app-icon";
 import { estimateTimeline, estimatedTime, sessionContext } from "./activity";
+import { SlidingPanels } from "./sliding-panels";
 import "./style.css";
 const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 function App() {
-  const workspace = useRef<HTMLElement>(null);
   const [state, setState] = useState<State | null>(null),
     [tab, setTab] = useState("history"),
     [compact, setCompact] = useState(true),
@@ -33,10 +33,6 @@ function App() {
     [name, setName] = useState(""),
     [rangeStart, setRangeStart] = useState(""),
     [rangeEnd, setRangeEnd] = useState("");
-  // Each destination starts at its top; background refreshes keep the current position.
-  useLayoutEffect(() => {
-    workspace.current?.scrollTo(0, 0);
-  }, [compact, tab, filterName]);
   function overview() {
     setCompact(true);
     setSelected("");
@@ -163,7 +159,7 @@ function App() {
     );
   return (
     <div className={compact ? "desktop compact-panel" : "desktop"}>
-      <main className="workspace" ref={workspace}>
+      <main className="workspace">
         <header className="topbar" data-tauri-drag-region>
           <div className="app-heading" data-tauri-drag-region>
             {!compact && (
@@ -271,81 +267,37 @@ function App() {
             </button>
           </div>
         )}
-        {compact && (
-          <section className="quick-panel" aria-label="Recording overview">
-            <div className="quick-preview">
-              {payload && current ? (
-                <img
-                  src={`data:image/jpeg;base64,${payload.jpeg}`}
-                  alt={`Latest desktop capture from ${current.app}`}
-                />
-              ) : (
-                <span className="preview-placeholder">
-                  <Icon name="image" size={22} />
-                  {current ? "Loading capture…" : "Your history starts here"}
-                </span>
-              )}
-            </div>
-            <div className="quick-caption">
-              <strong>{current?.app || "No captures yet"}</strong>
-              <time>{current ? time(current.date) : ""}</time>
-            </div>
-            <p className="quick-title">
-              {current?.windowTitle || "Start recording, then return to another app."}
-            </p>
-            {state.capabilities.permission === "required" && (
-              <button className="outline compact" onClick={() => expand("settings")}>
-                Allow Screen Recording
-              </button>
-            )}
-            <div className="quick-actions">
-              <button
-                className="primary-action"
-                disabled={busy || !state.observations.length}
-                onClick={() =>
-                  action(
-                    () =>
-                      engine("save", {
-                        name: "Last hour",
-                        start: timestamp(new Date(Date.now() - 3600000)),
-                        end: timestamp(new Date()),
-                      }),
-                    "Last hour saved.",
-                  )
-                }
-              >
-                <Icon name="save" />
-                Save last hour
-              </button>
-              <button className="history-link" aria-label="Open history" onClick={() => expand()}>
-                <span>
-                  <Icon name="history" />
-                  History
-                </span>
-                <span className="history-count">
-                  {state.observations.length.toLocaleString()} captures
-                  <Icon name="chevron" size={14} />
-                </span>
-              </button>
-            </div>
-          </section>
-        )}
-        {!compact && tab === "history" && (
-          <section className="page">
-            <div className="page-title">
-              <div>
-                <p>
-                  {rows.length} captures
-                  {state.settings.retentionHours === 0 ? " · kept until you delete them" : ""}
-                </p>
-              </div>
-              <div className="actions">
-                {filter && (
-                  <button className="quiet" onClick={() => history(null)}>
-                    All history
-                  </button>
+        <SlidingPanels view={compact ? "overview" : tab}>
+          {compact && (
+            <section className="quick-panel" aria-label="Recording overview">
+              <div className="quick-preview">
+                {payload && current ? (
+                  <img
+                    src={`data:image/jpeg;base64,${payload.jpeg}`}
+                    alt={`Latest desktop capture from ${current.app}`}
+                  />
+                ) : (
+                  <span className="preview-placeholder">
+                    <Icon name="image" size={22} />
+                    {current ? "Loading capture…" : "Your history starts here"}
+                  </span>
                 )}
+              </div>
+              <div className="quick-caption">
+                <strong>{current?.app || "No captures yet"}</strong>
+                <time>{current ? time(current.date) : ""}</time>
+              </div>
+              <p className="quick-title">
+                {current?.windowTitle || "Start recording, then return to another app."}
+              </p>
+              {state.capabilities.permission === "required" && (
+                <button className="outline compact" onClick={() => expand("settings")}>
+                  Allow Screen Recording
+                </button>
+              )}
+              <div className="quick-actions">
                 <button
+                  className="primary-action"
                   disabled={busy || !state.observations.length}
                   onClick={() =>
                     action(
@@ -359,415 +311,461 @@ function App() {
                     )
                   }
                 >
+                  <Icon name="save" />
                   Save last hour
                 </button>
-              </div>
-            </div>
-            {!state.demo && !state.capabilities.screenshot && (
-              <div className="card">
-                <h2>Native capture is not ready</h2>
-                <p>{state.status}</p>
-              </div>
-            )}
-            {state.capabilities.permission === "required" && (
-              <div className="permission">
-                <div>
-                  <strong>Allow screen recording</strong>
-                  <p>
-                    Enable Breadcrumb in system settings. Accessibility adds window and document
-                    context.
-                  </p>
-                </div>
-                <button onClick={() => action(() => engine("permissions"))}>
-                  Open permissions
+                <button className="history-link" aria-label="Open history" onClick={() => expand()}>
+                  <span>
+                    <Icon name="history" />
+                    History
+                  </span>
+                  <span className="history-count">
+                    {state.observations.length.toLocaleString()} captures
+                    <Icon name="chevron" size={14} />
+                  </span>
                 </button>
               </div>
-            )}
-            {current ? (
-              <>
-                <div className="preview" aria-label="Capture preview">
-                  {payload ? (
-                    <img
-                      src={"data:image/jpeg;base64," + payload.jpeg}
-                      alt={`Desktop capture from ${current.app} at ${time(current.date)}`}
-                    />
-                  ) : (
-                    <span>Loading capture…</span>
+            </section>
+          )}
+          {!compact && tab === "history" && (
+            <section className="page">
+              <div className="page-title">
+                <div>
+                  <p>
+                    {rows.length} captures
+                    {state.settings.retentionHours === 0 ? " · kept until you delete them" : ""}
+                  </p>
+                </div>
+                <div className="actions">
+                  {filter && (
+                    <button className="quiet" onClick={() => history(null)}>
+                      All history
+                    </button>
                   )}
-                  <span className="preview-badge">{time(current.date)}</span>
-                </div>
-                <div className="capture-caption">
-                  <div>
-                    <strong>{current.app}</strong>
-                    <span>{current.windowTitle}</span>
-                  </div>
-                  <span className="pill">{shortActivity(activity(current))}</span>
-                </div>
-                <div className="scrubber">
-                  <input
-                    aria-label="Capture timeline"
-                    type="range"
-                    min="0"
-                    max={Math.max(0, rows.length - 1)}
-                    value={Math.max(
-                      0,
-                      rows.findIndex((r) => r.id === current.id),
-                    )}
-                    onChange={(e) => setSelected(rows[Number(e.target.value)].id)}
-                  />
-                  <div>
-                    <span>{time(rows[0].date)}</span>
-                    <span>
-                      {rows.findIndex((r) => r.id === current.id) + 1} of {rows.length}
-                    </span>
-                    <span>{time(rows.at(-1)!.date)}</span>
-                  </div>
-                </div>
-                <div className="context-grid">
-                  <div className="card context">
-                    <div className="context-label">In focus</div>
-                    <h3>{current.context?.project || current.context?.domain || current.app}</h3>
-                    <p>{current.context?.document || current.windowTitle}</p>
-                  </div>
-                  <div className="card context">
-                    <div className="context-label">Alongside</div>
-                    {current.visibleWindows?.filter((w) => !w.focused).length ? (
-                      current.visibleWindows
-                        .filter((w) => !w.focused)
-                        .slice(0, 3)
-                        .map((w) => (
-                          <div className="alongside" key={w.windowID}>
-                            <strong>{w.app}</strong>
-                            <span>{w.title}</span>
-                          </div>
-                        ))
-                    ) : (
-                      <p>No alongside window context was available.</p>
-                    )}
-                    <small>Visibility doesn’t establish playback or attention.</small>
-                  </div>
-                </div>
-                <details className="card details">
-                  <summary>Save a time range</summary>
-                  <div className="range-fields">
-                    <label>
-                      Clip name
-                      <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="What were you working on?"
-                      />
-                    </label>
-                    <label>
-                      From
-                      <input
-                        type="datetime-local"
-                        value={rangeStart}
-                        onChange={(e) => setRangeStart(e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      To
-                      <input
-                        type="datetime-local"
-                        value={rangeEnd}
-                        onChange={(e) => setRangeEnd(e.target.value)}
-                      />
-                    </label>
-                  </div>
                   <button
-                    disabled={busy || !name || !rangeStart || !rangeEnd}
+                    disabled={busy || !state.observations.length}
                     onClick={() =>
                       action(
                         () =>
                           engine("save", {
-                            name,
-                            start: timestamp(new Date(rangeStart)),
-                            end: timestamp(new Date(rangeEnd)),
+                            name: "Last hour",
+                            start: timestamp(new Date(Date.now() - 3600000)),
+                            end: timestamp(new Date()),
                           }),
-                        "Clip saved.",
+                        "Last hour saved.",
                       )
                     }
                   >
-                    Save clip
+                    Save last hour
                   </button>
-                </details>
-                <details className="card details">
-                  <summary>Labels & captured context</summary>
-                  <label>
-                    Activity label
-                    <select
-                      value={current.correction || ""}
-                      onChange={(e) =>
-                        action(() =>
-                          engine("correct", { id: current.id, activity: e.target.value }),
+                </div>
+              </div>
+              {!state.demo && !state.capabilities.screenshot && (
+                <div className="card">
+                  <h2>Native capture is not ready</h2>
+                  <p>{state.status}</p>
+                </div>
+              )}
+              {state.capabilities.permission === "required" && (
+                <div className="permission">
+                  <div>
+                    <strong>Allow screen recording</strong>
+                    <p>
+                      Enable Breadcrumb in system settings. Accessibility adds window and document
+                      context.
+                    </p>
+                  </div>
+                  <button onClick={() => action(() => engine("permissions"))}>
+                    Open permissions
+                  </button>
+                </div>
+              )}
+              {current ? (
+                <>
+                  <div className="preview" aria-label="Capture preview">
+                    {payload ? (
+                      <img
+                        src={"data:image/jpeg;base64," + payload.jpeg}
+                        alt={`Desktop capture from ${current.app} at ${time(current.date)}`}
+                      />
+                    ) : (
+                      <span>Loading capture…</span>
+                    )}
+                    <span className="preview-badge">{time(current.date)}</span>
+                  </div>
+                  <div className="capture-caption">
+                    <div>
+                      <strong>{current.app}</strong>
+                      <span>{current.windowTitle}</span>
+                    </div>
+                    <span className="pill">{shortActivity(activity(current))}</span>
+                  </div>
+                  <div className="scrubber">
+                    <input
+                      aria-label="Capture timeline"
+                      type="range"
+                      min="0"
+                      max={Math.max(0, rows.length - 1)}
+                      value={Math.max(
+                        0,
+                        rows.findIndex((r) => r.id === current.id),
+                      )}
+                      onChange={(e) => setSelected(rows[Number(e.target.value)].id)}
+                    />
+                    <div>
+                      <span>{time(rows[0].date)}</span>
+                      <span>
+                        {rows.findIndex((r) => r.id === current.id) + 1} of {rows.length}
+                      </span>
+                      <span>{time(rows.at(-1)!.date)}</span>
+                    </div>
+                  </div>
+                  <div className="context-grid">
+                    <div className="card context">
+                      <div className="context-label">In focus</div>
+                      <h3>{current.context?.project || current.context?.domain || current.app}</h3>
+                      <p>{current.context?.document || current.windowTitle}</p>
+                    </div>
+                    <div className="card context">
+                      <div className="context-label">Alongside</div>
+                      {current.visibleWindows?.filter((w) => !w.focused).length ? (
+                        current.visibleWindows
+                          .filter((w) => !w.focused)
+                          .slice(0, 3)
+                          .map((w) => (
+                            <div className="alongside" key={w.windowID}>
+                              <strong>{w.app}</strong>
+                              <span>{w.title}</span>
+                            </div>
+                          ))
+                      ) : (
+                        <p>No alongside window context was available.</p>
+                      )}
+                      <small>Visibility doesn’t establish playback or attention.</small>
+                    </div>
+                  </div>
+                  <details className="card details">
+                    <summary>Save a time range</summary>
+                    <div className="range-fields">
+                      <label>
+                        Clip name
+                        <input
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="What were you working on?"
+                        />
+                      </label>
+                      <label>
+                        From
+                        <input
+                          type="datetime-local"
+                          value={rangeStart}
+                          onChange={(e) => setRangeStart(e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        To
+                        <input
+                          type="datetime-local"
+                          value={rangeEnd}
+                          onChange={(e) => setRangeEnd(e.target.value)}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      disabled={busy || !name || !rangeStart || !rangeEnd}
+                      onClick={() =>
+                        action(
+                          () =>
+                            engine("save", {
+                              name,
+                              start: timestamp(new Date(rangeStart)),
+                              end: timestamp(new Date(rangeEnd)),
+                            }),
+                          "Clip saved.",
                         )
                       }
                     >
-                      <option value="">Use suggested label</option>
-                      {activities.map((a) => (
-                        <option key={a} value={a}>
-                          {shortActivity(a)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <p>{current.classification?.reason}</p>
-                  <details>
-                    <summary>{current.treeStatus || "Accessibility tree"}</summary>
-                    <pre>
-                      {payload?.tree
-                        .map(
-                          (n) => "  ".repeat(n.depth) + n.role + (n.label ? " · " + n.label : ""),
-                        )
-                        .join("\n") || "No accessibility tree available."}
-                    </pre>
-                  </details>
-                  <details>
-                    <summary>Extracted screen text</summary>
-                    <pre>{payload?.screenText || "No OCR text available."}</pre>
-                  </details>
-                </details>
-                <details className="card details">
-                  <summary>Contribute this capture</summary>
-                  <p>
-                    This shares the screenshot, screen text, and window/tree context with the corpus
-                    for AI review through Vercel AI Gateway. Local recording stays on this device
-                    until you explicitly upload.
-                  </p>
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={consent}
-                      onChange={(e) => setConsent(e.target.checked)}
-                    />
-                    I reviewed this capture and agree to contribute it.
-                  </label>
-                  <button
-                    disabled={busy || !consent || !state.connected || state.demo}
-                    onClick={() =>
-                      action(async () => {
-                        await engine("upload", { id: current.id, consent: true });
-                        setConsent(false);
-                      }, "Capture contributed.")
-                    }
-                  >
-                    Upload selected capture
-                  </button>
-                  {!state.connected && (
-                    <button className="quiet" onClick={() => setTab("settings")}>
-                      Connect an upload token
+                      Save clip
                     </button>
-                  )}
-                </details>
-              </>
-            ) : (
-              <div className="empty">
-                <Icon name="history" size={24} />
-                <h2>Your history starts here.</h2>
-                <p>
-                  Start recording, then return to another app. Your desktop will appear here as you
-                  work.
-                </p>
-              </div>
-            )}
-          </section>
-        )}
-        {!compact && tab === "sessions" && (
-          <section className="page">
-            <PageTitle title="Sessions" text="Related captures, grouped by task and context." />
-            {[...state.sessions].reverse().map((session, index, list) => {
-              const details = sessionDetails.get(session.id)!;
-              const primary = details.focused[0];
-              const group = sessionDay(session.start);
-              const showDay = index === 0 || group !== sessionDay(list[index - 1].start);
-              return (
-                <React.Fragment key={session.id}>
-                  {showDay && <h2 className="session-day">{group}</h2>}
-                  <button
-                    className="session session-rich"
-                    onClick={() => history(session.ids, details.title)}
-                  >
-                    <div className="session-main">
-                      <AppIcon
-                        app={primary?.app || details.title}
-                        bundleID={primary?.bundleID || ""}
-                        size={30}
+                  </details>
+                  <details className="card details">
+                    <summary>Labels & captured context</summary>
+                    <label>
+                      Activity label
+                      <select
+                        value={current.correction || ""}
+                        onChange={(e) =>
+                          action(() =>
+                            engine("correct", { id: current.id, activity: e.target.value }),
+                          )
+                        }
+                      >
+                        <option value="">Use suggested label</option>
+                        {activities.map((a) => (
+                          <option key={a} value={a}>
+                            {shortActivity(a)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p>{current.classification?.reason}</p>
+                    <details>
+                      <summary>{current.treeStatus || "Accessibility tree"}</summary>
+                      <pre>
+                        {payload?.tree
+                          .map(
+                            (n) => "  ".repeat(n.depth) + n.role + (n.label ? " · " + n.label : ""),
+                          )
+                          .join("\n") || "No accessibility tree available."}
+                      </pre>
+                    </details>
+                    <details>
+                      <summary>Extracted screen text</summary>
+                      <pre>{payload?.screenText || "No OCR text available."}</pre>
+                    </details>
+                  </details>
+                  <details className="card details">
+                    <summary>Contribute this capture</summary>
+                    <p>
+                      This shares the screenshot, screen text, and window/tree context with the
+                      corpus for AI review through Vercel AI Gateway. Local recording stays on this
+                      device until you explicitly upload.
+                    </p>
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={consent}
+                        onChange={(e) => setConsent(e.target.checked)}
                       />
-                      <div className="session-copy">
-                        <div className="session-heading">
-                          <h3>{details.title}</h3>
-                          <span className="session-duration" title="Estimated time in focus">
-                            {estimatedTime(details.seconds)}
+                      I reviewed this capture and agree to contribute it.
+                    </label>
+                    <button
+                      disabled={busy || !consent || !state.connected || state.demo}
+                      onClick={() =>
+                        action(async () => {
+                          await engine("upload", { id: current.id, consent: true });
+                          setConsent(false);
+                        }, "Capture contributed.")
+                      }
+                    >
+                      Upload selected capture
+                    </button>
+                    {!state.connected && (
+                      <button className="quiet" onClick={() => setTab("settings")}>
+                        Connect an upload token
+                      </button>
+                    )}
+                  </details>
+                </>
+              ) : (
+                <div className="empty">
+                  <Icon name="history" size={24} />
+                  <h2>Your history starts here.</h2>
+                  <p>
+                    Start recording, then return to another app. Your desktop will appear here as
+                    you work.
+                  </p>
+                </div>
+              )}
+            </section>
+          )}
+          {!compact && tab === "sessions" && (
+            <section className="page">
+              <PageTitle title="Sessions" text="Related captures, grouped by task and context." />
+              {[...state.sessions].reverse().map((session, index, list) => {
+                const details = sessionDetails.get(session.id)!;
+                const primary = details.focused[0];
+                const group = sessionDay(session.start);
+                const showDay = index === 0 || group !== sessionDay(list[index - 1].start);
+                return (
+                  <React.Fragment key={session.id}>
+                    {showDay && <h2 className="session-day">{group}</h2>}
+                    <button
+                      className="session session-rich"
+                      onClick={() => history(session.ids, details.title)}
+                    >
+                      <div className="session-main">
+                        <AppIcon
+                          app={primary?.app || details.title}
+                          bundleID={primary?.bundleID || ""}
+                          size={30}
+                        />
+                        <div className="session-copy">
+                          <div className="session-heading">
+                            <h3>{details.title}</h3>
+                            <span className="session-duration" title="Estimated time in focus">
+                              {estimatedTime(details.seconds)}
+                            </span>
+                          </div>
+                          {details.windowTitle && details.windowTitle !== details.title && (
+                            <p className="session-window" title={details.windowTitle}>
+                              {details.windowTitle}
+                            </p>
+                          )}
+                          <div className="session-period">
+                            {sessionTime(session.start, session.end)} · {details.captures}{" "}
+                            {details.captures === 1 ? "capture" : "captures"}
+                          </div>
+                        </div>
+                        <Icon name="chevron" size={14} />
+                      </div>
+                      <div className="session-focus">
+                        <span className="context-key">In focus</span>
+                        <span>
+                          {details.focused
+                            .slice(0, 3)
+                            .map((app) => app.app)
+                            .join(", ")}
+                        </span>
+                        <span className="pill">{details.activity}</span>
+                      </div>
+                      {details.alongside.length > 0 && (
+                        <div className="session-alongside">
+                          <span className="context-key">Alongside</span>
+                          <span className="alongside-apps">
+                            {details.alongside.slice(0, 3).map((app) => (
+                              <span
+                                key={app.bundleID || app.app}
+                                title={`${app.app} · visible alongside for ${estimatedTime(app.seconds)}`}
+                              >
+                                <AppIcon app={app.app} bundleID={app.bundleID} size={14} />
+                                {app.app}
+                              </span>
+                            ))}
+                            {details.alongside.length > 3 && (
+                              <span>+{details.alongside.length - 3}</span>
+                            )}
                           </span>
                         </div>
-                        {details.windowTitle && details.windowTitle !== details.title && (
-                          <p className="session-window" title={details.windowTitle}>
-                            {details.windowTitle}
-                          </p>
-                        )}
-                        <div className="session-period">
-                          {sessionTime(session.start, session.end)} · {details.captures}{" "}
-                          {details.captures === 1 ? "capture" : "captures"}
-                        </div>
-                      </div>
-                      <Icon name="chevron" size={14} />
-                    </div>
-                    <div className="session-focus">
-                      <span className="context-key">In focus</span>
-                      <span>
-                        {details.focused
-                          .slice(0, 3)
-                          .map((app) => app.app)
-                          .join(", ")}
-                      </span>
-                      <span className="pill">{details.activity}</span>
-                    </div>
-                    {details.alongside.length > 0 && (
-                      <div className="session-alongside">
-                        <span className="context-key">Alongside</span>
-                        <span className="alongside-apps">
-                          {details.alongside.slice(0, 3).map((app) => (
-                            <span
-                              key={app.bundleID || app.app}
-                              title={`${app.app} · visible alongside for ${estimatedTime(app.seconds)}`}
-                            >
-                              <AppIcon app={app.app} bundleID={app.bundleID} size={14} />
-                              {app.app}
-                            </span>
-                          ))}
-                          {details.alongside.length > 3 && (
-                            <span>+{details.alongside.length - 3}</span>
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                </React.Fragment>
-              );
-            })}
-            {!state.sessions.length && <p>No sessions yet. They appear as you record.</p>}
-          </section>
-        )}
-        {!compact && tab === "saved" && (
-          <section className="page">
-            <PageTitle
-              title="Saved clips"
-              text="Pinned captures stay protected from rolling retention."
-            />
-            {state.clips.map((clip) => (
-              <article className="card clip" key={clip.id}>
-                <div>
-                  <h3>{clip.name}</h3>
-                  <p>
-                    {date(clip.created).toLocaleDateString()} · {clip.frameIDs.length} captures
-                  </p>
-                </div>
-                <div className="actions">
-                  <button className="outline" onClick={() => history(clip.frameIDs, clip.name)}>
-                    Review
-                  </button>
-                  <button
-                    className="outline"
-                    onClick={() =>
-                      action(async () => {
-                        if (!isNative) throw Error("Export is available in the installed app.");
-                        const { save } = await import("@tauri-apps/plugin-dialog");
-                        const path = await withPanelDialog(() =>
-                          save({
-                            defaultPath: clip.name + ".zip",
-                            filters: [{ name: "Capture archive", extensions: ["zip"] }],
-                          }),
-                        );
-                        if (path) await engine("export", { id: clip.id, path });
-                      }, "Clip exported.")
-                    }
-                  >
-                    Export ZIP
-                  </button>
-                  <button
-                    className="quiet danger"
-                    onClick={async () => {
-                      if (
-                        await confirmAction(
-                          "Delete this saved clip? Captures still covered by your history settings remain.",
-                        )
-                      )
-                        void action(() => engine("deleteClip", { id: clip.id }));
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
-            {!state.clips.length && (
-              <div className="empty">
-                <h2>No saved clips yet.</h2>
-                <p>Save your last hour or choose a time range in History.</p>
-              </div>
-            )}
-          </section>
-        )}
-        {!compact && tab === "activity" && (
-          <section className="page">
-            <div className="activity-overview">
-              <div>
-                <strong>{estimatedTime(activitySummary.seconds)}</strong>
-                <span>Estimated time in focus</span>
-              </div>
-              <select
-                aria-label="Activity range"
-                value={activityRange}
-                onChange={(event) => setActivityRange(event.target.value)}
-              >
-                <option value="all">All history</option>
-                <option value="today">Today</option>
-                <option value="week">Last 7 days</option>
-              </select>
-            </div>
-            <div className="card activity-list">
-              {activitySummary.activities.map(({ label, seconds }) => {
-                const share = (seconds / Math.max(1, activitySummary.seconds)) * 100;
-                return (
-                  <div className="activity-row" key={label}>
-                    <div>
-                      <strong>{label}</strong>
-                      <span>{estimatedTime(seconds)}</span>
-                    </div>
-                    <div
-                      className="meter"
-                      role="meter"
-                      aria-label={`${label} estimated time`}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={share}
-                      aria-valuetext={`${estimatedTime(seconds)}, ${Math.round(share)}%`}
-                    >
-                      <i style={{ width: share + "%" }} />
-                    </div>
-                  </div>
+                      )}
+                    </button>
+                  </React.Fragment>
                 );
               })}
-              {!activitySummary.activities.length && (
-                <p className="muted">Time estimates appear as captures arrive.</p>
+              {!state.sessions.length && <p>No sessions yet. They appear as you record.</p>}
+            </section>
+          )}
+          {!compact && tab === "saved" && (
+            <section className="page">
+              <PageTitle
+                title="Saved clips"
+                text="Pinned captures stay protected from rolling retention."
+              />
+              {state.clips.map((clip) => (
+                <article className="card clip" key={clip.id}>
+                  <div>
+                    <h3>{clip.name}</h3>
+                    <p>
+                      {date(clip.created).toLocaleDateString()} · {clip.frameIDs.length} captures
+                    </p>
+                  </div>
+                  <div className="actions">
+                    <button className="outline" onClick={() => history(clip.frameIDs, clip.name)}>
+                      Review
+                    </button>
+                    <button
+                      className="outline"
+                      onClick={() =>
+                        action(async () => {
+                          if (!isNative) throw Error("Export is available in the installed app.");
+                          const { save } = await import("@tauri-apps/plugin-dialog");
+                          const path = await withPanelDialog(() =>
+                            save({
+                              defaultPath: clip.name + ".zip",
+                              filters: [{ name: "Capture archive", extensions: ["zip"] }],
+                            }),
+                          );
+                          if (path) await engine("export", { id: clip.id, path });
+                        }, "Clip exported.")
+                      }
+                    >
+                      Export ZIP
+                    </button>
+                    <button
+                      className="quiet danger"
+                      onClick={async () => {
+                        if (
+                          await confirmAction(
+                            "Delete this saved clip? Captures still covered by your history settings remain.",
+                          )
+                        )
+                          void action(() => engine("deleteClip", { id: clip.id }));
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {!state.clips.length && (
+                <div className="empty">
+                  <h2>No saved clips yet.</h2>
+                  <p>Save your last hour or choose a time range in History.</p>
+                </div>
               )}
-            </div>
-            <p className="muted">
-              Estimated from capture spacing; gaps are excluded. Alongside apps don’t add extra
-              focused time.
-            </p>
-          </section>
-        )}
-        {!compact && tab === "settings" && (
-          <SettingsPage
-            state={state}
-            busy={busy}
-            apply={(value) => action(() => engine("settings", value), "Logging settings saved.")}
-            action={action}
-            refresh={refresh}
-          />
-        )}
+            </section>
+          )}
+          {!compact && tab === "activity" && (
+            <section className="page">
+              <div className="activity-overview">
+                <div>
+                  <strong>{estimatedTime(activitySummary.seconds)}</strong>
+                  <span>Estimated time in focus</span>
+                </div>
+                <select
+                  aria-label="Activity range"
+                  value={activityRange}
+                  onChange={(event) => setActivityRange(event.target.value)}
+                >
+                  <option value="all">All history</option>
+                  <option value="today">Today</option>
+                  <option value="week">Last 7 days</option>
+                </select>
+              </div>
+              <div className="card activity-list">
+                {activitySummary.activities.map(({ label, seconds }) => {
+                  const share = (seconds / Math.max(1, activitySummary.seconds)) * 100;
+                  return (
+                    <div className="activity-row" key={label}>
+                      <div>
+                        <strong>{label}</strong>
+                        <span>{estimatedTime(seconds)}</span>
+                      </div>
+                      <div
+                        className="meter"
+                        role="meter"
+                        aria-label={`${label} estimated time`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={share}
+                        aria-valuetext={`${estimatedTime(seconds)}, ${Math.round(share)}%`}
+                      >
+                        <i style={{ width: share + "%" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                {!activitySummary.activities.length && (
+                  <p className="muted">Time estimates appear as captures arrive.</p>
+                )}
+              </div>
+              <p className="muted">
+                Estimated from capture spacing; gaps are excluded. Alongside apps don’t add extra
+                focused time.
+              </p>
+            </section>
+          )}
+          {!compact && tab === "settings" && (
+            <SettingsPage
+              state={state}
+              busy={busy}
+              apply={(value) => action(() => engine("settings", value), "Logging settings saved.")}
+              action={action}
+              refresh={refresh}
+            />
+          )}
+        </SlidingPanels>
       </main>
     </div>
   );

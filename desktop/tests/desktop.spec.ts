@@ -88,7 +88,7 @@ test("popup frame stays fixed, with scrolling only inside detailed views", async
   await page.mouse.wheel(300, 600);
   const frame = () =>
     page.evaluate(() => {
-      const workspace = document.querySelector(".workspace")!;
+      const workspace = document.querySelector('.panel-page[data-active="true"]')!;
       return {
         width: document.querySelector(".desktop")!.getBoundingClientRect().width,
         height: document.querySelector(".desktop")!.getBoundingClientRect().height,

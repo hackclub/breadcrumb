@@ -1009,22 +1009,66 @@ summary::marker {
   font-size: 11px;
 }
 
-/* Animate only incoming content, leaving the native frame and controls anchored. */
-.page,
-.quick-panel {
-  animation: view-enter 160ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+/* Both pages move inside a clipped, fixed-size viewport. */
+.workspace {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.workspace > .topbar,
+.workspace > .panel-nav,
+.workspace > .notice {
+  flex-shrink: 0;
+}
+.panel-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.panel-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  scrollbar-width: thin;
+  background: #000;
+}
+.panel-page[data-active="false"] {
+  pointer-events: none;
+}
+.panel-enter {
+  animation: panel-enter 200ms cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+.panel-exit {
+  animation: panel-exit 200ms cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+.panel-page > .page {
+  flex-shrink: 0;
+}
+.compact-panel .panel-page {
+  overflow: hidden;
 }
 .view-heading {
   animation: heading-enter 120ms ease-out both;
 }
-@keyframes view-enter {
+@keyframes panel-enter {
   from {
-    opacity: 0;
-    transform: translateY(4px);
+    transform: translateX(calc(var(--slide-direction) * 100%));
   }
   to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
+  }
+}
+@keyframes panel-exit {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(var(--slide-direction) * -100%));
   }
 }
 @keyframes heading-enter {
@@ -1036,10 +1080,13 @@ summary::marker {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .page,
-  .quick-panel,
+  .panel-enter,
+  .panel-exit,
   .view-heading {
     animation: none;
+  }
+  .panel-page[data-active="false"] {
+    visibility: hidden;
   }
   button {
     transition: none;
