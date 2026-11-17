@@ -13,18 +13,19 @@ window = subprocess.Popen(['xterm', '-title', 'Synthetic native capture fixture'
 helper = subprocess.Popen([str(root / 'native/capture/target/release/breadcrumb-capture')],
                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 try:
-    def request(command):
+    def request(command, strict=True):
         helper.stdin.write(json.dumps({'command': command, 'settings': {'maximumWidth': 1920, 'jpegQuality': .65}, 'exclusions': []}) + '\n')
         helper.stdin.flush()
         result = json.loads(helper.stdout.readline())
-        assert result['ok'], result.get('error')
+        if strict:
+            assert result['ok'], result.get('error')
         return result
     for _ in range(20):
-        probe = request('probe')
-        if probe.get('contextKey'):
+        probe = request('probe', strict=False)
+        if probe.get('ok') and probe.get('contextKey'):
             break
         time.sleep(.25)
-    assert probe.get('contextKey'), 'No foreground X11 test window'
+    assert probe.get('ok') and probe.get('contextKey'), 'No foreground X11 test window: ' + str(probe.get('error'))
     capture = request('capture')
     jpeg = base64.b64decode(capture['payload']['jpeg'], validate=True)
     assert jpeg.startswith(b'\xff\xd8') and len(jpeg) > 1000
