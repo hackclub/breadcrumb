@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -22,20 +23,20 @@ func validateServer(server string) error {
 	}
 	return nil
 }
-func (e *engine) upload(record library.Record, payload library.Payload) (any, error) {
-	if err := validateServer(e.credentials.Server); err != nil {
+func uploadTo(ctx context.Context, c credentials, record library.Record, payload library.Payload) (any, error) {
+	if err := validateServer(c.Server); err != nil {
 		return nil, err
 	}
-	if e.credentials.Token == "" {
+	if c.Token == "" {
 		return nil, errors.New("connect an upload token first")
 	}
 	client := &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	request := func(path string, b []byte, headers map[string]string) (map[string]any, error) {
-		req, err := http.NewRequest("POST", strings.TrimRight(e.credentials.Server, "/")+path, bytes.NewReader(b))
+		req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(c.Server, "/")+path, bytes.NewReader(b))
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Authorization", "Bearer "+e.credentials.Token)
+		req.Header.Set("Authorization", "Bearer "+c.Token)
 		req.Header.Set("Content-Type", "application/json")
 		for k, v := range headers {
 			req.Header.Set(k, v)
@@ -50,7 +51,7 @@ func (e *engine) upload(record library.Record, payload library.Payload) (any, er
 			return nil, err
 		}
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return nil, fmt.Errorf("upload failed (%d): %s", response.StatusCode, string(data))
+			return nil, &apiError{response.StatusCode, string(data)}
 		}
 		if len(data) == 0 {
 			return map[string]any{"ok": true}, nil

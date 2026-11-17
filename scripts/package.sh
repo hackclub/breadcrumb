@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 bash "$ROOT/scripts/build.sh"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-ditto "$ROOT/build/Breadcrumb.app" "$STAGE/Breadcrumb.app"
+ditto "$ROOT/desktop/src-tauri/target/release/bundle/macos/Breadcrumb.app" "$STAGE/Breadcrumb.app"
 ln -s /Applications "$STAGE/Applications"
 cp "$ROOT/Resources/Install.txt" "$STAGE/Read Me First.txt"
 ARCH="$(uname -m)"

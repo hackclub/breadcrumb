@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestDeleteRecentPersistsPause(t *testing.T) {
@@ -28,22 +27,15 @@ func TestDeleteRecentPersistsPause(t *testing.T) {
 		t.Fatal("recording intent not paused")
 	}
 }
-func TestDemoBlocksUploadsAndMaintainsSessions(t *testing.T) {
-	lib, _ := library.Open(t.TempDir())
-	seed(lib)
-	if len(lib.Index.Observations) != 12 {
-		t.Fatal("demo frames missing")
+func TestPortalURLMustBeAnHTTPSOrigin(t *testing.T) {
+	for _, server := range []string{"http://evil.example", "https://example.com@evil.example/path", "https://example.com/path", "https://example.com?token=secret", "https://example.com#fragment"} {
+		if validateServer(server) == nil {
+			t.Errorf("accepted invalid portal %s", server)
+		}
 	}
-	if len(library.Sessions(lib.Index.Observations)) != 1 {
-		t.Fatal("demo sessions missing")
-	}
-	if lib.Index.Observations[0].Date() > library.Timestamp(time.Now()) {
-		t.Fatal("demo frames in future")
-	}
-	if validateServer("http://evil.example") == nil {
-		t.Fatal("insecure server accepted")
-	}
-	if validateServer("https://example.com@evil.example/path") == nil {
-		t.Fatal("credential URL accepted")
+	for _, server := range []string{"https://example.com", "http://localhost:3000", "http://127.0.0.1:3000"} {
+		if err := validateServer(server); err != nil {
+			t.Errorf("rejected portal %s: %v", server, err)
+		}
 	}
 }

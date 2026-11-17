@@ -21,23 +21,27 @@ const upload = {
 };
 async function fixture() {
   const store = new MemoryStore();
-  let link = "";
+  const token = "test-upload-token";
+  const session = "test-session";
+  const identity = { id: sha("friend@example.com"), email: "friend@example.com" };
   const env = {
     NODE_ENV: "test" as const,
     PUBLIC_URL: root,
-    ALLOWED_EMAILS: "friend@example.com",
+    ALLOWED_EMAILS: identity.email,
     REVIEW_AGENT_TOKENS: JSON.stringify({ test: "a".repeat(64) }),
   };
-  const service = new Service(store, env, async (_email, url) => {
-    link = url;
+  // Corpus tests inject an auth boundary; real Better Auth flows live in auth.test.ts.
+  const service = new Service(store, env, {
+    session: async (req) =>
+      req.headers.get("cookie") === session
+        ? identity
+        : req.headers.get("cookie") === "another-session"
+          ? { ...identity, id: sha("different-id") }
+          : null,
+    upload: async (req) =>
+      req.headers.get("authorization") === "Bearer " + token ? identity : null,
   });
-  const token = await service.issue({
-    id: sha("friend@example.com"),
-    email: "friend@example.com",
-    kind: "upload",
-    expires: new Date(Date.now() + 3600000).toISOString(),
-  });
-  return { store, service, token, link: () => link };
+  return { store, service, token, session };
 }
 function req(path: string, body?: unknown, token?: string, headers: Record<string, string> = {}) {
   return new Request(root + path, {
@@ -51,40 +55,6 @@ function req(path: string, body?: unknown, token?: string, headers: Record<strin
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
-test("magic links are one-time, sessions mint/revoke upload tokens", async () => {
-  const { service, link } = await fixture();
-  assert.equal(
-    (await service.dispatch(req("/auth/login", { email: "stranger@example.com" }))).status,
-    202,
-  );
-  assert.equal(link(), "");
-  assert.equal(
-    (await service.dispatch(req("/auth/login", { email: "friend@example.com" }))).status,
-    202,
-  );
-  const token = link().split("#login=")[1];
-  assert.ok(token);
-  const response = await service.dispatch(req("/auth/verify", { token }));
-  assert.equal(response.status, 204);
-  assert.equal((await service.dispatch(req("/auth/verify", { token }))).status, 401);
-  const Cookie = response.headers.get("set-cookie")!.split(";")[0];
-  assert.equal(
-    (await service.dispatch(req("/auth/me", undefined, undefined, { Cookie }))).status,
-    200,
-  );
-  const minted = await service.dispatch(req("/auth/token", {}, undefined, { Cookie }));
-  const credential = await minted.json();
-  assert.equal((await service.dispatch(req("/auth/revoke", {}, credential.token))).status, 204);
-  assert.equal((await service.dispatch(req("/v1/ingest", upload, credential.token))).status, 401);
-  assert.equal(
-    (await service.dispatch(req("/auth/logout", {}, undefined, { Cookie }))).status,
-    204,
-  );
-  assert.equal(
-    (await service.dispatch(req("/auth/me", undefined, undefined, { Cookie }))).status,
-    401,
-  );
-});
 test("ingest preserves context, scopes contributor, and handles retries/conflicts", async () => {
   const { service, store, token } = await fixture();
   assert.equal((await service.dispatch(req("/v1/ingest", upload))).status, 401);
@@ -109,12 +79,13 @@ test("ingest preserves context, scopes contributor, and handles retries/conflict
     upload.payload,
   );
 });
-test("cross-origin auth and invalid capture payloads are rejected", async () => {
-  const { service, token } = await fixture();
+test("cross-origin account writes and invalid capture payloads are rejected", async () => {
+  const { service, token, session } = await fixture();
   assert.equal(
     (
       await service.dispatch(
-        req("/auth/login", { email: "friend@example.com" }, undefined, {
+        req("/v1/account/index", {}, undefined, {
+          Cookie: session,
           Origin: "https://elsewhere.example",
         }),
       )
@@ -253,4 +224,50 @@ test("native-size capture validation handles multi-megabyte base64 without regex
     req("/v1/uploads/complete", { uploadId: pending.uploadId }, token),
   );
   assert.equal(response.status, 201, await response.text());
+});
+
+test("synced history counts concurrent uploads once and excludes overlapping time and gaps", async () => {
+  const { service, token, session } = await fixture();
+  const date = Date.now() / 1000 - 978307200 - 7200;
+  const captures = Array.from({ length: 8 }, (_, index) => ({
+    ...upload,
+    record: {
+      ...upload.record,
+      id: `12345678-1234-1234-1234-${String(index).padStart(12, "0")}`,
+      date: date + (index < 6 ? index : 3600 + index),
+      sampleIntervalSeconds: 60,
+    },
+  }));
+  const results = await Promise.all(
+    captures.map((capture) => service.dispatch(req("/v1/ingest", capture, token))),
+  );
+  assert.ok(results.every((result) => result.status === 201));
+  await service.dispatch(req("/v1/ingest", captures[0], token));
+  const headers = { Cookie: session };
+  const summary = await (
+    await service.dispatch(req("/v1/account/summary", undefined, undefined, headers))
+  ).json();
+  assert.equal(
+    summary.days.reduce((sum: number, day: { captures: number }) => sum + day.captures, 0),
+    8,
+  );
+  const seconds = summary.days.reduce(
+    (sum: number, day: { seconds: number }) => sum + day.seconds,
+    0,
+  );
+  assert.ok(seconds < 150 && seconds > 50);
+  assert.equal((await service.dispatch(req("/v1/account/summary"))).status, 401);
+  const another = "another-session";
+  assert.equal(
+    (
+      await (
+        await service.dispatch(
+          req("/v1/account/summary", undefined, undefined, {
+            Cookie: another,
+          }),
+        )
+      ).json()
+    ).days.length,
+    0,
+  );
 });

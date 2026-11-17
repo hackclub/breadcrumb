@@ -53,14 +53,21 @@ jobs:
       - if: runner.os == 'Linux'
         run: xvfb-run -a dbus-run-session python3 scripts/linux-smoke.py
   ui:
-    name: Desktop UI end to end
+    name: Desktop UI and Better Auth sync end to end
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: engine/go.mod
+          cache: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
       - run: bun install --cwd desktop --frozen-lockfile
+      - run: bun install --cwd web --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
       - run: bunx playwright test
+      - run: bun run build:web
+      - run: bun run test:sync

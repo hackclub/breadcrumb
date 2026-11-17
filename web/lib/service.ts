@@ -1,6 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { Store } from "./store";
+import { recordSynced, syncedSummary } from "./sync";
+import { createAuthAccess, type AuthAccess, type Identity } from "./auth";
 export const sha = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex");
 const secret = () => randomBytes(32).toString("hex");
 const bytes = (v: unknown) => Buffer.from(JSON.stringify(v));
@@ -33,7 +35,7 @@ const recordSchema = z
     id: z
       .string()
       .regex(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/),
-    date: z.number().finite(),
+    date: z.number().finite().min(-978307200).max(252424993199),
     app: z.string().min(1).max(300),
     bundleID: z.string().min(1).max(300),
     windowTitle: z.string().max(10000),
@@ -72,7 +74,6 @@ const uploadSchema = z
   })
   .strict();
 type Upload = z.infer<typeof uploadSchema>;
-type Credential = { id: string; email: string; kind: string; expires: string };
 type Entry = { participant: string; receivedAt: string; digest: string; upload: Upload };
 type Item = { id: string; captureKey: string; participant: string; record: Upload["record"] };
 type Lease = { agent: string; secretHash: string; expires: string; generation: number };
@@ -131,65 +132,24 @@ async function json(req: Request, max = MAX_BODY) {
     return fail(400, "Invalid JSON");
   }
 }
-const cookie = (token: string, secure: boolean, age = 7 * 86400) =>
-  `breadcrumb_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${secure ? "; Secure" : ""}`;
 export class Service {
   constructor(
     public store: Store,
     public env: NodeJS.ProcessEnv = process.env,
-    public send: (email: string, url: string) => Promise<void> = async (email, url) => {
-      if (!env.LOOPS_API_KEY || !env.LOOPS_TRANSACTIONAL_ID)
-        fail(503, "Email sign-in is not configured yet");
-      const response = await fetch("https://app.loops.so/api/v1/transactional", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.LOOPS_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          transactionalId: env.LOOPS_TRANSACTIONAL_ID,
-          email,
-          dataVariables: { loginUrl: url },
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!response.ok) fail(503, "Could not send sign-in email");
-    },
+    public access: AuthAccess = createAuthAccess(),
   ) {}
-  allowed(email: string) {
-    return (this.env.ALLOWED_EMAILS ?? "")
-      .toLowerCase()
-      .split(",")
-      .map((x) => x.trim())
-      .includes(email);
+  async account(req: Request, kind: "session" | "upload") {
+    const account = await this.access[kind](req);
+    if (!account) fail(401, "Sign in required");
+    return account!;
   }
   async read<T>(key: string): Promise<T | null> {
     const raw = await this.store.get(key);
     return raw ? (JSON.parse(Buffer.from(raw).toString()) as T) : null;
   }
-  async issue(credential: Credential) {
-    const token = secret();
-    if (!(await this.store.create(`auth/credentials/${sha(token)}.json`, bytes(credential))))
-      fail(503, "Credential unavailable");
-    return token;
-  }
-  async credential(token: string, kind: string) {
-    if (!/^[a-f0-9]{64}$/.test(token)) return fail(401, "Sign-in or valid token required");
-    const c = await this.read<Credential>(`auth/credentials/${sha(token)}.json`);
-    if (!c || c.kind !== kind || Date.parse(c.expires) <= Date.now() || !this.allowed(c.email))
-      return fail(401, "Invalid or expired token");
-    return c;
-  }
   token(req: Request) {
     const h = req.headers.get("authorization") ?? "";
     return h.startsWith("Bearer ") ? h.slice(7) : "";
-  }
-  session(req: Request) {
-    return (
-      /(?:^|;\s*)breadcrumb_session=([a-f0-9]{64})(?:;|$)/.exec(
-        req.headers.get("cookie") ?? "",
-      )?.[1] ?? ""
-    );
   }
   origin(req: Request) {
     return this.env.PUBLIC_URL?.replace(/\/$/, "") ?? new URL(req.url).origin;
@@ -215,7 +175,7 @@ export class Service {
       bytes({ id, captureKey: key, participant: entry.participant, record: entry.upload.record }),
     );
   }
-  async ingest(raw: unknown, account: Credential) {
+  async ingest(raw: unknown, account: Identity) {
     const upload = uploadSchema.parse(raw);
     upload.record.id = upload.record.id.toLowerCase();
     const key = `captures/${account.id}/${upload.record.id}.json`;
@@ -233,6 +193,7 @@ export class Service {
       duplicate = true;
       await this.enqueue(previous!, key);
     } else await this.enqueue(entry, key);
+    await recordSynced(this.store, account.id, upload.record, entry.receivedAt);
     return Response.json({ id: upload.record.id, duplicate }, { status: duplicate ? 200 : 201 });
   }
   async latest(job: string) {
@@ -374,86 +335,49 @@ export class Service {
         return Response.json({
           ok: true,
           service: "breadcrumb",
-          authConfigured: Boolean(this.env.LOOPS_API_KEY && this.env.LOOPS_TRANSACTIONAL_ID),
+          authConfigured: Boolean(
+            this.env.DATABASE_URL &&
+            this.env.BETTER_AUTH_SECRET &&
+            this.env.LOOPS_API_KEY &&
+            this.env.LOOPS_TRANSACTIONAL_ID,
+          ),
         });
       if (path === "/api/cron/review" && method === "GET") {
         if (!this.env.CRON_SECRET || !equal(sha(this.token(req)), sha(this.env.CRON_SECRET)))
           fail(401, "Cron authorization required");
         return Response.json(await this.runReview());
       }
-      if (path === "/auth/login" && method === "POST") {
+      if (path === "/v1/account/index" && method === "POST") {
         this.sameOrigin(req);
-        const input = z
-          .object({ email: z.string().trim().toLowerCase().email().max(254) })
-          .parse(await json(req, 4096));
-        if (!this.allowed(input.email)) return new Response(null, { status: 202 });
-        const slot = Math.floor(Date.now() / 60000);
-        if (
-          !(await this.store.create(
-            `auth/throttle/${sha(input.email)}/${slot}.json`,
-            bytes({ expires: new Date(Date.now() + 60000).toISOString() }),
-          ))
-        )
-          return new Response(null, { status: 202 });
-        const token = await this.issue({
-          id: sha(input.email),
-          email: input.email,
-          kind: "login",
-          expires: new Date(Date.now() + 15 * 60000).toISOString(),
+        const account = await this.account(req, "session");
+        const key = `sync/migrations/${account.id}.json`;
+        const previous = await this.read<{ cursor: string; done: boolean }>(key);
+        if (previous?.done) return Response.json({ done: true });
+        const page = await this.store.list(`captures/${account.id}/`, previous?.cursor ?? "", 15);
+        for (const captureKey of page.keys) {
+          const entry = await this.read<Entry>(captureKey);
+          if (entry)
+            await recordSynced(this.store, account.id, entry.upload.record, entry.receivedAt);
+        }
+        await this.store.update(key, (current) => {
+          const value = current ? JSON.parse(Buffer.from(current).toString()) : null;
+          if (value?.done || (value?.cursor ?? "") !== (previous?.cursor ?? "")) return null;
+          return bytes({ cursor: page.cursor, done: !page.cursor });
         });
-        await this.send(input.email, this.origin(req) + "/#login=" + token);
-        return new Response(null, { status: 202 });
+        return Response.json({ done: !page.cursor });
       }
-      if (path === "/auth/verify" && method === "POST") {
-        this.sameOrigin(req);
-        const { token } = z.object({ token: z.string().length(64) }).parse(await json(req, 4096));
-        const c = await this.credential(token, "login");
-        if (!(await this.store.create(`auth/used/${sha(token)}.json`, bytes({}))))
-          fail(401, "Link already used");
-        const session = await this.issue({
-          ...c,
-          kind: "session",
-          expires: new Date(Date.now() + 7 * 86400000).toISOString(),
-        });
-        return new Response(null, {
-          status: 204,
-          headers: { "Set-Cookie": cookie(session, this.origin(req).startsWith("https:")) },
-        });
-      }
-      if (path === "/auth/me" && method === "GET") {
-        const c = await this.credential(this.session(req), "session");
-        return Response.json({ email: c.email, id: c.id });
-      }
-      if (path === "/auth/token" && method === "POST") {
-        this.sameOrigin(req);
-        const c = await this.credential(this.session(req), "session");
-        const expires = new Date(Date.now() + 30 * 86400000).toISOString();
-        return Response.json({
-          token: await this.issue({ ...c, kind: "upload", expires }),
-          expires,
-        });
-      }
-      if (path === "/auth/logout" && method === "POST") {
-        this.sameOrigin(req);
-        const token = this.session(req);
-        if (token) await this.store.remove(`auth/credentials/${sha(token)}.json`);
-        return new Response(null, {
-          status: 204,
-          headers: { "Set-Cookie": cookie("", this.origin(req).startsWith("https:"), 0) },
-        });
-      }
-      if (path === "/auth/revoke" && method === "POST") {
-        const token = this.token(req);
-        await this.credential(token, "upload");
-        await this.store.remove(`auth/credentials/${sha(token)}.json`);
-        return new Response(null, { status: 204 });
+      if (path === "/v1/account/summary" && method === "GET") {
+        const account = await this.account(req, "session");
+        return Response.json(
+          await syncedSummary(this.store, account.id, url.searchParams.get("cursor") ?? ""),
+        );
       }
       if (path === "/v1/ingest" && method === "POST") {
-        const account = await this.credential(this.token(req), "upload");
+        const account = await this.account(req, "upload");
         return await this.ingest(await json(req), account);
       }
       if (path === "/v1/uploads/start" && method === "POST") {
-        const account = await this.credential(this.token(req), "upload");
+        const account = await this.account(req, "upload");
         const input = z
           .object({
             schemaVersion: z.literal(1),
@@ -476,7 +400,7 @@ export class Service {
         return Response.json({ uploadId: id, chunkSize: CHUNK });
       }
       if (path === "/v1/uploads/chunk" && method === "POST") {
-        const account = await this.credential(this.token(req), "upload");
+        const account = await this.account(req, "upload");
         const id = req.headers.get("x-upload-id") ?? "";
         if (!/^[a-f0-9]{64}$/.test(id)) fail(400, "Invalid upload ID");
         const n = Number(url.searchParams.get("index"));
@@ -502,7 +426,7 @@ export class Service {
         return new Response(null, { status: 204 });
       }
       if (path === "/v1/uploads/complete" && method === "POST") {
-        const account = await this.credential(this.token(req), "upload");
+        const account = await this.account(req, "upload");
         const { uploadId: id } = z
           .object({ uploadId: z.string().regex(/^[a-f0-9]{64}$/) })
           .parse(await json(req, 4096));

@@ -32,7 +32,6 @@ function App() {
     [payload, setPayload] = useState<Payload | null>(null),
     [filter, setFilter] = useState<string[] | null>(null),
     [filterName, setFilterName] = useState(""),
-    [consent, setConsent] = useState(false),
     [name, setName] = useState(""),
     [rangeStart, setRangeStart] = useState(""),
     [rangeEnd, setRangeEnd] = useState("");
@@ -298,6 +297,15 @@ function App() {
                   Allow Screen Recording
                 </button>
               )}
+              {state.sync?.enabled && (
+                <button className="sync-status quiet" onClick={() => expand("settings")}>
+                  {state.sync.error
+                    ? "Sync needs attention"
+                    : state.sync.pending
+                      ? `Syncing · ${state.sync.pending.toLocaleString()} remaining`
+                      : "All captures synced"}
+                </button>
+              )}
               <div className="quick-actions">
                 <button
                   className="primary-action"
@@ -528,38 +536,16 @@ function App() {
                       <pre>{payload?.screenText || "No OCR text available."}</pre>
                     </details>
                   </details>
-                  <details className="card details">
-                    <summary>Contribute this capture</summary>
+                  <div className="card details">
                     <p>
-                      This shares the screenshot, screen text, and window/tree context with the
-                      corpus for AI review through Vercel AI Gateway. Local recording stays on this
-                      device until you explicitly upload.
+                      {state.sync?.enabled
+                        ? "This capture is queued for automatic sync or has already synced."
+                        : "Sign in to sync your history across devices."}
                     </p>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={consent}
-                        onChange={(e) => setConsent(e.target.checked)}
-                      />
-                      I reviewed this capture and agree to contribute it.
-                    </label>
-                    <button
-                      disabled={busy || !consent || !state.connected || state.demo}
-                      onClick={() =>
-                        action(async () => {
-                          await engine("upload", { id: current.id, consent: true });
-                          setConsent(false);
-                        }, "Capture contributed.")
-                      }
-                    >
-                      Upload selected capture
+                    <button className="quiet" onClick={() => expand("settings")}>
+                      Account & sync
                     </button>
-                    {!state.connected && (
-                      <button className="quiet" onClick={() => setTab("settings")}>
-                        Connect an upload token
-                      </button>
-                    )}
-                  </details>
+                  </div>
                 </>
               ) : (
                 <div className="empty">
@@ -810,8 +796,7 @@ function SettingsPage({
 }) {
   const [draft, setDraft] = useState(state.settings),
     [exclusions, setExclusions] = useState(state.exclusions.join("\n")),
-    [server, setServer] = useState(state.server || "https://breadcrumb.hackclub.dev"),
-    [token, setToken] = useState(""),
+    [server, setServer] = useState(state.server || ""),
     [startup, setStartup] = useState(false);
   useEffect(() => {
     if (isNative)
@@ -1042,56 +1027,76 @@ function SettingsPage({
         </details>
       </section>
       <section className="settings-section">
-        <h2>Sharing</h2>
+        <h2>Account</h2>
+        {state.sync?.email && <p className="account-email">{state.sync.email}</p>}
         <p>
-          Recording is local. Connect an upload token to contribute individual captures with
-          explicit consent.
+          {state.sync?.enabled
+            ? `${state.sync.uploaded.toLocaleString()} synced · ${state.sync.pending.toLocaleString()} remaining`
+            : "Sign in to sync all your existing and future captures."}
         </p>
+        {state.sync?.error && <p role="alert">{state.sync.error}</p>}
+        {Boolean(state.sync?.failed) && !state.sync?.error && (
+          <p role="status">{state.sync?.failed} captures are waiting to retry.</p>
+        )}
+        {state.sync?.authError && <p role="alert">{state.sync.authError}</p>}
         <label>
-          Server URL
-          <input value={server} onChange={(e) => setServer(e.target.value)} type="url" />
-        </label>
-        <label>
-          Upload token
+          Portal URL
           <input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            autoComplete="off"
-            placeholder={
-              state.connected
-                ? "Token saved · paste a replacement"
-                : "Paste a token from the web portal"
-            }
+            aria-label="Portal URL"
+            placeholder="https://your-breadcrumb.example"
+            value={server}
+            onChange={(event) => setServer(event.target.value)}
+            type="url"
+            disabled={Boolean(state.sync?.signingIn)}
           />
         </label>
-        <div className="actions">
-          <button
-            disabled={busy || !token || state.demo}
-            onClick={() =>
-              action(async () => {
-                await engine("connect", { server, token });
-                setToken("");
-              }, "Upload token saved on this device.")
-            }
-          >
-            Save connection
-          </button>
-          <button
-            className="outline"
-            onClick={() =>
-              action(async () => {
-                if (!isNative) throw Error("Open " + server + " in your browser.");
-                const url = new URL(server);
-                if (url.protocol !== "https:") throw Error("Use an HTTPS portal URL.");
-                const { openUrl } = await import("@tauri-apps/plugin-opener");
-                await openUrl(url.origin);
-              })
-            }
-          >
-            Open web portal <Icon name="external" size={14} />
-          </button>
-        </div>
+        {state.sync?.signingIn ? (
+          <div className="actions">
+            <span className="muted">Approve the connection in your browser.</span>
+            <button className="quiet" onClick={() => action(() => engine("cancelSignIn"))}>
+              Cancel sign-in
+            </button>
+          </div>
+        ) : (
+          <div className="actions">
+            <button
+              disabled={busy || state.demo || !server}
+              onClick={() =>
+                action(async () => {
+                  const result = await engine<{ url: string }>("beginSignIn", { server });
+                  try {
+                    const { openUrl } = await import("@tauri-apps/plugin-opener");
+                    await openUrl(result.url);
+                  } catch (error) {
+                    await engine("cancelSignIn");
+                    throw error;
+                  }
+                })
+              }
+            >
+              {state.sync?.email ? "Sign in again" : "Sign in"}
+              <Icon name="external" size={14} />
+            </button>
+            {state.connected && (
+              <button
+                className="quiet"
+                disabled={busy}
+                onClick={() =>
+                  action(
+                    () => engine("disconnect"),
+                    "Signed out. Sync stopped; local recording continues.",
+                  )
+                }
+              >
+                Sign out
+              </button>
+            )}
+          </div>
+        )}
+        <p className="muted">
+          Browser approval enables automatic uploads of screenshots, text, window context, and
+          accessibility trees. You can sign out to stop syncing.
+        </p>
       </section>
       <section className="settings-section">
         <h2>Storage</h2>
@@ -1105,7 +1110,7 @@ function SettingsPage({
         </div>
         <p className="path">{state.directory}</p>
         <p className="muted">
-          Captures are unencrypted local files. Upload tokens are stored in a private per-user
+          Captures are unencrypted local files. Account credentials are stored in a private per-user
           connection file. Capture pauses when free disk space falls below 5 GiB.
         </p>
         <button
@@ -1114,13 +1119,13 @@ function SettingsPage({
           onClick={async () => {
             if (
               await confirmAction(
-                "Permanently delete the last hour of captures, including saved references, and pause recording?",
+                "Permanently delete the last hour locally, including saved references and queued uploads, and pause recording and sync? Already uploaded captures remain in your account.",
               )
             )
               void action(async () => {
                 await engine("deleteRecent");
                 await refresh();
-              }, "Recent captures deleted. Recording paused.");
+              }, "Recent captures deleted. Recording and sync paused.");
           }}
         >
           Delete last hour & pause

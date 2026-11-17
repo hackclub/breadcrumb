@@ -83,8 +83,9 @@ async fn engine(
         "deleteRecent",
         "correct",
         "export",
-        "connect",
-        "upload",
+        "beginSignIn",
+        "cancelSignIn",
+        "disconnect",
         "permissions",
         "appIcon",
     ];
@@ -362,9 +363,17 @@ fn main() {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut previous = None;
+                let mut last_auth = 0i64;
                 loop {
                     let state = handle.state::<Engine>().request("status", json!({}));
                     if let Ok(state) = state {
+                        let completed = state["authCompleted"].as_i64().unwrap_or(0);
+                        if completed > last_auth {
+                            last_auth = completed;
+                            let auth_handle = handle.clone();
+                            let _ =
+                                handle.run_on_main_thread(move || open_panel(&auth_handle, None));
+                        }
                         let recording = state["recording"].as_bool().unwrap_or(false);
                         if let Some(tray) = handle.tray_by_id("recording-status") {
                             if previous != Some(recording) {

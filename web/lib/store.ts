@@ -10,6 +10,7 @@ export interface Store {
   get(key: string): Promise<Uint8Array | null>;
   create(key: string, value: Uint8Array): Promise<boolean>;
   remove(key: string): Promise<void>;
+  update(key: string, transform: (current: Uint8Array | null) => Uint8Array | null): Promise<void>;
   list(
     prefix: string,
     cursor?: string,
@@ -74,6 +75,45 @@ export class R2Store implements Store {
       throw e;
     }
   }
+  async update(key: string, transform: (current: Uint8Array | null) => Uint8Array | null) {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      let data: Uint8Array | null = null;
+      let etag: string | undefined;
+      try {
+        const result = await this.client.send(
+          new GetObjectCommand({ Bucket: this.bucket, Key: this.prefix + key }),
+        );
+        data = result.Body ? await result.Body.transformToByteArray() : null;
+        etag = result.ETag;
+      } catch (error) {
+        if ((error as { $metadata?: { httpStatusCode: number } }).$metadata?.httpStatusCode !== 404)
+          throw error;
+      }
+      const next = transform(data);
+      if (!next) return;
+      try {
+        await this.client.send(
+          new PutObjectCommand({
+            Bucket: this.bucket,
+            Key: this.prefix + key,
+            Body: next,
+            ContentType: "application/json",
+            ...(etag ? { IfMatch: etag } : { IfNoneMatch: "*" }),
+          }),
+        );
+        return;
+      } catch (error) {
+        if (
+          ![409, 412].includes(
+            (error as { $metadata?: { httpStatusCode: number } }).$metadata?.httpStatusCode ?? 0,
+          )
+        )
+          throw error;
+        await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
+      }
+    }
+    throw Error("Concurrent update busy; retry the request");
+  }
   async remove(key: string) {
     await this.client.send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: this.prefix + key }),
@@ -110,6 +150,10 @@ export class MemoryStore implements Store {
     if (this.data.has(k)) return false;
     this.data.set(k, v);
     return true;
+  }
+  async update(k: string, transform: (current: Uint8Array | null) => Uint8Array | null) {
+    const next = transform(this.data.get(k) ?? null);
+    if (next) this.data.set(k, next);
   }
   async remove(k: string) {
     this.data.delete(k);

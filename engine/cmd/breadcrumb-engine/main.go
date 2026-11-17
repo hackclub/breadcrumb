@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,25 +21,43 @@ import (
 )
 
 type engine struct {
-	mu           sync.Mutex
-	lib          *library.Library
-	capture      adapter.Adapter
-	recording    bool
-	status       string
-	capabilities adapter.Capabilities
-	exclusions   []string
-	lastContext  string
-	pending      string
-	changed      time.Time
-	lastAttempt  time.Time
-	lastSample   time.Time
-	fingerprint  string
-	credentials  credentials
-	demo         bool
+	mu            sync.Mutex
+	lib           *library.Library
+	capture       adapter.Adapter
+	recording     bool
+	status        string
+	capabilities  adapter.Capabilities
+	exclusions    []string
+	lastContext   string
+	pending       string
+	changed       time.Time
+	lastAttempt   time.Time
+	lastSample    time.Time
+	fingerprint   string
+	credentials   credentials
+	auth          *desktopAuth
+	authError     string
+	authCompleted int64
+	syncCancel    context.CancelFunc
+	syncInFlight  bool
+	syncProfile   string
+	syncSent      map[string]bool
+	syncPending   map[string]bool
+	syncFailures  map[string]syncFailure
+	syncError     string
+	syncLast      string
+	syncBackoff   time.Time
+	demo          bool
 }
 type credentials struct {
-	Server string `json:"server"`
-	Token  string `json:"token"`
+	ClientID     string `json:"clientID,omitempty"`
+	RefreshToken string `json:"refreshToken,omitempty"`
+	Server       string `json:"server"`
+	Token        string `json:"token"`
+	Email        string `json:"email,omitempty"`
+	Participant  string `json:"participant,omitempty"`
+	Expires      string `json:"expires,omitempty"`
+	AutoSync     bool   `json:"autoSync"`
 }
 
 func uuid() string {
@@ -89,7 +108,7 @@ func defaultDirectory() (string, error) {
 func (e *engine) state() map[string]any {
 	history, saved := e.lib.Usage()
 	rows := e.lib.Index.Observations
-	return map[string]any{"recording": e.recording, "status": e.status, "settings": e.lib.Settings, "observations": rows, "clips": e.lib.Index.Clips, "sessions": library.Sessions(rows), "historyBytes": history, "savedBytes": saved, "capabilities": e.capabilities, "exclusions": e.exclusions, "server": e.credentials.Server, "connected": e.credentials.Token != "", "directory": e.lib.Dir, "demo": e.demo}
+	return map[string]any{"recording": e.recording, "status": e.status, "settings": e.lib.Settings, "observations": rows, "clips": e.lib.Index.Clips, "sessions": library.Sessions(rows), "historyBytes": history, "savedBytes": saved, "capabilities": e.capabilities, "exclusions": e.exclusions, "server": e.credentials.Server, "connected": e.credentials.Token != "", "directory": e.lib.Dir, "demo": e.demo, "sync": e.syncState()}
 }
 func (e *engine) tick() {
 	e.mu.Lock()
@@ -169,6 +188,13 @@ func (e *engine) tick() {
 		e.status = err.Error()
 		return
 	}
+	if e.credentials.AutoSync {
+		if err := e.loadSync(e.credentials); err == nil {
+			if err = e.queueCapture(r); err != nil {
+				e.syncError = "Could not queue the latest capture: " + err.Error()
+			}
+		}
+	}
 	e.fingerprint = fingerprint
 	e.lastContext = probe.ContextKey
 	e.lastSample = time.Now()
@@ -200,7 +226,7 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 	case "state":
 		return e.state(), nil
 	case "status":
-		return map[string]any{"recording": e.recording, "status": e.status}, nil
+		return map[string]any{"recording": e.recording, "status": e.status, "authCompleted": e.authCompleted}, nil
 	case "toggle":
 		e.recording = !e.recording
 		if e.demo {
@@ -264,6 +290,16 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 		err := e.lib.DeleteClip(input.ID)
 		return e.state(), err
 	case "deleteRecent":
+		if e.syncCancel != nil {
+			e.syncCancel()
+		}
+		e.credentials.AutoSync = false
+		if err := writePrivate(filepath.Join(e.lib.Dir, "connection.json"), e.credentials); err != nil {
+			return nil, err
+		}
+		if err := e.discardRecentQueue(library.Timestamp(time.Now().Add(-time.Hour))); err != nil {
+			return nil, err
+		}
 		e.recording = false
 		e.status = "Paused"
 		if err := writePrivate(filepath.Join(e.lib.Dir, "desktop-state.json"), map[string]any{"recording": false, "exclusions": e.exclusions}); err != nil {
@@ -294,44 +330,24 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 		}
 		err := e.lib.Export(input.ID, input.Path)
 		return map[string]string{"path": input.Path}, err
-	case "connect":
-		var c credentials
-		if err := json.Unmarshal(args, &c); err != nil {
-			return nil, err
-		}
-		if err := validateServer(c.Server); err != nil {
-			return nil, err
-		}
-		e.credentials = c
-		if err := writePrivate(filepath.Join(e.lib.Dir, "connection.json"), c); err != nil {
-			return nil, err
-		}
-		return e.state(), nil
-	case "upload":
+	case "beginSignIn":
 		var input struct {
-			ID      string `json:"id"`
-			Consent bool   `json:"consent"`
+			Server string `json:"server"`
 		}
 		if err := json.Unmarshal(args, &input); err != nil {
 			return nil, err
 		}
-		if !input.Consent {
-			return nil, errors.New("explicit contribution consent required")
+		return e.beginSignIn(input.Server)
+	case "cancelSignIn":
+		if e.auth != nil {
+			e.auth.cancel()
+			e.auth = nil
 		}
-		var record library.Record
-		for _, r := range e.lib.Index.Observations {
-			if r.ID() == input.ID {
-				record = r
-			}
-		}
-		if record == nil {
-			return nil, errors.New("capture not found")
-		}
-		payload, err := e.lib.Payload(input.ID)
-		if err != nil {
-			return nil, err
-		}
-		return e.upload(record, payload)
+		e.authError = ""
+		return e.state(), nil
+	case "disconnect":
+		err := e.disconnect()
+		return e.state(), err
 	case "permissions":
 		if e.capture == nil {
 			return nil, errors.New("capture adapter unavailable")
@@ -422,6 +438,12 @@ func main() {
 		e.status = "Demo · synthetic captures"
 	}
 	go func() {
+		for {
+			e.syncOnce()
+			time.Sleep(time.Second)
+		}
+	}()
+	go func() {
 		lastMaintenance := time.Time{}
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -455,7 +477,7 @@ func main() {
 		}
 		var result any
 		var err error
-		if *demo && (request.Command == "upload" || request.Command == "connect" || request.Command == "permissions") {
+		if *demo && request.Command == "permissions" {
 			err = errors.New("disabled in demo mode")
 		} else {
 			result, err = e.dispatch(request.Command, request.Args)

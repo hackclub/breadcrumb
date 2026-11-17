@@ -60,6 +60,18 @@ export type State = {
   directory: string;
   server: string;
   connected: boolean;
+  sync?: {
+    email: string;
+    enabled: boolean;
+    uploaded: number;
+    pending: number;
+    uploading: boolean;
+    error: string;
+    failed: number;
+    lastSynced: string;
+    signingIn: boolean;
+    authError: string;
+  };
   demo: boolean;
 };
 export type Payload = {
