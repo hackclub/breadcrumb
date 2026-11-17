@@ -44,7 +44,8 @@ try:
     with tempfile.TemporaryDirectory() as folder:
         output = Path(folder) / 'ipc.json'
         subprocess.run([str(root/'desktop/src-tauri/target/release/breadcrumb-desktop'), '--demo', '--smoke-test'],
-            env={**os.environ, 'BREADCRUMB_SMOKE_OUTPUT':str(output)}, timeout=30, check=True)
+            env={**os.environ, 'BREADCRUMB_SMOKE_OUTPUT':str(output),
+                 'WEBKIT_DISABLE_COMPOSITING_MODE':'1', 'LIBGL_ALWAYS_SOFTWARE':'1'}, timeout=30, check=True)
         state=json.loads(output.read_text())
         assert state['demo'] and not state['recording'] and len(state['observations']) == 12
         print('Native Tauri → Go sidecar IPC passed.')
