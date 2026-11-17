@@ -9,7 +9,15 @@ import time
 
 root = Path(__file__).resolve().parent.parent
 wm = subprocess.Popen(['openbox'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-window = subprocess.Popen(['xterm', '-title', 'Synthetic native capture fixture', '-e', 'sleep', '60'])
+for _ in range(40):
+    ready = subprocess.run(['xprop', '-root', '_NET_SUPPORTING_WM_CHECK'], capture_output=True, text=True)
+    if 'window id #' in ready.stdout:
+        break
+    time.sleep(.25)
+window = subprocess.Popen(['xterm', '-fa', 'DejaVu Sans Mono', '-fs', '12', '-title',
+                           'Synthetic native capture fixture', '-e', 'sleep', '90'])
+subprocess.run(['xdotool', 'search', '--sync', '--onlyvisible', '--name',
+                'Synthetic native capture fixture', 'windowactivate', '--sync'], timeout=20, check=True)
 helper = subprocess.Popen([str(root / 'native/capture/target/release/breadcrumb-capture')],
                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 try:
