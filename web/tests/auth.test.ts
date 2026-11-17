@@ -1,7 +1,7 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { randomBytes, createHash } from "node:crypto";
-import { memoryAuth } from "./support/memory-auth";
+import { memoryAuth } from "../scripts/support/memory-auth";
 import { createAuthAccess } from "../lib/auth";
 const root = "https://breadcrumb.example";
 async function fixture() {

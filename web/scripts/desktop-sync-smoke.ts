@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { Service, sha } from "../lib/service";
 import { MemoryStore } from "../lib/store";
 import { createAuthAccess, type BreadcrumbAuth } from "../lib/auth";
-import { memoryAuth } from "../tests/support/memory-auth";
+import { memoryAuth } from "./support/memory-auth";
 import { oauthProviderAuthServerMetadata } from "@better-auth/oauth-provider";
 const directory = await mkdtemp(join(tmpdir(), "breadcrumb-sync-smoke-"));
 const control = randomBytes(32).toString("hex"),
