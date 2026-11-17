@@ -19,15 +19,17 @@
         "minHeight": 360,
         "visible": false,
         "theme": "Dark",
-        "backgroundColor": "#000000",
+        "backgroundColor": "#00000000",
         "skipTaskbar": true,
         "decorations": false,
-        "resizable": false
+        "resizable": false,
+        "transparent": true
       }
     ],
     "security": {
       "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'"
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,

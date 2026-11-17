@@ -2,9 +2,15 @@ import { invoke } from "@tauri-apps/api/core";
 import type { State, Payload } from "./types";
 const native = Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
 export const isNative = native;
-export async function setPanelExpanded(expanded: boolean) {
-  if (native) await invoke("panel_size", { expanded });
+export async function withPanelDialog<T>(task: () => Promise<T> | T): Promise<T> {
+  if (native) await invoke("panel_dialog", { open: true });
+  try {
+    return await task();
+  } finally {
+    if (native) await invoke("panel_dialog", { open: false });
+  }
 }
+export const confirmAction = (message: string) => withPanelDialog(() => window.confirm(message));
 export async function onPanelOpen(callback: () => void) {
   if (!native) return () => {};
   const { listen } = await import("@tauri-apps/api/event");

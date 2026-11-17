@@ -58,7 +58,7 @@ test("logging settings persist within the preview and reductions request confirm
   await expect(page.getByLabel("Capture interval", { exact: true })).toHaveValue("30");
 });
 
-test("starts as a small overview and opens full history on demand", async ({ page }) => {
+test("starts as a small overview and opens history on demand", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 400 });
   await page.goto("/");
   await expect(page.getByRole("region", { name: "Recording overview" })).toBeVisible();
@@ -68,4 +68,49 @@ test("starts as a small overview and opens full history on demand", async ({ pag
   await expect(page.getByRole("navigation")).toBeVisible();
   await page.getByRole("button", { name: "Back to overview" }).click();
   await expect(page.getByRole("region", { name: "Recording overview" })).toBeVisible();
+});
+
+test("popup frame stays fixed, with scrolling only inside detailed views", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Recording overview" })).toBeVisible();
+  await page.mouse.move(180, 200);
+  await page.mouse.wheel(300, 600);
+  const frame = () =>
+    page.evaluate(() => {
+      const workspace = document.querySelector(".workspace")!;
+      return {
+        width: document.querySelector(".desktop")!.getBoundingClientRect().width,
+        height: document.querySelector(".desktop")!.getBoundingClientRect().height,
+        rootTop: document.documentElement.scrollTop,
+        bodyTop: document.body.scrollTop,
+        x: workspace.scrollLeft,
+        y: workspace.scrollTop,
+        overflow: workspace.scrollWidth > workspace.clientWidth,
+      };
+    });
+  expect(await frame()).toEqual({
+    width: 360,
+    height: 400,
+    rootTop: 0,
+    bodyTop: 0,
+    x: 0,
+    y: 0,
+    overflow: false,
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await page.getByLabel("Capture interval", { exact: true }).selectOption("30");
+  await page.mouse.move(180, 260);
+  await page.mouse.wheel(250, 700);
+  await expect.poll(async () => (await frame()).y).toBeGreaterThan(0);
+  const settings = await frame();
+  expect({ ...settings, y: 0 }).toEqual({
+    width: 360,
+    height: 400,
+    rootTop: 0,
+    bodyTop: 0,
+    x: 0,
+    y: 0,
+    overflow: false,
+  });
 });

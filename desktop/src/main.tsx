@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { engine, isNative, hidePanel, setPanelExpanded, onPanelOpen } from "./bridge";
+import { engine, isNative, hidePanel, withPanelDialog, confirmAction, onPanelOpen } from "./bridge";
 import {
   activities,
   activity,
@@ -33,12 +33,10 @@ function App() {
     setSelected("");
     setFilter(null);
     setFilterName("");
-    void setPanelExpanded(false);
   }
   function expand(destination = "history") {
     setCompact(false);
     setTab(destination);
-    void setPanelExpanded(true);
   }
   useEffect(() => {
     let disposed = false;
@@ -558,10 +556,12 @@ function App() {
                       action(async () => {
                         if (!isNative) throw Error("Export is available in the installed app.");
                         const { save } = await import("@tauri-apps/plugin-dialog");
-                        const path = await save({
-                          defaultPath: clip.name + ".zip",
-                          filters: [{ name: "Capture archive", extensions: ["zip"] }],
-                        });
+                        const path = await withPanelDialog(() =>
+                          save({
+                            defaultPath: clip.name + ".zip",
+                            filters: [{ name: "Capture archive", extensions: ["zip"] }],
+                          }),
+                        );
                         if (path) await engine("export", { id: clip.id, path });
                       }, "Clip exported.")
                     }
@@ -570,9 +570,9 @@ function App() {
                   </button>
                   <button
                     className="quiet danger"
-                    onClick={() => {
+                    onClick={async () => {
                       if (
-                        confirm(
+                        await confirmAction(
                           "Delete this saved clip? Captures still covered by your history settings remain.",
                         )
                       )
@@ -773,7 +773,7 @@ function SettingsPage({
         </details>
         <button
           disabled={busy || JSON.stringify(draft) === JSON.stringify(state.settings)}
-          onClick={() => {
+          onClick={async () => {
             const shorter =
               draft.retentionHours > 0 &&
               (state.settings.retentionHours === 0 ||
@@ -782,9 +782,9 @@ function SettingsPage({
               draft.retentionHours > 0 && draft.storageGiB < state.settings.storageGiB;
             if (
               (shorter || smaller) &&
-              !confirm(
+              !(await confirmAction(
                 "Older unsaved captures may be permanently removed by these settings. Apply?",
-              )
+              ))
             )
               return;
             void apply(draft);
@@ -935,9 +935,9 @@ function SettingsPage({
         <button
           className="outline danger"
           disabled={busy || state.demo}
-          onClick={() => {
+          onClick={async () => {
             if (
-              confirm(
+              await confirmAction(
                 "Permanently delete the last hour of captures, including saved references, and pause recording?",
               )
             )
