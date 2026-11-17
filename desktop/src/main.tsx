@@ -12,6 +12,7 @@ import {
   type Settings,
   type State,
 } from "./types";
+import { Icon } from "./icons";
 import "./style.css";
 const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 function App() {
@@ -116,7 +117,7 @@ function App() {
   if (!state)
     return (
       <main className="loading">
-        <span className="logo">◌</span>
+        <Icon name="crumbs" size={28} />
         <h1>Breadcrumb</h1>
         <p>Opening your local history…</p>
         {message && <p role="alert">{message}</p>}
@@ -134,38 +135,54 @@ function App() {
       <main className="workspace">
         <header className="topbar" data-tauri-drag-region>
           <div className="app-heading" data-tauri-drag-region>
-            <strong data-tauri-drag-region>
-              {!compact && (
-                <button className="back-button" aria-label="Back to overview" onClick={overview}>
-                  ‹
-                </button>
-              )}
-              Breadcrumb
-            </strong>
-            <div className="record-status">
+            {!compact && (
+              <button
+                className="icon-button back-button"
+                aria-label="Back to overview"
+                title="Back"
+                onClick={overview}
+              >
+                <Icon name="back" />
+              </button>
+            )}
+            <h1 data-tauri-drag-region title={filterName || undefined}>
+              {compact
+                ? "Breadcrumb"
+                : tab === "settings"
+                  ? "Settings"
+                  : tab === "history"
+                    ? filterName || "History"
+                    : tab === "sessions"
+                      ? "Sessions"
+                      : tab === "saved"
+                        ? "Saved clips"
+                        : "Activity"}
+            </h1>
+            <div className="record-status" title={state.status}>
               <i className={state.recording ? "live" : ""} />
-              <span title={state.status}>
-                {compact ? (state.recording ? "Recording" : "Paused") : state.status}
+              <span className={compact ? "" : "sr-only"}>
+                {state.recording ? "Recording" : "Paused"}
               </span>
-              {state.demo && <b>DEMO</b>}
+              {state.demo && <b>Demo</b>}
             </div>
           </div>
           <div className="actions">
             <button
-              className="outline compact"
+              className="icon-button"
+              title={state.recording ? "Pause recording" : "Start recording"}
               disabled={busy || state.demo}
               aria-label={state.recording ? "Pause recording" : "Start recording"}
               onClick={() => action(() => engine("toggle"))}
             >
-              {state.recording ? "Pause" : "Start"}
+              <Icon name={state.recording ? "pause" : "play"} />
             </button>
             <button
-              className={tab === "settings" ? "icon-button selected" : "icon-button"}
+              className={!compact && tab === "settings" ? "icon-button selected" : "icon-button"}
               aria-label="Settings"
               title="Settings"
               onClick={() => expand("settings")}
             >
-              ⚙
+              <Icon name="settings" />
             </button>
             <button
               className="icon-button"
@@ -174,11 +191,15 @@ function App() {
               disabled={!isNative}
               onClick={() => void hidePanel()}
             >
-              ×
+              <Icon name="close" />
             </button>
           </div>
         </header>
-        <nav className="panel-nav" aria-label="Main navigation">
+        <nav
+          hidden={compact || tab === "settings"}
+          className="panel-nav"
+          aria-label="Main navigation"
+        >
           {[
             ["history", "History"],
             ["sessions", "Sessions"],
@@ -187,6 +208,7 @@ function App() {
           ].map(([id, label]) => (
             <button
               key={id}
+              aria-current={tab === id ? "page" : undefined}
               className={tab === id ? "selected" : ""}
               onClick={() => {
                 setTab(id);
@@ -204,8 +226,12 @@ function App() {
         {message && (
           <div className="notice" role="status">
             <span>{message}</span>
-            <button aria-label="Dismiss message" onClick={() => setMessage("")}>
-              ×
+            <button
+              className="icon-button"
+              aria-label="Dismiss message"
+              onClick={() => setMessage("")}
+            >
+              <Icon name="close" size={14} />
             </button>
           </div>
         )}
@@ -218,7 +244,10 @@ function App() {
                   alt={`Latest desktop capture from ${current.app}`}
                 />
               ) : (
-                <span>Your first capture will appear here.</span>
+                <span className="preview-placeholder">
+                  <Icon name="image" size={22} />
+                  {current ? "Loading capture…" : "Your history starts here"}
+                </span>
               )}
             </div>
             <div className="quick-caption">
@@ -235,6 +264,7 @@ function App() {
             )}
             <div className="quick-actions">
               <button
+                className="primary-action"
                 disabled={busy || !state.observations.length}
                 onClick={() =>
                   action(
@@ -248,15 +278,19 @@ function App() {
                   )
                 }
               >
+                <Icon name="save" />
                 Save last hour
               </button>
-              <button className="outline" onClick={() => expand()}>
-                Open history
+              <button className="history-link" aria-label="Open history" onClick={() => expand()}>
+                <span>
+                  <Icon name="history" />
+                  History
+                </span>
+                <span className="history-count">
+                  {state.observations.length.toLocaleString()} captures
+                  <Icon name="chevron" size={14} />
+                </span>
               </button>
-            </div>
-            <div className="quick-footer">
-              <span>{state.observations.length} captures</span>
-              <span>{bytes(state.historyBytes)} · local</span>
             </div>
           </section>
         )}
@@ -264,7 +298,6 @@ function App() {
           <section className="page">
             <div className="page-title">
               <div>
-                <h1>{filterName || "History"}</h1>
                 <p>
                   {rows.length} captures
                   {state.settings.retentionHours === 0 ? " · kept until you delete them" : ""}
@@ -356,12 +389,12 @@ function App() {
                 </div>
                 <div className="context-grid">
                   <div className="card context">
-                    <div className="eyebrow">IN FOCUS</div>
+                    <div className="context-label">In focus</div>
                     <h3>{current.context?.project || current.context?.domain || current.app}</h3>
                     <p>{current.context?.document || current.windowTitle}</p>
                   </div>
                   <div className="card context">
-                    <div className="eyebrow">ALONGSIDE</div>
+                    <div className="context-label">Alongside</div>
                     {current.visibleWindows?.filter((w) => !w.focused).length ? (
                       current.visibleWindows
                         .filter((w) => !w.focused)
@@ -494,7 +527,7 @@ function App() {
               </>
             ) : (
               <div className="empty">
-                <div>◌</div>
+                <Icon name="history" size={24} />
                 <h2>Your history starts here.</h2>
                 <p>
                   Start recording, then return to another app. Your desktop will appear here as you
@@ -526,7 +559,7 @@ function App() {
                     ))}
                   </div>
                 </div>
-                <span>↗</span>
+                <Icon name="chevron" />
               </button>
             ))}
             {!state.sessions.length && <p>No sessions yet. They appear as you record.</p>}
@@ -636,11 +669,8 @@ function App() {
 }
 function PageTitle({ title, text }: { title: string; text: string }) {
   return (
-    <div className="page-title">
-      <div>
-        <h1>{title}</h1>
-        <p>{text}</p>
-      </div>
+    <div className="page-intro" aria-label={title}>
+      <p>{text}</p>
     </div>
   );
 }
@@ -690,9 +720,8 @@ function SettingsPage({
   );
   return (
     <section className="page settings-page">
-      <PageTitle title="Settings" text="Choose what to capture and how long to keep it." />
-      <div className="card">
-        <h2>Logging</h2>
+      <section className="settings-section">
+        <h2>Capture</h2>
         {number("retentionHours", "Keep history", [
           [0, "Until I delete it"],
           [4, "4 hours"],
@@ -718,11 +747,30 @@ function SettingsPage({
         ])}
         <p className="muted">
           {draft.retentionHours === 0
-            ? "When storage fills, new captures stop. Existing history is preserved until you delete it."
-            : "Older unsaved captures expire by age, or sooner if storage fills."}
+            ? "Capture stops at the storage limit. Your history stays intact."
+            : "Unsaved captures expire by age or when storage fills."}
         </p>
+        <label className="setting-row">
+          <span>Launch at login</span>
+          <input
+            type="checkbox"
+            checked={startup}
+            disabled={!isNative || state.demo}
+            onChange={(e) =>
+              action(async () => {
+                const plugin = await import("@tauri-apps/plugin-autostart");
+                if (e.target.checked) await plugin.enable();
+                else await plugin.disable();
+                setStartup(await plugin.isEnabled());
+              })
+            }
+          />
+        </label>
         <details>
-          <summary>More capture options</summary>
+          <summary>
+            More capture options
+            <Icon name="chevron" size={14} />
+          </summary>
           <label className="setting-row">
             <span>Capture app and window changes</span>
             <input
@@ -772,6 +820,7 @@ function SettingsPage({
           ])}
         </details>
         <button
+          className="apply-settings"
           disabled={busy || JSON.stringify(draft) === JSON.stringify(state.settings)}
           onClick={async () => {
             const shorter =
@@ -792,40 +841,22 @@ function SettingsPage({
         >
           Apply logging settings
         </button>
-        <label className="setting-row">
-          <span>Launch at login</span>
-          <input
-            type="checkbox"
-            checked={startup}
-            disabled={!isNative || state.demo}
-            onChange={(e) =>
-              action(async () => {
-                const plugin = await import("@tauri-apps/plugin-autostart");
-                if (e.target.checked) await plugin.enable();
-                else await plugin.disable();
-                setStartup(await plugin.isEnabled());
-              })
-            }
-          />
-        </label>
-      </div>
-      <div className="card">
-        <h2>Capture & privacy</h2>
-        <div className="setting-row">
-          <span>Native backend</span>
-          <span>{state.capabilities.backend || "Not connected"}</span>
-        </div>
+      </section>
+      <section className="settings-section">
+        <h2>Privacy</h2>
         <div className="setting-row">
           <span>Screen recording</span>
-          <span>{state.capabilities.permission || "Unavailable"}</span>
+          <span>
+            {state.capabilities.permission === "granted"
+              ? "Allowed"
+              : state.capabilities.permission === "required"
+                ? "Required"
+                : state.capabilities.permission || "Unavailable"}
+          </span>
         </div>
         <div className="setting-row">
-          <span>Accessibility tree</span>
+          <span>Accessibility</span>
           <span>{state.capabilities.accessibility ? "Available" : "Not available"}</span>
-        </div>
-        <div className="setting-row">
-          <span>App exclusions</span>
-          <span>{state.capabilities.exclusions || "Unknown"}</span>
         </div>
         <button
           className="outline"
@@ -864,9 +895,23 @@ function SettingsPage({
         >
           Save exclusions
         </button>
-      </div>
-      <div className="card">
-        <h2>Shared corpus</h2>
+        <details>
+          <summary>
+            Capture details
+            <Icon name="chevron" size={14} />
+          </summary>
+          <div className="setting-row">
+            <span>Native backend</span>
+            <span>{state.capabilities.backend || "Not connected"}</span>
+          </div>
+          <div className="setting-row">
+            <span>App exclusions</span>
+            <span>{state.capabilities.exclusions || "Unknown"}</span>
+          </div>
+        </details>
+      </section>
+      <section className="settings-section">
+        <h2>Sharing</h2>
         <p>
           Recording is local. Connect an upload token to contribute individual captures with
           explicit consent.
@@ -913,11 +958,11 @@ function SettingsPage({
               })
             }
           >
-            Open web portal ↗
+            Open web portal <Icon name="external" size={14} />
           </button>
         </div>
-      </div>
-      <div className="card">
+      </section>
+      <section className="settings-section">
         <h2>Storage</h2>
         <div className="setting-row">
           <span>History</span>
@@ -949,7 +994,7 @@ function SettingsPage({
         >
           Delete last hour & pause
         </button>
-      </div>
+      </section>
     </section>
   );
 }

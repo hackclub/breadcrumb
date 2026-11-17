@@ -52,8 +52,8 @@ test("logging settings persist within the preview and reductions request confirm
   await page.getByRole("button", { name: "Apply logging settings" }).click();
   await expect(page.getByRole("status")).toContainText("Logging settings saved.");
   expect(confirmed).toBe(true);
-  await page.getByRole("button", { name: /History/ }).click();
-  await page.getByRole("button", { name: /Settings/ }).click();
+  await page.getByRole("button", { name: "Back to overview", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByLabel("Keep history")).toHaveValue("168");
   await expect(page.getByLabel("Capture interval", { exact: true })).toHaveValue("30");
 });
@@ -64,6 +64,9 @@ test("starts as a small overview and opens history on demand", async ({ page }) 
   await expect(page.getByRole("region", { name: "Recording overview" })).toBeVisible();
   await expect(page.getByRole("navigation")).not.toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+  await page.getByRole("button", { name: "Save last hour", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Last hour saved.");
+  await page.getByRole("button", { name: "Dismiss message" }).click();
   await page.getByRole("button", { name: "Open history", exact: true }).click();
   await expect(page.getByRole("navigation")).toBeVisible();
   await page.getByRole("button", { name: "Back to overview" }).click();
