@@ -1,0 +1,74 @@
+/* Shared by the web portal and desktop. Catppuccin uses the official Mocha palette:
+   https://github.com/catppuccin/catppuccin#-palette */
+:root {
+  color-scheme: dark;
+  --bg: #000;
+  --ink: #ebebed;
+  --secondary: #c9c9ce;
+  --muted: #99999f;
+  --subtle: #888890;
+  --accent: #b5d6c0;
+  --accent-ink: #101a13;
+  --accent-hover: #c6e2cf;
+  --line: rgb(255 255 255 / 10%);
+  --frame: rgb(255 255 255 / 12%);
+  --surface: #0e0e10;
+  --raised: #1b1b1e;
+  --hover: #17171a;
+  --selected: #1a1a1d;
+  --preview-bg: #080808;
+  --danger: #e89893;
+  --live: #ee6868;
+  --track: #19191b;
+  --fill: #91af9a;
+  --positive: #c9dfd0;
+  --permission: #141b16;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fff;
+  --ink: #202126;
+  --secondary: #3e4048;
+  --muted: #5f6068;
+  --subtle: #6b6c74;
+  --accent: #2e6149;
+  --accent-ink: #fff;
+  --accent-hover: #234d39;
+  --line: rgb(0 0 0 / 12%);
+  --frame: rgb(0 0 0 / 16%);
+  --surface: #f5f5f7;
+  --raised: #e9eaed;
+  --hover: #f0f0f3;
+  --selected: #e5e6ea;
+  --preview-bg: #f1f1f3;
+  --danger: #ac3039;
+  --live: #ce3540;
+  --track: #e2e3e7;
+  --fill: #467c60;
+  --positive: #285e41;
+  --permission: #edf5ef;
+}
+:root[data-theme="catppuccin"] {
+  color-scheme: dark;
+  --bg: #1e1e2e;
+  --ink: #cdd6f4;
+  --secondary: #bac2de;
+  --muted: #a6adc8;
+  --subtle: #9399b2;
+  --accent: #cba6f7;
+  --accent-ink: #1e1e2e;
+  --accent-hover: #b4befe;
+  --line: #45475a;
+  --frame: #585b70;
+  --surface: #181825;
+  --raised: #313244;
+  --hover: #313244;
+  --selected: #45475a;
+  --preview-bg: #11111b;
+  --danger: #f38ba8;
+  --live: #f38ba8;
+  --track: #313244;
+  --fill: #cba6f7;
+  --positive: #a6e3a1;
+  --permission: #313244;
+}

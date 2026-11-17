@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { applyTheme, readTheme, themes, type Theme } from "../lib/theme";
 async function request(path: string, body?: unknown, token?: string) {
   const r = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
@@ -17,6 +18,7 @@ async function request(path: string, body?: unknown, token?: string) {
       : null;
 }
 export default function Portal() {
+  const [theme, setTheme] = useState<Theme>("dark");
   const [account, setAccount] = useState<{ email: string } | null>(null),
     [email, setEmail] = useState(""),
     [token, setToken] = useState(""),
@@ -30,6 +32,7 @@ export default function Portal() {
     setAccount(r.ok ? await r.json() : null);
   }
   useEffect(() => {
+    setTheme(readTheme());
     const value = new URLSearchParams(location.hash.slice(1)).get("login");
     if (value) {
       setLogin(value);
@@ -109,9 +112,26 @@ export default function Portal() {
           </svg>{" "}
           Breadcrumb
         </a>
-        <a href="https://github.com/hackclub/breadcrumb" target="_blank" rel="noreferrer">
-          Source ↗
-        </a>
+        <div className="header-actions">
+          <select
+            aria-label="Theme"
+            value={theme}
+            onChange={(event) => {
+              const value = event.currentTarget.value as Theme;
+              applyTheme(value);
+              setTheme(value);
+            }}
+          >
+            {themes.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <a href="https://github.com/hackclub/breadcrumb" target="_blank" rel="noreferrer">
+            Source ↗
+          </a>
+        </div>
       </header>
       <section className="intro">
         <div className="eyebrow">YOUR DESKTOP, IN CONTEXT</div>

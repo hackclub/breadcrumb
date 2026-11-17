@@ -1,15 +1,10 @@
+@import "../../web/app/themes.css";
+
 :root {
-  color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 12px;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
-  --ink: #ebebed;
-  --muted: #99999f;
-  --subtle: #77777f;
-  --accent: #b5d6c0;
-  --line: rgb(255 255 255 / 8%);
-  --surface: #0e0e10;
   --radius: 6px;
   color: var(--ink);
   background: transparent;
@@ -58,7 +53,7 @@ button {
   border: 0;
   border-radius: var(--radius);
   background: var(--accent);
-  color: #101a13;
+  color: var(--accent-ink);
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
@@ -69,7 +64,7 @@ button {
     transform 100ms ease-out;
 }
 button:hover {
-  background: #c6e2cf;
+  background: var(--accent-hover);
 }
 button:active:not(:disabled) {
   transform: scale(0.97);
@@ -79,12 +74,12 @@ button:disabled {
   cursor: default;
 }
 button.outline {
-  background: #141416;
-  color: #d5d5d9;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 7%);
+  background: var(--surface);
+  color: var(--secondary);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 button.outline:hover {
-  background: #1b1b1e;
+  background: var(--raised);
 }
 button.quiet {
   background: transparent;
@@ -95,7 +90,7 @@ button.quiet:hover {
   color: var(--ink);
 }
 button.danger {
-  color: #e89893;
+  color: var(--danger);
 }
 button.compact {
   min-height: 28px;
@@ -130,7 +125,7 @@ textarea {
   min-width: 0;
   max-width: 100%;
   padding: 7px 8px;
-  border: 1px solid rgb(255 255 255 / 10%);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   color: var(--ink);
   background: var(--surface);
@@ -145,7 +140,7 @@ input[type="checkbox"] {
 label {
   display: block;
   margin: 12px 0;
-  color: #c9c9ce;
+  color: var(--secondary);
   font-size: 11px;
   font-weight: 400;
 }
@@ -175,8 +170,8 @@ p {
   height: 100%;
   overflow: hidden;
   border-radius: 14px;
-  background: #000;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--frame);
 }
 .workspace {
   height: 100%;
@@ -195,7 +190,7 @@ p {
   justify-content: space-between;
   height: 48px;
   padding: 0 12px;
-  background: #000;
+  background: var(--bg);
 }
 .app-heading {
   display: flex;
@@ -233,7 +228,7 @@ p {
 .icon-button:hover,
 .icon-button.selected {
   color: var(--ink);
-  background: #17171a;
+  background: var(--hover);
 }
 .back-button {
   margin-left: -6px;
@@ -252,10 +247,10 @@ p {
   height: 5px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #76767c;
+  background: var(--subtle);
 }
 .record-status i.live {
-  background: #ee6868;
+  background: var(--live);
 }
 .record-status b {
   color: var(--subtle);
@@ -269,7 +264,7 @@ p {
   display: flex;
   gap: 3px;
   padding: 0 12px 8px;
-  background: #000;
+  background: var(--bg);
 }
 .panel-nav[hidden] {
   display: none;
@@ -285,11 +280,11 @@ p {
 }
 .panel-nav button:hover {
   color: var(--ink);
-  background: #101012;
+  background: var(--surface);
 }
 .panel-nav button.selected {
   color: var(--ink);
-  background: #1a1a1d;
+  background: var(--selected);
 }
 .panel-nav small {
   color: var(--subtle);
@@ -324,8 +319,8 @@ p {
   max-height: 188px;
   overflow: hidden;
   border-radius: var(--radius);
-  background: #080808;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 7%);
+  background: var(--preview-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .quick-preview img {
   display: block;
@@ -334,7 +329,7 @@ p {
   min-width: 0;
   min-height: 0;
   object-fit: contain;
-  outline: 1px solid rgb(255 255 255 / 7%);
+  outline: 1px solid var(--line);
   outline-offset: -1px;
 }
 .preview-placeholder {
@@ -395,13 +390,13 @@ p {
   width: 100%;
   min-height: 36px;
   padding: 7px 2px;
-  color: #c5c5ca;
+  color: var(--secondary);
   background: transparent;
   font-size: 11px;
   font-weight: 400;
 }
 .history-link:hover {
-  background: #101012;
+  background: var(--surface);
 }
 .history-link > span {
   display: flex;
@@ -456,7 +451,7 @@ p {
   height: 165px;
   overflow: hidden;
   border-radius: var(--radius);
-  background: #080808;
+  background: var(--preview-bg);
   box-shadow: inset 0 0 0 1px var(--line);
 }
 .preview img {
@@ -509,8 +504,8 @@ p {
   flex-shrink: 0;
   padding: 3px 6px;
   border-radius: 4px;
-  color: #bbbfc0;
-  background: #17191a;
+  color: var(--secondary);
+  background: var(--raised);
   font-size: 9px;
   white-space: nowrap;
 }
@@ -586,7 +581,7 @@ p {
   font-size: 11px;
 }
 summary {
-  color: #b8b8be;
+  color: var(--secondary);
   font-size: 11px;
   cursor: pointer;
 }
@@ -691,13 +686,13 @@ summary::marker {
   height: 3px;
   overflow: hidden;
   border-radius: 2px;
-  background: #19191b;
+  background: var(--track);
 }
 .meter i {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: #91af9a;
+  background: var(--fill);
 }
 .muted {
   color: var(--subtle);
@@ -730,7 +725,7 @@ summary::marker {
   gap: 8px;
   min-height: 36px;
   margin: 0;
-  color: #d2d2d6;
+  color: var(--secondary);
   font-size: 12px;
 }
 .setting-row > span:first-child {
@@ -789,7 +784,7 @@ summary::marker {
 }
 .settings-section .apply-settings:disabled {
   color: var(--subtle);
-  background: #121214;
+  background: var(--surface);
   opacity: 1;
 }
 .settings-section > p {
@@ -812,7 +807,7 @@ summary::marker {
   margin-bottom: 12px;
   padding: 10px;
   border-radius: var(--radius);
-  background: #141b16;
+  background: var(--permission);
   font-size: 11px;
 }
 .permission p {
@@ -827,8 +822,8 @@ summary::marker {
   margin: 2px 12px 10px;
   padding: 7px 8px;
   border-radius: var(--radius);
-  background: #18181b;
-  color: #c5c5cb;
+  background: var(--raised);
+  color: var(--secondary);
   font-size: 11px;
 }
 .notice .icon-button {
@@ -860,11 +855,11 @@ summary::marker {
   justify-items: center;
   height: 100%;
   border-radius: 14px;
-  background: #000;
+  background: var(--bg);
   text-align: center;
 }
 .loading > .icon {
-  color: #d8d8da;
+  color: var(--ink);
 }
 .loading h1 {
   margin: 12px 0 0;
@@ -890,8 +885,8 @@ summary::marker {
   justify-content: center;
   flex: none;
   border-radius: 6px;
-  background: #202022;
-  color: #b7cabc;
+  background: var(--raised);
+  color: var(--accent);
   font-weight: 600;
   overflow: hidden;
   vertical-align: middle;
@@ -910,7 +905,7 @@ summary::marker {
 .session-rich {
   background: transparent;
   border-radius: 0;
-  border-bottom: 1px solid #1b1b1d;
+  border-bottom: 1px solid var(--line);
   display: block;
   width: 100%;
   text-align: left;
@@ -940,7 +935,7 @@ summary::marker {
 }
 .session-duration {
   white-space: nowrap;
-  color: #c3c8c4;
+  color: var(--secondary);
   font-size: 11px;
 }
 .session-window {
@@ -949,11 +944,11 @@ summary::marker {
   white-space: nowrap;
   font-size: 11px;
   margin: 3px 0;
-  color: #aaa;
+  color: var(--muted);
 }
 .session-period {
   font-size: 10px;
-  color: #777;
+  color: var(--subtle);
   margin-top: 3px;
 }
 .session-focus,
@@ -966,7 +961,7 @@ summary::marker {
   min-width: 0;
 }
 .context-key {
-  color: #777;
+  color: var(--subtle);
   flex: none;
   width: 47px;
 }
@@ -979,7 +974,7 @@ summary::marker {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: #aaa;
+  color: var(--muted);
 }
 .alongside-apps > span {
   display: inline-flex;
@@ -1001,7 +996,7 @@ summary::marker {
 .activity-overview span {
   display: block;
   font-size: 10px;
-  color: #888;
+  color: var(--subtle);
   margin-top: 4px;
 }
 .activity-overview select {
@@ -1035,7 +1030,7 @@ summary::marker {
   overflow-y: auto;
   overscroll-behavior: none;
   scrollbar-width: thin;
-  background: #000;
+  background: var(--bg);
 }
 .panel-page[data-active="false"] {
   pointer-events: none;

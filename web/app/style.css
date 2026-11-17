@@ -1,14 +1,11 @@
+@import "./themes.css";
+
 :root {
-  color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #ebebed;
-  background: #000;
+  color: var(--ink);
+  background: var(--bg);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
-  --accent: #b5d6c0;
-  --muted: #99999f;
-  --line: rgb(255 255 255 / 10%);
-  --surface: #0e0e10;
 }
 * {
   box-sizing: border-box;
@@ -23,14 +20,15 @@ a {
   text-decoration: none;
 }
 button,
-input {
+input,
+select {
   font: inherit;
 }
 button {
   border: 0;
   border-radius: 6px;
   background: var(--accent);
-  color: #101a13;
+  color: var(--accent-ink);
   padding: 9px 13px;
   font-size: 13px;
   font-weight: 500;
@@ -40,7 +38,7 @@ button {
     color 120ms ease-out;
 }
 button:hover {
-  background: #c6e2cf;
+  background: var(--accent-hover);
 }
 button:disabled {
   opacity: 0.4;
@@ -52,7 +50,7 @@ button.quiet {
 }
 button.quiet:hover {
   background: var(--surface);
-  color: #ebebed;
+  color: var(--ink);
 }
 input:not([type="checkbox"]) {
   width: 100%;
@@ -61,10 +59,10 @@ input:not([type="checkbox"]) {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
-  color: #ebebed;
+  color: var(--ink);
 }
 input::placeholder {
-  color: #77777f;
+  color: var(--subtle);
 }
 input[type="file"] {
   font-size: 12px;
@@ -75,8 +73,8 @@ input::file-selector-button {
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 4px 8px;
-  color: #d5d5d9;
-  background: #1b1b1e;
+  color: var(--secondary);
+  background: var(--raised);
   cursor: pointer;
 }
 :where(input, button, a):focus-visible {
@@ -88,7 +86,7 @@ label {
   font-size: 12px;
   font-weight: 500;
   margin: 18px 0 7px;
-  color: #c9c9ce;
+  color: var(--secondary);
 }
 label.check {
   display: flex;
@@ -122,7 +120,7 @@ form button {
   color: var(--muted);
 }
 .portal > header > a:last-child:hover {
-  color: #ebebed;
+  color: var(--ink);
 }
 .wordmark {
   display: inline-flex;
@@ -131,7 +129,7 @@ form button {
   font-weight: 600;
   letter-spacing: -0.5px;
   font-size: 18px;
-  color: #ebebed;
+  color: var(--ink);
 }
 .brand-icon {
   width: 25px;
@@ -146,7 +144,7 @@ form button {
 .step {
   font-size: 11px;
   font-weight: 500;
-  color: #77777f;
+  color: var(--subtle);
 }
 .intro h1 {
   font-weight: 500;
@@ -179,7 +177,7 @@ form button {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #707a73;
+  background: var(--subtle);
 }
 .portal-grid {
   display: grid;
@@ -210,7 +208,7 @@ form button {
 .aside-note {
   font-size: 11px;
   line-height: 1.75;
-  color: #77777f;
+  color: var(--subtle);
   margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
@@ -219,7 +217,7 @@ form button {
   font-size: 13px;
   min-height: 44px;
   padding: 12px 0;
-  color: #c9dfd0;
+  color: var(--positive);
   overflow-wrap: anywhere;
 }
 .notice.visible {
@@ -231,7 +229,7 @@ form button {
   justify-content: space-between;
   gap: 14px;
   font-size: 11px;
-  color: #77777f;
+  color: var(--subtle);
   border-top: 1px solid var(--line);
   padding: 20px 0 28px;
   margin-top: 12px;
@@ -266,4 +264,27 @@ form button {
   * {
     transition: none !important;
   }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.header-actions select {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  max-width: 116px;
+  cursor: pointer;
+}
+.header-actions a:hover {
+  color: var(--ink);
+}
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }

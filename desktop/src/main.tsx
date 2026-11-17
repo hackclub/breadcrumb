@@ -16,8 +16,11 @@ import { Icon } from "./icons";
 import { AppIcon } from "./app-icon";
 import { estimateTimeline, estimatedTime, sessionContext } from "./activity";
 import { SlidingPanels } from "./sliding-panels";
+import { ThemePicker } from "./theme-picker";
+import { applyTheme, readTheme } from "../../web/lib/theme";
 import "./style.css";
 const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+applyTheme(readTheme());
 function App() {
   const [state, setState] = useState<State | null>(null),
     [tab, setTab] = useState("history"),
@@ -965,6 +968,10 @@ function SettingsPage({
         >
           Apply logging settings
         </button>
+      </section>
+      <section className="settings-section">
+        <h2>Appearance</h2>
+        <ThemePicker />
       </section>
       <section className="settings-section">
         <h2>Privacy</h2>
