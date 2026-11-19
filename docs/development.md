@@ -39,3 +39,5 @@ The monorepo contains `desktop/` (Tauri/React), `engine/` (local Go process), `n
 ## Automation
 
 Dependabot groups weekly Bun, Go, Rust, and GitHub Actions updates. CI checks formatting, lint, high/critical JavaScript advisories, Go vet/race tests, native builds on all three platforms, and browser/Better Auth sync flows. The dashboard regression also checks delayed loading, category drilldowns, keyboard focus, and zero layout shift on desktop and mobile. Failed UI runs retain screenshots for seven days. New pushes cancel outdated runs; the main checks also run weekly.
+
+Lint, formatting, each package’s dependency audit, desktop unit tests, web unit tests, and the web build appear as separate GitHub checks. They run independently; one failure does not cancel the others.

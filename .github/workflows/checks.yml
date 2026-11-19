@@ -11,27 +11,54 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  web:
-    name: Next.js + Bun + Oxc
+  javascript:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Lint
+            directory: .
+            command: bun run lint
+            install: true
+          - name: Formatting
+            directory: .
+            command: bun run format:check
+            install: true
+          - name: Desktop unit tests
+            directory: desktop
+            command: bun run test
+            install: true
+          - name: Web unit tests
+            directory: web
+            command: bun run test
+            install: true
+          - name: Web build
+            directory: web
+            command: bun run build
+            install: true
+          - name: Dependency audit (tooling)
+            directory: .
+            command: bun audit --audit-level high
+          - name: Dependency audit (desktop)
+            directory: desktop
+            command: bun audit --audit-level high
+          - name: Dependency audit (web)
+            directory: web
+            command: bun audit --audit-level high
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
-      - run: bun install --frozen-lockfile
-      - run: bun install --cwd web --frozen-lockfile
-      - run: bun install --cwd desktop --frozen-lockfile
-      - run: bun audit --audit-level high
-      - run: bun audit --audit-level high
-        working-directory: web
-      - run: bun audit --audit-level high
-        working-directory: desktop
-      - run: bun run lint
-      - run: bun run format:check
-      - run: bun run test:desktop
-      - run: bun run test:web
-      - run: bun run build:web
+      - if: matrix.install == true
+        run: bun install --frozen-lockfile
+      - name: ${{ matrix.name }}
+        run: ${{ matrix.command }}
   agents:
     name: Python agent tools
     runs-on: ubuntu-latest
