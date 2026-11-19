@@ -49,8 +49,29 @@ let demoState: State = {
   },
   exclusions: [],
   directory: "Synthetic preview",
-  server: "https://breadcrumb.hackclub.dev",
-  connected: false,
+  server: "https://breadcrumb.example",
+  connected: true,
+  sync: {
+    email: "preview@example.invalid",
+    enabled: true,
+    paused: false,
+    uploaded: 8,
+    pending: 4,
+    etaSeconds: 20,
+    uploading: true,
+    error: "",
+    failed: 0,
+    lastSynced: new Date().toISOString(),
+    signingIn: false,
+    authError: "",
+    parallelism: 4,
+    capturesPerSecond: 0.2,
+    bytesPerSecond: 98304,
+    bytesSent: 786432,
+    sessionUploaded: 8,
+    imagesReused: 3,
+    active: [{ id: "preview-upload", app: "Editor", date: Date.now() / 1000 - 978307200 }],
+  },
   demo: true,
 };
 const now = Date.now() / 1000 - 978307200;
@@ -131,6 +152,22 @@ export async function engine<T = State>(command: string, args: unknown = {}): Pr
         .filter((r) => r.date >= input.start && r.date <= input.end)
         .map((r) => r.id),
     });
+    return structuredClone(demoState) as T;
+  }
+  if (command === "syncOptions" && demoState.sync) {
+    const input = args as { paused?: boolean; concurrency?: number; retry?: boolean };
+    if (input.paused !== undefined) {
+      demoState.sync.paused = input.paused;
+      demoState.sync.uploading = !input.paused;
+      demoState.sync.active = input.paused
+        ? []
+        : [{ id: "preview-upload", app: "Editor", date: now }];
+    }
+    if (input.concurrency !== undefined) demoState.sync.parallelism = input.concurrency;
+    if (input.retry) {
+      demoState.sync.error = "";
+      demoState.sync.failed = 0;
+    }
     return structuredClone(demoState) as T;
   }
   if (command === "deleteClip") {

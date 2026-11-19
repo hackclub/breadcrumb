@@ -111,3 +111,20 @@ test("popup frame stays fixed, with scrolling only inside detailed views", async
   const settings = await frame();
   expect({ ...settings, y: 0 }).toEqual(expected);
 });
+
+test("sync status opens fixed-size details with upload controls", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open sync details" }).click();
+  await expect(page.getByRole("region", { name: "Sync details" })).toBeVisible();
+  await expect(page.getByLabel("Upload workers")).toHaveValue("4");
+  await page.getByLabel("Upload workers").selectOption("2");
+  await expect(page.getByLabel("Upload workers")).toHaveValue("2");
+  await page.getByRole("button", { name: "Pause uploads", exact: true }).click();
+  await expect(page.getByText("Sync paused", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Resume uploads", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Pause uploads", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(400);
+  await page.getByRole("button", { name: "Back to overview", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Open sync details" })).toBeVisible();
+});

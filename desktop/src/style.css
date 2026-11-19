@@ -1140,3 +1140,44 @@ summary::marker {
   background: var(--accent);
   border-radius: 2px;
 }
+.sync-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 18px 0 10px;
+}
+.sync-metrics > div {
+  display: grid;
+  gap: 4px;
+}
+.sync-metrics span,
+.sync-metrics small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.sync-metrics strong {
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.sync-active {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.sync-active li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+}
+.sync-active time {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.sync-destination {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}

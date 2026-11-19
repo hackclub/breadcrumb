@@ -1,10 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
 import { duration, type Breakdown, type InsightDay } from "../lib/insights";
-import { appSeed, findApp, type AppEntry } from "../lib/apps";
+import { appSeed, findApp, mergeApps, type AppEntry } from "../lib/apps";
 import { AppIcon } from "./app-icon";
+import { ActivityIcon } from "./activity-icon";
 
-function combined(days: InsightDay[], key: "apps" | "activities" | "projects"): Breakdown {
+function combined(
+  days: InsightDay[],
+  key: "apps" | "activities" | "projects",
+  catalog: AppEntry[] = appSeed,
+): Breakdown {
   const totals = new Map<string, Breakdown[number]>();
   for (const day of days)
     for (const item of day[key] ?? [
@@ -13,59 +18,131 @@ function combined(days: InsightDay[], key: "apps" | "activities" | "projects"): 
       const key = item.id || item.name;
       totals.set(key, { ...item, seconds: (totals.get(key)?.seconds ?? 0) + item.seconds });
     }
-  return [...totals.values()].sort((a, b) => b.seconds - a.seconds);
+  const rows = [...totals.values()];
+  return key === "apps" ? mergeApps(rows, catalog) : rows.sort((a, b) => b.seconds - a.seconds);
 }
-function Ranking({ rows, total, apps }: { rows: Breakdown; total: number; apps?: AppEntry[] }) {
+function Skeleton({ className = "" }: { className?: string }) {
+  return <span className={`skeleton ${className}`} aria-hidden="true" />;
+}
+function Ranking({
+  rows,
+  total,
+  apps,
+  project = false,
+  loading = false,
+}: {
+  rows: Breakdown;
+  total: number;
+  apps?: AppEntry[];
+  project?: boolean;
+  loading?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const count = expanded ? Math.max(6, rows.length) : 6;
+  const more = !loading && rows.length > 6;
   return (
     <div className="ranking">
-      {(expanded ? rows : rows.slice(0, 6)).map((row) => (
-        <div className="rank-row" key={row.id || row.name}>
-          <span className="rank-name" title={row.name}>
-            {apps ? (
-              <AppIcon apps={apps} name={row.name} id={row.id} />
-            ) : (
-              <span className="app-monogram" aria-hidden="true">
-                {row.name.slice(0, 1).toUpperCase()}
+      <div className="ranking-list" aria-hidden={loading || undefined}>
+        {/* Each DOM row is a fixed rank slot, so live reordering never moves its box. */}
+        {Array.from({ length: count }, (_, index) => {
+          const row = loading ? undefined : rows[index];
+          return (
+            <div
+              className={`rank-row ${!loading && !row ? "rank-slot-empty" : ""}`}
+              key={index}
+              aria-hidden={!row || undefined}
+            >
+              <span className="rank-name" title={row?.name}>
+                {!row ? (
+                  <>
+                    <Skeleton className="skeleton-icon" />
+                    <Skeleton className="skeleton-name" />
+                  </>
+                ) : (
+                  <>
+                    {apps ? (
+                      <AppIcon apps={apps} name={row.name} id={row.id} />
+                    ) : (
+                      <ActivityIcon name={row.name} project={project} />
+                    )}
+                    {apps ? findApp(apps, row.name, row.id)?.name || row.name : row.name}
+                  </>
+                )}
               </span>
-            )}
-            {apps ? findApp(apps, row.name, row.id)?.name || row.name : row.name}
-          </span>
-          <strong>{duration(row.seconds)}</strong>
-          <span className="rank-percent">
-            {total ? Math.round((row.seconds / total) * 100) : 0}%
-          </span>
-          <span className="rank-track">
-            <span style={{ width: `${total ? (row.seconds / total) * 100 : 0}%` }} />
-          </span>
-        </div>
-      ))}
-      {rows.length > 6 && (
-        <button className="quiet show-all" onClick={() => setExpanded(!expanded)}>
+              <strong>
+                {row ? duration(row.seconds) : <Skeleton className="skeleton-time" />}
+              </strong>
+              <span className="rank-percent">
+                {row ? (
+                  `${total ? Math.round((row.seconds / total) * 100) : 0}%`
+                ) : (
+                  <Skeleton className="skeleton-percent" />
+                )}
+              </span>
+              <span className="rank-track">
+                <span
+                  className={loading ? "skeleton" : undefined}
+                  style={{
+                    transform: `scaleX(${row && total ? row.seconds / total : loading ? 0.3 + (index % 3) * 0.15 : 0})`,
+                  }}
+                />
+              </span>
+            </div>
+          );
+        })}
+        {!loading && !rows.length && (
+          <p className="muted ranking-empty">No sampled activity in this range.</p>
+        )}
+      </div>
+      <div className="ranking-more">
+        <button
+          className="quiet show-all"
+          style={{ visibility: more ? "visible" : "hidden" }}
+          disabled={!more}
+          aria-hidden={!more}
+          onClick={() => setExpanded(!expanded)}
+        >
           {expanded ? "Show less" : `Show all ${rows.length}`}
         </button>
-      )}
-      {!rows.length && <p className="muted">Your breakdown will appear as captures sync.</p>}
+      </div>
     </div>
   );
 }
-export function TimeDashboard({ days }: { days: InsightDay[] }) {
+export function TimeDashboard({
+  days,
+  loading = false,
+}: {
+  days: InsightDay[];
+  loading?: boolean;
+}) {
   const [range, setRange] = useState("7"),
     [selected, setSelected] = useState<string | null>(null),
     [hourSelection, setHourSelection] = useState<{ day: string; hour: number } | null>(null),
     [catalog, setCatalog] = useState<AppEntry[]>(appSeed),
+    [catalogReady, setCatalogReady] = useState(false),
     [breakdown, setBreakdown] = useState<"apps" | "activities">("apps");
   const today = new Date().toISOString().slice(0, 10);
   useEffect(() => {
     const controller = new AbortController();
+    let mounted = true;
+    const timeout = setTimeout(() => controller.abort(), 8000);
     fetch("/api/apps", { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : null))
       .then((value) => {
         if (Array.isArray(value?.apps) && !controller.signal.aborted) setCatalog(value.apps);
       })
-      .catch(() => {});
-    return () => controller.abort();
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(timeout);
+        if (mounted) setCatalogReady(true);
+      });
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, []);
+  const pending = loading || !catalogReady;
   const end = Date.parse(today);
   const cutoff = range === "all" ? -Infinity : end - (Number(range) - 1) * 86400000;
   const period = days
@@ -74,12 +151,9 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
   const filtered = selected ? period.filter((day) => day.day === selected) : period;
   const total = filtered.reduce((sum, day) => sum + day.seconds, 0);
   const captures = filtered.reduce((sum, day) => sum + day.captures, 0);
-  const apps = combined(filtered, "apps");
+  const apps = combined(filtered, "apps", catalog);
   const chartDays: InsightDay[] = [];
-  const start =
-    range === "all"
-      ? Math.max(period[0] ? Date.parse(period[0].day) : end, end - 89 * 86400000)
-      : cutoff;
+  const start = range === "all" ? end - 89 * 86400000 : cutoff;
   const lookup = new Map(period.map((day) => [day.day, day]));
   for (let date = start; date <= end; date += 86400000) {
     const day = new Date(date).toISOString().slice(0, 10);
@@ -98,7 +172,10 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
       timeZone: "UTC",
     });
   return (
-    <>
+    <div className="time-dashboard" aria-busy={pending}>
+      <span className="sr-only" role="status">
+        {pending ? "Loading time dashboard…" : ""}
+      </span>
       <div className="insights-toolbar">
         <div>
           <h1>Where your time went</h1>
@@ -107,6 +184,7 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
         <select
           aria-label="Time range"
           value={range}
+          disabled={pending}
           onChange={(event) => {
             setRange(event.target.value);
             setSelected(null);
@@ -121,23 +199,43 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
       <div className="insight-stats">
         <div>
           <span>Estimated time</span>
-          <strong>{duration(total)}</strong>
+          <strong>{pending ? <Skeleton className="skeleton-metric" /> : duration(total)}</strong>
           <small>
-            {selected
-              ? readable(selected)
-              : `${filtered.filter((day) => day.seconds > 0).length} active days`}
+            {pending ? (
+              <Skeleton className="skeleton-caption" />
+            ) : selected ? (
+              readable(selected)
+            ) : (
+              `${filtered.filter((day) => day.seconds > 0).length} active days`
+            )}
           </small>
         </div>
         <div>
           <span>Most used app</span>
           <strong className="stat-app" title={apps[0]?.name}>
-            {apps[0] ? findApp(catalog, apps[0].name, apps[0].id)?.name || apps[0].name : "—"}
+            {pending ? (
+              <Skeleton className="skeleton-metric" />
+            ) : apps[0] ? (
+              findApp(catalog, apps[0].name, apps[0].id)?.name || apps[0].name
+            ) : (
+              "—"
+            )}
           </strong>
-          <small>{apps[0] ? duration(apps[0].seconds) : "Waiting for captures"}</small>
+          <small>
+            {pending ? (
+              <Skeleton className="skeleton-caption" />
+            ) : apps[0] ? (
+              duration(apps[0].seconds)
+            ) : (
+              "Waiting for captures"
+            )}
+          </small>
         </div>
         <div>
           <span>Captures synced</span>
-          <strong>{captures.toLocaleString()}</strong>
+          <strong>
+            {pending ? <Skeleton className="skeleton-metric" /> : captures.toLocaleString()}
+          </strong>
           <small>Overlapping time counts once</small>
         </div>
       </div>
@@ -156,14 +254,18 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
         </div>
         <div
           className="daily-chart"
-          style={{ gridTemplateColumns: `repeat(${chartDays.length}, minmax(12px,1fr))` }}
+          style={{
+            gridTemplateColumns: `repeat(${chartDays.length}, minmax(0,1fr))`,
+            columnGap: chartDays.length > 7 ? 2 : 6,
+          }}
         >
           {chartDays.map((day, index) => (
             <button
-              key={day.day}
+              key={index}
               aria-label={`${readable(day.day)}: ${duration(day.seconds)}`}
               aria-pressed={selected === day.day}
               className="day-column"
+              disabled={pending}
               onClick={() => {
                 setSelected(selected === day.day ? null : day.day);
                 setHourSelection(null);
@@ -172,9 +274,9 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
             >
               <span className="day-bar-space">
                 <span
-                  className="day-bar"
+                  className={`day-bar ${pending ? "skeleton" : ""}`}
                   style={{
-                    height: `${day.seconds ? Math.max(1.5, (day.seconds / maximum) * 100) : 0}%`,
+                    transform: `scaleY(${pending ? 0.3 + (index % 4) * 0.15 : day.seconds ? Math.max(0.015, day.seconds / maximum) : 0})`,
                   }}
                 />
               </span>
@@ -194,13 +296,26 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
         <div className="chart-footnote">
           <span>{readable(chartDays[0].day)}</span>
           <span>
-            Peak {duration(Math.max(0, ...chartDays.map((day) => day.seconds)))}/day · UTC
+            {pending ? (
+              <Skeleton className="skeleton-caption" />
+            ) : (
+              <>Peak {duration(Math.max(0, ...chartDays.map((day) => day.seconds)))}/day · UTC</>
+            )}
           </span>
           <span>{readable(chartDays.at(-1)!.day)}</span>
         </div>
+        {!pending && !captures && (
+          <div className="empty-chart">
+            <h3>Connect your desktop</h3>
+            <p>
+              In Breadcrumb, open Settings → Account. Enter this portal’s URL and sign in to start
+              syncing.
+            </p>
+          </div>
+        )}
       </section>
       <div className="insight-columns">
-        <section className="insight-panel">
+        <section className="insight-panel ranking-panel">
           <div className="panel-heading">
             <h2>In focus</h2>
             <div className="breakdown-tabs" aria-label="Breakdown">
@@ -216,17 +331,18 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
             </div>
           </div>
           <Ranking
-            rows={combined(filtered, breakdown)}
+            rows={combined(filtered, breakdown, catalog)}
             total={total}
             apps={breakdown === "apps" ? catalog : undefined}
+            loading={pending}
           />
         </section>
-        <section className="insight-panel">
+        <section className="insight-panel ranking-panel">
           <div className="panel-heading">
             <h2>Projects</h2>
             <span>Detected context</span>
           </div>
-          <Ranking rows={combined(filtered, "projects")} total={total} />
+          <Ranking rows={combined(filtered, "projects")} total={total} project loading={pending} />
           <p className="small-note">
             Unassigned means the capture has no project context yet. App usage alone doesn’t
             identify a project.
@@ -238,7 +354,7 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
           <h2>Day by hour</h2>
           <span>Select an hour to see its breakdown · UTC</span>
         </div>
-        <div className="hour-scroll">
+        <div className="hour-scroll" style={{ height: range === "7" ? 220 : 340 }}>
           <div className="hour-grid">
             <span className="hour-grid-label">UTC</span>
             {Array.from({ length: 24 }, (_, hour) => (
@@ -247,8 +363,8 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
               </span>
             ))}
             <span className="hour-grid-label">Total</span>
-            {heatmapDays.map((day) => (
-              <div className="hour-grid-row" key={day.day}>
+            {heatmapDays.map((day, index) => (
+              <div className="hour-grid-row" key={index}>
                 <button
                   className="quiet hour-day"
                   onClick={() => {
@@ -264,18 +380,28 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
                     <button
                       key={hour}
                       className="hour-cell"
+                      disabled={pending}
                       aria-label={`${readable(day.day)}, ${String(hour).padStart(2, "0")}:00 UTC: ${duration(seconds)}`}
                       aria-pressed={hourSelection?.day === day.day && hourSelection.hour === hour}
                       title={`${readable(day.day)} · ${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00 UTC · ${duration(seconds)}`}
                       onClick={() => setHourSelection({ day: day.day, hour })}
                     >
                       <span
-                        style={{ opacity: seconds ? 0.15 + 0.85 * Math.min(1, seconds / 3600) : 0 }}
+                        className={pending ? "skeleton" : undefined}
+                        style={{
+                          opacity: pending
+                            ? 1
+                            : seconds
+                              ? 0.15 + 0.85 * Math.min(1, seconds / 3600)
+                              : 0,
+                        }}
                       />
                     </button>
                   );
                 })}
-                <span className="hour-day-total">{duration(day.seconds)}</span>
+                <span className="hour-day-total">
+                  {pending ? <Skeleton className="skeleton-time" /> : duration(day.seconds)}
+                </span>
               </div>
             ))}
           </div>
@@ -303,32 +429,31 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
               {duration(hourDetail?.seconds ?? hourDay?.hours?.[hourSelection.hour] ?? 0)} estimated
               {hourDetail && ` · ${hourDetail.captures} captures`}
             </p>
-            {hourDetail?.seconds ? (
-              <>
-                <div className="insight-columns">
-                  <div>
-                    <h4>Apps in focus</h4>
-                    <Ranking rows={hourDetail.apps} total={hourDetail.seconds} apps={catalog} />
-                  </div>
-                  <div>
-                    <h4>Activity</h4>
-                    <Ranking rows={hourDetail.activities} total={hourDetail.seconds} />
-                  </div>
-                </div>
-                <p className="small-note">
-                  Projects:{" "}
-                  {hourDetail.projects
-                    .map((row) => `${row.name} (${duration(row.seconds)})`)
-                    .join(" · ")}
-                </p>
-              </>
-            ) : (
-              <p className="muted">
-                {(hourDay?.hours?.[hourSelection.hour] ?? 0) > 0
-                  ? "Hourly details are still being indexed."
-                  : "No activity was sampled during this hour."}
-              </p>
-            )}
+            <div className="insight-columns hour-rankings">
+              <div className="hour-ranking">
+                <h4>Apps in focus</h4>
+                <Ranking
+                  rows={mergeApps(hourDetail?.apps ?? [], catalog)}
+                  total={hourDetail?.seconds ?? 0}
+                  apps={catalog}
+                  loading={!hourDetail && (hourDay?.hours?.[hourSelection.hour] ?? 0) > 0}
+                />
+              </div>
+              <div className="hour-ranking">
+                <h4>Activity</h4>
+                <Ranking
+                  rows={hourDetail?.activities ?? []}
+                  total={hourDetail?.seconds ?? 0}
+                  loading={!hourDetail && (hourDay?.hours?.[hourSelection.hour] ?? 0) > 0}
+                />
+              </div>
+            </div>
+            <p className="small-note hour-projects">
+              Projects:{" "}
+              {hourDetail?.projects
+                .map((row) => `${row.name} (${duration(row.seconds)})`)
+                .join(" · ") || "No detected project context in this hour."}
+            </p>
           </div>
         )}
       </section>
@@ -336,6 +461,6 @@ export function TimeDashboard({ days }: { days: InsightDay[] }) {
         Estimated from capture spacing, with long gaps excluded. Visible context isn’t verified
         attention or productive time. Background apps aren’t added to focused time.
       </p>
-    </>
+    </div>
   );
 }

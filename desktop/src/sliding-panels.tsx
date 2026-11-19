@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
-const order = ["overview", "history", "sessions", "saved", "activity", "settings"];
+const order = ["overview", "history", "sessions", "saved", "activity", "settings", "sync"];
 
 export function SlidingPanels({ view, children }: { view: string; children: ReactNode }) {
   const latest = useRef(children);

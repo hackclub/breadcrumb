@@ -29,7 +29,7 @@ func syncFixture(t *testing.T, server string) *engine {
 			t.Fatal(err)
 		}
 	}
-	return &engine{lib: lib, credentials: credentials{Server: server, Token: strings.Repeat("a", 64), Participant: strings.Repeat("b", 64), Email: "synthetic@example.invalid", AutoSync: true}}
+	return &engine{lib: lib, credentials: credentials{Server: server, Token: strings.Repeat("a", 64), Participant: strings.Repeat("b", 64), Email: "synthetic@example.invalid", AutoSync: true, UploadConcurrency: 1}}
 }
 func TestSyncResumesImmutableQueueAfterFailureAndRetention(t *testing.T) {
 	var mu sync.Mutex
@@ -46,10 +46,11 @@ func TestSyncResumesImmutableQueueAfterFailureAndRetention(t *testing.T) {
 		defer mu.Unlock()
 		attempts++
 		id := value.Record.ID()
-		if before, ok := seen[id]; ok && before != string(data) {
+		metadata, _ := json.Marshal(value.Record)
+		if before, ok := seen[id]; ok && before != string(metadata) {
 			t.Error("retry changed the immutable capture")
 		}
-		seen[id] = string(data)
+		seen[id] = string(metadata)
 		if !failed {
 			failed = true
 			http.Error(w, "Temporary failure", 503)
@@ -281,5 +282,122 @@ func TestSyncRefreshesAndPersistsRotatedCredentials(t *testing.T) {
 	json.Unmarshal(raw, &saved)
 	if saved.RefreshToken != "new-refresh" {
 		t.Fatal("rotated token was not persisted")
+	}
+}
+
+func TestParallelSyncIsBoundedAndFasterWithoutDuplicateCaptures(t *testing.T) {
+	var mu sync.Mutex
+	active, peak := 0, 0
+	seen := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var capture queuedCapture
+		if err := json.NewDecoder(r.Body).Decode(&capture); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		mu.Lock()
+		active++
+		if active > peak {
+			peak = active
+		}
+		seen[capture.Record.ID()]++
+		mu.Unlock()
+		time.Sleep(60 * time.Millisecond)
+		io.WriteString(w, `{"ok":true}`)
+		mu.Lock()
+		active--
+		mu.Unlock()
+	}))
+	defer server.Close()
+	run := func(concurrency int) time.Duration {
+		e := syncFixture(t, server.URL)
+		e.credentials.UploadConcurrency = concurrency
+		for i := 0; i < 10; i++ {
+			r := library.Record{"id": uuid(), "date": library.Timestamp(time.Now()), "app": "Synthetic", "bundleID": "test.synthetic", "windowTitle": "Upload benchmark"}
+			if err := e.lib.Append(r, library.Payload{JPEG: []byte{byte(i + 10), 2, 3}, Tree: []library.Node{}}, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		started := time.Now()
+		for e.syncOnce() {
+		}
+		if len(e.syncSent) != 12 || len(e.syncPending) != 0 {
+			t.Fatalf("incomplete sync: %v", e.syncState())
+		}
+		if e.syncBytes == 0 || e.syncSessionUploaded != 12 {
+			t.Fatal("missing transfer metrics")
+		}
+		return time.Since(started)
+	}
+	serial := run(1)
+	parallel := run(4)
+	mu.Lock()
+	defer mu.Unlock()
+	if peak != 4 {
+		t.Fatalf("expected a maximum of 4 concurrent requests, got %d", peak)
+	}
+	for id, count := range seen {
+		if count != 1 {
+			t.Fatalf("capture %s uploaded %d times", id, count)
+		}
+	}
+	t.Logf("Synthetic 60ms request latency, 12 captures: serial=%s parallel=%s speedup=%.2fx", serial, parallel, float64(serial)/float64(parallel))
+}
+
+func TestPauseCancelsEveryUploadAndResumesWithoutLosingQueue(t *testing.T) {
+	started := make(chan struct{}, 4)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		started <- struct{}{}
+		select {
+		case <-r.Context().Done():
+		case <-release:
+			io.WriteString(w, `{"ok":true}`)
+		}
+	}))
+	defer server.Close()
+	e := syncFixture(t, server.URL)
+	e.credentials.UploadConcurrency = 2
+	e.recording = true
+	finished := make(chan struct{})
+	go func() { e.syncOnce(); close(finished) }()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-started:
+		case <-time.After(3 * time.Second):
+			close(release)
+			t.Fatal("uploads did not run concurrently")
+		}
+	}
+	if _, err := e.dispatch("syncOptions", json.RawMessage(`{"paused":true}`)); err != nil {
+		close(release)
+		t.Fatal(err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(3 * time.Second):
+		close(release)
+		t.Fatal("pause did not cancel all uploads")
+	}
+	if !e.recording || len(e.syncPending) != 2 || len(e.syncFailures) != 0 || e.syncOnce() {
+		close(release)
+		t.Fatal("pause changed recording, lost work, or kept uploading")
+	}
+	close(release)
+	if _, err := e.dispatch("syncOptions", json.RawMessage(`{"paused":false,"concurrency":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	for e.syncOnce() {
+	}
+	if len(e.syncSent) != 2 || len(e.syncPending) != 0 {
+		t.Fatal("resume did not finish queue")
+	}
+	var saved credentials
+	data, _ := os.ReadFile(filepath.Join(e.lib.Dir, "connection.json"))
+	json.Unmarshal(data, &saved)
+	if saved.SyncPaused || saved.UploadConcurrency != 1 {
+		t.Fatal("sync options did not persist")
 	}
 }

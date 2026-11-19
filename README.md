@@ -22,6 +22,7 @@ bun run format:check
 bun run test:web
 bun run test:desktop
 bun run test:sync
+bun run test:dashboard
 bun run build:web
 bun run build:desktop
 bunx playwright test
@@ -48,6 +49,8 @@ On Windows/Linux, capture skips samples when an excluded window may be visible b
 History defaults to keeping data until deletion with a 20 GiB budget. Continuous mode stops at its limit; rolling retention may delete the oldest unsaved captures. Saved clips have a separate budget. Capture pauses below 5 GiB free disk. Shortening retention asks for confirmation; deleting recent history also pauses recording and sync.
 
 Files are plain, unencrypted JSON and JPEGs, private to the current OS user. Local paths are `~/Library/Application Support/Breadcrumb` on macOS, `%LOCALAPPDATA%/Breadcrumb` on Windows, and `$XDG_DATA_HOME/Breadcrumb` (default `~/.local/share/Breadcrumb`) on Linux. `library.json` contains metadata, `<UUID>.json` contains tree/OCR and a screenshot reference, and `images/<sha256>.jpg` stores shared pixels. Consecutive nearly unchanged screens reuse the retained image, while each moment keeps fresh context and timestamps. Older inline screenshots remain readable. Dates use seconds since 2001-01-01 UTC. Existing plain Swift libraries remain compatible; an existing Rewind directory migrates without overwriting an existing Breadcrumb directory. The legacy Swift migration utility remains under `Sources/` for old encrypted libraries and requires macOS 26; this does not affect the Tauri app or capture adapter. Build it explicitly with `bash scripts/migrate-build.sh` only when that migration is needed. Normal `scripts/build.sh`, packaging, and installation use Tauri.
+
+Click the desktop sync progress to open transfer details: active captures, recent rate, bytes sent, retries, and image reuse. Uploads use four workers by default; choose one or two for less bandwidth. Pause/resume affects uploads independently of recording, and the pending queue survives restarts. New images upload directly; acknowledged images use references.
 
 ## Agents and corpus
 

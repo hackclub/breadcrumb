@@ -3,6 +3,7 @@ import type { State } from "./types";
 export function SyncProgress({ sync }: { sync: NonNullable<State["sync"]> }) {
   const total = sync.uploaded + sync.pending;
   const eta = sync.etaSeconds;
+  const minutes = Math.ceil((eta ?? 0) / 60);
   const estimate =
     eta == null
       ? "Estimating time…"
@@ -10,12 +11,20 @@ export function SyncProgress({ sync }: { sync: NonNullable<State["sync"]> }) {
         ? "Less than a minute left"
         : eta < 3600
           ? `About ${Math.ceil(eta / 60)} min left`
-          : `About ${Math.floor(eta / 3600)}h ${Math.ceil((eta % 3600) / 60)}m left`;
+          : `About ${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ""} left`;
   return (
     <span className="sync-progress">
       <span className="sync-caption">
         <span>
-          {sync.error ? "Sync needs attention" : sync.pending ? "Syncing" : "All captures synced"}
+          {sync.paused
+            ? "Sync paused"
+            : sync.error
+              ? "Sync needs attention"
+              : !sync.enabled
+                ? "Sync stopped"
+                : sync.pending
+                  ? "Syncing"
+                  : "All captures synced"}
         </span>
         <span>
           {sync.uploaded.toLocaleString()} / {total.toLocaleString()}
@@ -29,8 +38,14 @@ export function SyncProgress({ sync }: { sync: NonNullable<State["sync"]> }) {
             max={Math.max(1, total)}
           />
           <span className="sync-eta">
-            {sync.error ? "Waiting to resume" : estimate} · {sync.pending.toLocaleString()}{" "}
-            remaining
+            {sync.paused
+              ? "Paused"
+              : !sync.enabled
+                ? "Uploads stopped"
+                : sync.error
+                  ? "Waiting to resume"
+                  : estimate}{" "}
+            · {sync.pending.toLocaleString()} remaining
           </span>
         </>
       )}

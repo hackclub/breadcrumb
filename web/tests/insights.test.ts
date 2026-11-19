@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { summarize, REFERENCE } from "../lib/insights";
-import { appSeed, findApp } from "../lib/apps";
+import { appSeed, findApp, mergeApps } from "../lib/apps";
 
 test("hourly app changes split overlapping samples and preserve daily totals", () => {
   const boundary = Date.parse("2026-11-18T13:00:00Z") / 1000 - REFERENCE;
@@ -38,4 +38,30 @@ test("app identifiers resolve aliases without treating every Electron app as Sli
   expect(findApp(appSeed, "Electron", "dev.slick.byoe.handoff")?.name).toBe("Slick");
   expect(findApp(appSeed, "code.EXE")?.id).toBe("vscode");
   expect(findApp(appSeed, "Electron")).toBeUndefined();
+});
+
+test("legacy names and bundle IDs produce one app row without changing total time", () => {
+  const rows = [
+    { name: "Helium", id: "net.imput.helium", seconds: 145 * 60 },
+    { name: "Helium", seconds: 70 * 60 },
+    { name: "Slick", id: "dev.slick.byoe.handoff", seconds: 75 * 60 },
+    { name: "Slick", seconds: 32 * 60 },
+    { name: "Ghostty", id: "com.mitchellh.ghostty", seconds: 16 * 60 },
+    { name: "Ghostty", seconds: 13 * 60 },
+  ];
+  const merged = mergeApps(rows);
+  expect(merged.map((row) => [row.id, row.seconds])).toEqual([
+    ["helium", 215 * 60],
+    ["slick", 107 * 60],
+    ["ghostty", 29 * 60],
+  ]);
+  expect(merged.reduce((sum, row) => sum + row.seconds, 0)).toBe(
+    rows.reduce((sum, row) => sum + row.seconds, 0),
+  );
+  expect(
+    mergeApps([
+      { name: "Electron", id: "custom.one", seconds: 10 },
+      { name: "Electron", id: "custom.two", seconds: 20 },
+    ]),
+  ).toHaveLength(2);
 });

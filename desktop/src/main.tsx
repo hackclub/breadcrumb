@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { SyncProgress } from "./sync-progress";
+import { SyncPage } from "./sync-page";
 import { engine, isNative, hidePanel, withPanelDialog, confirmAction, onPanelOpen } from "./bridge";
 import {
   activities,
@@ -185,13 +186,15 @@ function App() {
                 ? "Breadcrumb"
                 : tab === "settings"
                   ? "Settings"
-                  : tab === "history"
-                    ? filterName || "History"
-                    : tab === "sessions"
-                      ? "Sessions"
-                      : tab === "saved"
-                        ? "Saved clips"
-                        : "Activity"}
+                  : tab === "sync"
+                    ? "Sync"
+                    : tab === "history"
+                      ? filterName || "History"
+                      : tab === "sessions"
+                        ? "Sessions"
+                        : tab === "saved"
+                          ? "Saved clips"
+                          : "Activity"}
             </h1>
             <div className="record-status" title={state.status}>
               <i className={state.recording ? "live" : ""} />
@@ -231,7 +234,7 @@ function App() {
           </div>
         </header>
         <nav
-          hidden={compact || tab === "settings"}
+          hidden={compact || tab === "settings" || tab === "sync"}
           className="panel-nav"
           aria-label="Main navigation"
         >
@@ -298,8 +301,12 @@ function App() {
                   Allow Screen Recording
                 </button>
               )}
-              {state.sync?.enabled && (
-                <button className="sync-status quiet" onClick={() => expand("settings")}>
+              {state.sync && (state.connected || state.sync.enabled) && (
+                <button
+                  className="sync-status quiet"
+                  aria-label="Open sync details"
+                  onClick={() => expand("sync")}
+                >
                   <SyncProgress sync={state.sync} />
                 </button>
               )}
@@ -749,6 +756,14 @@ function App() {
               apply={(value) => action(() => engine("settings", value), "Logging settings saved.")}
               action={action}
               refresh={refresh}
+            />
+          )}
+          {!compact && tab === "sync" && (
+            <SyncPage
+              state={state}
+              busy={busy}
+              action={action}
+              onSettings={() => expand("settings")}
             />
           )}
         </SlidingPanels>

@@ -21,44 +21,52 @@ import (
 )
 
 type engine struct {
-	mu            sync.Mutex
-	lib           *library.Library
-	capture       adapter.Adapter
-	recording     bool
-	status        string
-	capabilities  adapter.Capabilities
-	exclusions    []string
-	lastContext   string
-	pending       string
-	changed       time.Time
-	lastAttempt   time.Time
-	lastSample    time.Time
-	fingerprint   string
-	credentials   credentials
-	auth          *desktopAuth
-	authError     string
-	authCompleted int64
-	syncCancel    context.CancelFunc
-	syncInFlight  bool
-	syncProfile   string
-	syncSent      map[string]bool
-	syncPending   map[string]bool
-	syncFailures  map[string]syncFailure
-	syncError     string
-	syncLast      string
-	syncSamples   []time.Time
-	syncBackoff   time.Time
-	demo          bool
+	mu                  sync.Mutex
+	lib                 *library.Library
+	capture             adapter.Adapter
+	recording           bool
+	status              string
+	capabilities        adapter.Capabilities
+	exclusions          []string
+	lastContext         string
+	pending             string
+	changed             time.Time
+	lastAttempt         time.Time
+	lastSample          time.Time
+	fingerprint         string
+	credentials         credentials
+	auth                *desktopAuth
+	authError           string
+	authCompleted       int64
+	syncCancel          context.CancelFunc
+	syncInFlight        bool
+	syncProfile         string
+	syncSent            map[string]bool
+	syncPending         map[string]bool
+	syncFailures        map[string]syncFailure
+	syncError           string
+	syncLast            string
+	syncSamples         []time.Time
+	syncTransfers       map[string]syncTransfer
+	syncImages          map[string]bool
+	syncBytes           int64
+	syncByteSamples     []syncByteSample
+	syncSessionUploaded int
+	syncReused          int
+	syncBackoff         time.Time
+	demo                bool
 }
 type credentials struct {
-	ClientID     string `json:"clientID,omitempty"`
-	RefreshToken string `json:"refreshToken,omitempty"`
-	Server       string `json:"server"`
-	Token        string `json:"token"`
-	Email        string `json:"email,omitempty"`
-	Participant  string `json:"participant,omitempty"`
-	Expires      string `json:"expires,omitempty"`
-	AutoSync     bool   `json:"autoSync"`
+	ClientID          string `json:"clientID,omitempty"`
+	RefreshToken      string `json:"refreshToken,omitempty"`
+	Server            string `json:"server"`
+	Token             string `json:"token"`
+	Email             string `json:"email,omitempty"`
+	Participant       string `json:"participant,omitempty"`
+	Expires           string `json:"expires,omitempty"`
+	AutoSync          bool   `json:"autoSync"`
+	SyncPaused        bool   `json:"syncPaused,omitempty"`
+	UploadConcurrency int    `json:"uploadConcurrency,omitempty"`
 }
 
 func uuid() string {
@@ -294,7 +302,7 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 		if e.syncCancel != nil {
 			e.syncCancel()
 		}
-		e.credentials.AutoSync = false
+		e.credentials.SyncPaused = true
 		if err := writePrivate(filepath.Join(e.lib.Dir, "connection.json"), e.credentials); err != nil {
 			return nil, err
 		}
@@ -349,6 +357,45 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 	case "disconnect":
 		err := e.disconnect()
 		return e.state(), err
+	case "syncOptions":
+		if e.credentials.Token == "" {
+			return nil, errors.New("Sign in before configuring sync")
+		}
+		var input struct {
+			Paused      *bool `json:"paused"`
+			Concurrency *int  `json:"concurrency"`
+			Retry       bool  `json:"retry"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		c := e.credentials
+		if input.Concurrency != nil {
+			if *input.Concurrency != 1 && *input.Concurrency != 2 && *input.Concurrency != 4 {
+				return nil, errors.New("Choose 1, 2, or 4 upload workers")
+			}
+			c.UploadConcurrency = *input.Concurrency
+		}
+		if input.Paused != nil {
+			c.SyncPaused = *input.Paused
+		}
+		if err := writePrivate(filepath.Join(e.lib.Dir, "connection.json"), c); err != nil {
+			return nil, err
+		}
+		e.credentials = c
+		if input.Paused != nil || input.Concurrency != nil || input.Retry {
+			e.syncSamples = nil
+			e.syncByteSamples = nil
+		}
+		if c.SyncPaused && len(e.syncTransfers) > 0 && e.syncCancel != nil {
+			e.syncCancel()
+		}
+		if input.Retry {
+			e.syncFailures = map[string]syncFailure{}
+			e.syncBackoff = time.Time{}
+			e.syncError = ""
+		}
+		return e.state(), nil
 	case "permissions":
 		if e.capture == nil {
 			return nil, errors.New("capture adapter unavailable")
@@ -440,8 +487,9 @@ func main() {
 	}
 	go func() {
 		for {
-			e.syncOnce()
-			time.Sleep(time.Second)
+			if !e.syncOnce() {
+				time.Sleep(time.Second)
+			}
 		}
 	}()
 	go func() {

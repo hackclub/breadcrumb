@@ -66,6 +66,15 @@ export type State = {
     uploaded: number;
     pending: number;
     etaSeconds?: number | null;
+    paused?: boolean;
+    active?: { id: string; app: string; date: number }[];
+    parallelism?: number;
+    capturesPerSecond?: number;
+    bytesPerSecond?: number;
+    bytesSent?: number;
+    sessionUploaded?: number;
+    imagesReused?: number;
+    retryAt?: string;
     uploading: boolean;
     error: string;
     failed: number;

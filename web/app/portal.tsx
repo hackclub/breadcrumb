@@ -4,6 +4,7 @@ import { applyTheme, readTheme, themes, type Theme } from "../lib/theme";
 import { authClient } from "../lib/auth-client";
 import { TimeDashboard } from "./time-dashboard";
 import type { InsightDay as Day } from "../lib/insights";
+import { BrandIcon } from "../lib/brand";
 async function request(path: string, body?: unknown) {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
@@ -13,11 +14,17 @@ async function request(path: string, body?: unknown) {
   if (!response.ok) throw Error(await response.text());
   return response.status === 204 ? null : response.json();
 }
-export default function Portal() {
+export default function Portal({
+  initialDashboard = false,
+  initialDesktop = "",
+}: {
+  initialDashboard?: boolean;
+  initialDesktop?: string;
+}) {
   const [theme, setTheme] = useState<Theme>("dark"),
     [email, setEmail] = useState(""),
-    [desktop, setDesktop] = useState(""),
-    [approval, setApproval] = useState(false),
+    [desktop, setDesktop] = useState(initialDesktop),
+    [approval, setApproval] = useState(Boolean(initialDesktop)),
     [status, setStatus] = useState(""),
     [busy, setBusy] = useState(false),
     [days, setDays] = useState<Day[] | null>(null),
@@ -26,6 +33,7 @@ export default function Portal() {
   const { data: session, isPending } = authClient.useSession();
   const account = session?.user ?? null,
     ready = !isPending;
+  const dashboardVisible = !desktop && (Boolean(account) || (!ready && initialDashboard));
   useEffect(() => {
     setTheme(readTheme());
     const query = new URLSearchParams(location.search);
@@ -112,16 +120,28 @@ export default function Portal() {
     );
     // Better Auth follows the consent redirect through its client plugin.
   }
+  const dashboard = (
+    <section>
+      <TimeDashboard days={days ?? []} loading={!ready || days === null} />
+      <div className="dashboard-feedback">
+        <p className="sync-count">
+          <span>{days ? `${captures.toLocaleString()} captures` : "Loading synced captures…"}</span>
+          <span>{latest ? `Last synced ${new Date(latest).toLocaleString()}` : ""}</span>
+        </p>
+        <p className="dashboard-message" role={statsError ? "alert" : "status"}>
+          {statsError ||
+            (indexing
+              ? "Updating older activity… Your dashboard will fill in as it’s indexed."
+              : "\u00a0")}
+        </p>
+      </div>
+    </section>
+  );
   return (
     <main className="portal">
       <header>
         <a className="wordmark" href="/" aria-label="Breadcrumb home">
-          <svg className="brand-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <circle cx="6" cy="6" r="3" />
-            <circle cx="17" cy="6" r="3" />
-            <circle cx="6" cy="17" r="3" />
-            <circle cx="18" cy="18" r="2.7" fill="#ed6268" />
-          </svg>
+          <BrandIcon size={25} className="brand-icon" />
           Breadcrumb
         </a>
         <div className="header-actions">
@@ -140,10 +160,10 @@ export default function Portal() {
               </option>
             ))}
           </select>
-          {account && (
+          {(account || (!ready && initialDashboard)) && (
             <button
               className="quiet"
-              disabled={busy}
+              disabled={busy || !ready}
               onClick={() =>
                 action(async () => {
                   const result = await authClient.signOut();
@@ -157,11 +177,24 @@ export default function Portal() {
           )}
         </div>
       </header>
-      <div className={account && !desktop ? "dashboard" : "auth-page"}>
+      <div className={dashboardVisible ? "dashboard" : "auth-page"}>
         {!ready ? (
-          <p className="muted" role="status">
-            Loading your account…
-          </p>
+          dashboardVisible ? (
+            dashboard
+          ) : (
+            <section
+              className="sign-in auth-skeleton"
+              aria-busy="true"
+              aria-label="Loading sign in"
+            >
+              <h1>Sign in to Breadcrumb</h1>
+              <p>
+                <span className="skeleton skeleton-caption" />
+              </p>
+              <div className="skeleton skeleton-field" />
+              <div className="skeleton skeleton-field" />
+            </section>
+          )
         ) : !account ? (
           <section className="sign-in">
             <h1>Sign in to Breadcrumb</h1>
@@ -239,32 +272,7 @@ export default function Portal() {
             )}
           </section>
         ) : (
-          <section>
-            {days ? <TimeDashboard days={days} /> : <h1>Your synced history</h1>}
-            <p className="sync-count">
-              {days
-                ? `${captures.toLocaleString()} captures`
-                : statsError
-                  ? "Synced history is unavailable."
-                  : "Loading synced captures…"}
-              {latest && ` · Last synced ${new Date(latest).toLocaleString()}`}
-            </p>
-            {statsError && <p role="alert">{statsError}</p>}
-            {indexing && (
-              <p className="small-note" role="status">
-                Updating older activity… Your dashboard will fill in as it’s indexed.
-              </p>
-            )}
-            {!captures && days && !indexing && (
-              <div className="connect-help">
-                <h2>Connect your desktop</h2>
-                <p>
-                  In Breadcrumb, open Settings → Account. Enter this portal’s URL and click Sign in.
-                  Approve the connection in your browser to start syncing.
-                </p>
-              </div>
-            )}
-          </section>
+          dashboard
         )}
         {status && (
           <p className="notice visible" role="status" aria-live="polite">

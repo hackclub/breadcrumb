@@ -86,6 +86,7 @@ async fn engine(
         "beginSignIn",
         "cancelSignIn",
         "disconnect",
+        "syncOptions",
         "permissions",
         "appIcon",
     ];

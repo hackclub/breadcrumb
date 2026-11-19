@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,24 @@ type syncFailure struct {
 	Message string
 	Retry   time.Time
 }
+type syncTransfer struct {
+	ID   string  `json:"id"`
+	App  string  `json:"app"`
+	Date float64 `json:"date"`
+}
+type syncByteSample struct {
+	At    time.Time
+	Bytes int64
+}
+
+func syncConcurrency(c credentials) int {
+	switch c.UploadConcurrency {
+	case 1, 2, 4:
+		return c.UploadConcurrency
+	}
+	return 4
+}
+
 type queuedCapture struct {
 	Record      library.Record  `json:"record"`
 	Payload     library.Payload `json:"payload"`
@@ -43,6 +62,9 @@ func (e *engine) loadSync(c credentials) error {
 	if err := os.MkdirAll(filepath.Join(profile, "pending"), 0700); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Join(profile, "images"), 0700); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(filepath.Join(profile, "sent"))
 	if err != nil {
 		return err
@@ -53,6 +75,20 @@ func (e *engine) loadSync(c credentials) error {
 	e.syncError = ""
 	e.syncLast = ""
 	e.syncSamples = nil
+	e.syncImages = map[string]bool{}
+	e.syncBytes = 0
+	e.syncByteSamples = nil
+	e.syncSessionUploaded = 0
+	e.syncReused = 0
+	images, err := os.ReadDir(filepath.Join(profile, "images"))
+	if err != nil {
+		return err
+	}
+	for _, image := range images {
+		if !image.IsDir() && len(image.Name()) == 64 {
+			e.syncImages[image.Name()] = true
+		}
+	}
 	e.syncBackoff = time.Time{}
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -144,62 +180,80 @@ func (e *engine) syncState() map[string]any {
 			}
 		}
 	}
-	var eta *int
-	if n := len(e.syncSamples); pending > 0 && n >= 3 && e.syncError == "" && time.Now().After(e.syncBackoff) {
-		seconds := e.syncSamples[n-1].Sub(e.syncSamples[0]).Seconds() / float64(n-1)
-		seconds = max(seconds, time.Since(e.syncSamples[n-1]).Seconds())
-		remaining := max(1, int(seconds*float64(pending)))
-		eta = &remaining
+	active := []syncTransfer{}
+	for _, transfer := range e.syncTransfers {
+		active = append(active, transfer)
 	}
-	return map[string]any{"email": e.credentials.Email, "enabled": e.credentials.AutoSync, "uploaded": uploaded, "pending": pending, "etaSeconds": eta, "uploading": e.syncInFlight, "error": e.syncError, "failed": len(e.syncFailures), "lastSynced": e.syncLast, "signingIn": e.auth != nil, "authError": e.authError}
+	var eta *int
+	rate, byteRate := 0.0, 0.0
+	running := pending > 0 && !e.credentials.SyncPaused && e.credentials.AutoSync && e.syncError == "" && time.Now().After(e.syncBackoff)
+	if n := len(e.syncSamples); n >= 2 && running {
+		rate = float64(n-1) / max(.001, time.Since(e.syncSamples[0]).Seconds())
+		if n >= 3 && len(e.syncFailures) == 0 {
+			remaining := max(1, int(float64(pending)/rate))
+			eta = &remaining
+		}
+	}
+	if n := len(e.syncByteSamples); n >= 2 && running {
+		first := e.syncByteSamples[0]
+		byteRate = float64(e.syncBytes-first.Bytes) / max(.001, time.Since(first.At).Seconds())
+	}
+	return map[string]any{"email": e.credentials.Email, "enabled": e.credentials.AutoSync, "paused": e.credentials.SyncPaused, "uploaded": uploaded, "pending": pending, "etaSeconds": eta, "uploading": e.syncInFlight, "active": active, "parallelism": syncConcurrency(e.credentials), "capturesPerSecond": rate, "bytesPerSecond": byteRate, "bytesSent": e.syncBytes, "sessionUploaded": e.syncSessionUploaded, "imagesReused": e.syncReused, "retryAt": e.syncBackoff.UTC().Format(time.RFC3339), "error": e.syncError, "failed": len(e.syncFailures), "lastSynced": e.syncLast, "signingIn": e.auth != nil, "authError": e.authError}
 }
-func (e *engine) syncOnce() {
+
+func queuedPayload(profile, id string) (queuedCapture, error) {
+	var capture queuedCapture
+	data, err := os.ReadFile(filepath.Join(profile, "pending", id+".json"))
+	if err != nil {
+		return capture, err
+	}
+	if err = json.Unmarshal(data, &capture); err != nil {
+		return capture, err
+	}
+	if capture.PayloadFile != "" {
+		if filepath.Base(capture.PayloadFile) != capture.PayloadFile {
+			return capture, errors.New("Invalid queue payload")
+		}
+		data, err = os.ReadFile(filepath.Join(profile, "pending", capture.PayloadFile))
+		if err != nil {
+			return capture, err
+		}
+		if err = json.Unmarshal(data, &capture.Payload); err != nil {
+			return capture, err
+		}
+	}
+	if capture.ImageFile != "" {
+		if filepath.Base(capture.ImageFile) != capture.ImageFile {
+			return capture, errors.New("Invalid queued screenshot")
+		}
+		capture.Payload.JPEG, err = os.ReadFile(filepath.Join(profile, "pending", capture.ImageFile))
+		if err != nil {
+			return capture, err
+		}
+	}
+	if len(capture.Payload.JPEG) > 0 && capture.Payload.JPEGRef == "" {
+		hash := sha256.Sum256(capture.Payload.JPEG)
+		capture.Payload.JPEGRef = hex.EncodeToString(hash[:])
+	}
+	return capture, nil
+}
+
+// A bounded batch shares cancellation and finishes before OAuth refresh starts.
+// A full backlog immediately schedules the next batch, with no per-frame sleep.
+func (e *engine) syncOnce() bool {
 	e.mu.Lock()
-	if e.demo || !e.credentials.AutoSync || e.credentials.Token == "" || e.syncInFlight || time.Now().Before(e.syncBackoff) {
+	if e.demo || !e.credentials.AutoSync || e.credentials.SyncPaused || e.credentials.Token == "" || e.syncInFlight || time.Now().Before(e.syncBackoff) {
 		e.mu.Unlock()
-		return
+		return false
 	}
 	c := e.credentials
-
-	if expiry, err := time.Parse(time.RFC3339, c.Expires); err == nil && c.RefreshToken != "" && time.Until(expiry) < 30*time.Second {
-		ctx, cancel := context.WithCancel(context.Background())
-		e.syncCancel = cancel
-		e.syncInFlight = true
-		e.mu.Unlock()
-		refreshed, refreshErr := refreshOAuth(ctx, c)
-		cancel()
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		e.syncInFlight = false
-		e.syncCancel = nil
-		if e.credentials.Token != c.Token {
-			return
-		}
-		if refreshErr == nil {
-			e.credentials = refreshed
-			if err = writePrivate(filepath.Join(e.lib.Dir, "connection.json"), refreshed); err != nil {
-				e.credentials.AutoSync = false
-				e.syncError = "Could not save the refreshed connection. Sign in again to resume."
-			} else {
-				e.syncError = ""
-			}
-		} else {
-			var remote *oauth2.RetrieveError
-			if errors.As(refreshErr, &remote) && (remote.Response.StatusCode == 400 || remote.Response.StatusCode == 401 || remote.Response.StatusCode == 403) {
-				e.credentials.AutoSync = false
-				e.syncError = "Your connection expired or was revoked. Sign in again to resume syncing."
-				_ = writePrivate(filepath.Join(e.lib.Dir, "connection.json"), e.credentials)
-			} else {
-				e.syncBackoff = time.Now().Add(30 * time.Second)
-				e.syncError = "Could not refresh your connection. Retrying automatically."
-			}
-		}
-		return
+	if expiry, err := time.Parse(time.RFC3339, c.Expires); err == nil && c.RefreshToken != "" && time.Until(expiry) < 90*time.Second {
+		return e.refreshSync(c)
 	}
 	if err := e.loadSync(c); err != nil {
 		e.syncError = "Could not open the sync queue: " + err.Error()
 		e.mu.Unlock()
-		return
+		return false
 	}
 	for _, row := range e.lib.Index.Observations {
 		key := digestString(row.ID())
@@ -209,93 +263,113 @@ func (e *engine) syncOnce() {
 			}
 		}
 	}
-	var id string
-	for candidate := range e.syncPending {
-		if !time.Now().Before(e.syncFailures[candidate].Retry) {
-			id = candidate
+	type work struct {
+		id      string
+		capture queuedCapture
+		known   bool
+	}
+	jobs := []work{}
+	profile := e.syncProfile
+	for id := range e.syncPending {
+		if time.Now().Before(e.syncFailures[id].Retry) {
+			continue
+		}
+		capture, err := queuedPayload(profile, id)
+		if err != nil {
+			e.syncFailures[id] = syncFailure{err.Error(), time.Now().Add(time.Minute)}
+			e.syncError = "A capture could not be queued. Sync will retry."
+			continue
+		}
+		jobs = append(jobs, work{id, capture, e.syncImages[capture.Payload.JPEGRef]})
+		if len(jobs) >= syncConcurrency(c) {
 			break
 		}
 	}
-	if id == "" {
+	if len(jobs) == 0 {
 		e.mu.Unlock()
-		return
-	}
-	profile := e.syncProfile
-	path := filepath.Join(profile, "pending", id+".json")
-	var capture queuedCapture
-	data, err := os.ReadFile(path)
-	if err == nil {
-		err = json.Unmarshal(data, &capture)
-	}
-	if err == nil && capture.PayloadFile != "" {
-		if filepath.Base(capture.PayloadFile) != capture.PayloadFile {
-			err = errors.New("Invalid queue payload")
-		} else {
-			data, err = os.ReadFile(filepath.Join(profile, "pending", capture.PayloadFile))
-			if err == nil {
-				err = json.Unmarshal(data, &capture.Payload)
-			}
-		}
-	}
-	if err != nil {
-		e.syncFailures[id] = syncFailure{err.Error(), time.Now().Add(time.Minute)}
-		e.syncError = "A capture could not be queued. Sync will retry."
-		e.mu.Unlock()
-		return
-	}
-	if capture.ImageFile != "" {
-		if filepath.Base(capture.ImageFile) != capture.ImageFile {
-			err = errors.New("Invalid queued screenshot")
-		} else {
-			capture.Payload.JPEG, err = os.ReadFile(filepath.Join(profile, "pending", capture.ImageFile))
-		}
-		if err != nil {
-			e.syncError = "Could not read queued screenshot"
-			e.syncFailures[id] = syncFailure{err.Error(), time.Now().Add(time.Minute)}
-			e.mu.Unlock()
-			return
-		}
+		return false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.syncCancel = cancel
 	e.syncInFlight = true
+	e.syncTransfers = map[string]syncTransfer{}
+	for _, job := range jobs {
+		app, _ := job.capture.Record["app"].(string)
+		e.syncTransfers[job.id] = syncTransfer{job.capture.Record.ID(), app, job.capture.Record.Date()}
+	}
+	if len(e.syncSamples) == 0 {
+		e.syncSamples = append(e.syncSamples, time.Now())
+	}
+	if len(e.syncByteSamples) == 0 {
+		e.syncByteSamples = append(e.syncByteSamples, syncByteSample{time.Now(), e.syncBytes})
+	}
 	e.mu.Unlock()
-	_, err = uploadTo(ctx, c, capture.Record, capture.Payload)
+	var workers sync.WaitGroup
+	for _, job := range jobs {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			stats, err := uploadTo(ctx, c, job.capture.Record, job.capture.Payload, job.known)
+			e.finishUpload(ctx, c, profile, job.id, job.capture, stats, err)
+		}()
+	}
+	workers.Wait()
 	cancel()
-	// Persist acknowledgement before discarding the immutable retry snapshot.
+	e.mu.Lock()
+	e.syncInFlight = false
+	e.syncCancel = nil
+	e.mu.Unlock()
+	return true
+}
+
+func (e *engine) finishUpload(ctx context.Context, c credentials, profile, id string, capture queuedCapture, stats uploadStats, err error) {
 	if err == nil {
 		err = writePrivate(filepath.Join(profile, "sent", id), map[string]string{"id": capture.Record.ID(), "syncedAt": time.Now().UTC().Format(time.RFC3339)})
 		if err == nil {
-			_ = os.Remove(path)
-			if capture.PayloadFile != "" {
-				_ = os.Remove(filepath.Join(profile, "pending", capture.PayloadFile))
+			if stats.ImageRef != "" {
+				_ = os.WriteFile(filepath.Join(profile, "images", stats.ImageRef), nil, 0600)
 			}
-			if capture.ImageFile != "" {
-				_ = os.Remove(filepath.Join(profile, "pending", capture.ImageFile))
+			_ = os.Remove(filepath.Join(profile, "pending", id+".json"))
+			for _, name := range []string{capture.PayloadFile, capture.ImageFile} {
+				if name != "" {
+					_ = os.Remove(filepath.Join(profile, "pending", name))
+				}
 			}
 		}
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.syncInFlight = false
-	e.syncCancel = nil
-	if e.credentials.Server != c.Server || e.credentials.Token != c.Token {
+	delete(e.syncTransfers, id)
+	if e.syncProfile != profile {
 		return
+	}
+	e.syncBytes += stats.Bytes
+	e.syncByteSamples = append(e.syncByteSamples, syncByteSample{time.Now(), e.syncBytes})
+	if len(e.syncByteSamples) > 21 {
+		e.syncByteSamples = e.syncByteSamples[1:]
 	}
 	if err == nil {
 		e.syncSent[id] = true
-		now := time.Now()
-		if n := len(e.syncSamples); n > 0 && now.Sub(e.syncSamples[n-1]) > 2*time.Minute {
-			e.syncSamples = nil
-		}
-		e.syncSamples = append(e.syncSamples, now)
-		if len(e.syncSamples) > 20 {
-			e.syncSamples = e.syncSamples[1:]
-		}
 		delete(e.syncPending, id)
 		delete(e.syncFailures, id)
+		e.syncSamples = append(e.syncSamples, time.Now())
+		if len(e.syncSamples) > 21 {
+			e.syncSamples = e.syncSamples[1:]
+		}
+		e.syncSessionUploaded++
+		if stats.Reused {
+			e.syncReused++
+		}
+		if stats.ImageRef != "" {
+			e.syncImages[stats.ImageRef] = true
+		}
 		e.syncLast = time.Now().UTC().Format(time.RFC3339)
-		e.syncError = ""
+		if len(e.syncFailures) == 0 {
+			e.syncError = ""
+		}
+		return
+	}
+	if ctx.Err() != nil || e.credentials.Token != c.Token || !e.credentials.AutoSync || e.credentials.SyncPaused {
 		return
 	}
 	var remote *apiError
@@ -303,6 +377,9 @@ func (e *engine) syncOnce() {
 		e.credentials.AutoSync = false
 		e.syncError = "Your connection expired or was revoked. Sign in again to resume syncing."
 		_ = writePrivate(filepath.Join(e.lib.Dir, "connection.json"), e.credentials)
+		if e.syncCancel != nil {
+			e.syncCancel()
+		}
 		return
 	}
 	retry := time.Now().Add(30 * time.Second)
@@ -314,6 +391,45 @@ func (e *engine) syncOnce() {
 		e.syncError = "Sync interrupted. Retrying automatically."
 	}
 	e.syncFailures[id] = syncFailure{err.Error(), retry}
+}
+
+// Called with the engine locked; refresh remains serialized with every upload.
+func (e *engine) refreshSync(c credentials) bool {
+	ctx, cancel := context.WithCancel(context.Background())
+	e.syncCancel = cancel
+	e.syncInFlight = true
+	e.mu.Unlock()
+	refreshed, err := refreshOAuth(ctx, c)
+	cancel()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.syncInFlight = false
+	e.syncCancel = nil
+	if e.credentials.Token != c.Token {
+		return false
+	}
+	if err == nil {
+		refreshed.SyncPaused = e.credentials.SyncPaused
+		refreshed.UploadConcurrency = e.credentials.UploadConcurrency
+		e.credentials = refreshed
+		if err = writePrivate(filepath.Join(e.lib.Dir, "connection.json"), refreshed); err != nil {
+			e.credentials.AutoSync = false
+			e.syncError = "Could not save the refreshed connection. Sign in again to resume."
+			return false
+		}
+		e.syncError = ""
+		return true
+	}
+	var remote *oauth2.RetrieveError
+	if errors.As(err, &remote) && (remote.Response.StatusCode == 400 || remote.Response.StatusCode == 401 || remote.Response.StatusCode == 403) {
+		e.credentials.AutoSync = false
+		e.syncError = "Your connection expired or was revoked. Sign in again to resume syncing."
+		_ = writePrivate(filepath.Join(e.lib.Dir, "connection.json"), e.credentials)
+	} else {
+		e.syncBackoff = time.Now().Add(30 * time.Second)
+		e.syncError = "Could not refresh your connection. Retrying automatically."
+	}
+	return false
 }
 
 func (e *engine) discardRecentQueue(since float64) error {

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { BrandIcon } from "../../web/lib/brand";
 export type IconName =
   | "pause"
   | "play"
@@ -20,6 +21,7 @@ export function Icon({
   size?: number;
   style?: CSSProperties;
 }) {
+  if (name === "crumbs") return <BrandIcon size={size} className="icon" style={style} />;
   const paths = {
     pause: (
       <>
@@ -60,13 +62,6 @@ export function Icon({
         <circle cx="8" cy="9" r="1.5" />
         <path d="m3 16 5-4 4 3 4-5 5 6" />
       </>
-    ),
-    crumbs: (
-      <g fill="currentColor" stroke="none">
-        <circle cx="7" cy="7" r="2.8" />
-        <circle cx="17" cy="8" r="2" />
-        <circle cx="10" cy="17" r="2" />
-      </g>
     ),
   };
   return (
