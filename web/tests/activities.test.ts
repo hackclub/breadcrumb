@@ -34,5 +34,6 @@ test("ambiguous videos and terminals are not automatically learning or productiv
   expect(
     classifyActivity({ context: { domain: "docs.pytest.org" }, windowTitle: "pytest docs" }),
   ).toBe("Research & docs");
+  expect(classifyActivity({ correction: "constructor" })).toBe("constructor");
   expect(classifyActivity({})).toBe("Unclassified");
 });

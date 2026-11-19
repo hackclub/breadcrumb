@@ -41,7 +41,8 @@ const aliases: Record<string, string> = {
   "Social page": "Social",
   "Browser settings": "Settings",
 };
-export const activityName = (name = "Unclassified") => aliases[name] || name || "Unclassified";
+export const activityName = (name = "Unclassified") =>
+  Object.hasOwn(aliases, name) ? aliases[name] : name || "Unclassified";
 export const activityDescription = (name: string) =>
   activities.find(([label]) => label === activityName(name))?.[1] ||
   "A label supplied by your capture or review agent.";
