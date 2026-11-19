@@ -389,7 +389,7 @@ export class Service {
       if (path === "/v1/account/index" && method === "POST") {
         this.sameOrigin(req);
         const account = await this.account(req, "session");
-        const key = `sync/migrations/insights-v3/${account.id}.json`;
+        const key = `sync/migrations/insights-v4/${account.id}.json`;
         const previous = await this.read<{ cursor: string; done: boolean }>(key);
         if (previous?.done) return Response.json({ done: true });
         const page = await this.store.list(`captures/${account.id}/`, previous?.cursor ?? "", 15);

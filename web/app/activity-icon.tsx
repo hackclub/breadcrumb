@@ -2,36 +2,70 @@ export function ActivityIcon({ name, project = false }: { name: string; project?
   const label = name.toLowerCase();
   const symbol = project
     ? "project"
-    : /unclassified|unknown/.test(label)
-      ? "unknown"
-      : /terminal/.test(label)
-        ? "terminal"
-        : /developer|coding/.test(label)
-          ? "code"
-          : /messag/.test(label)
-            ? "message"
-            : /video/.test(label)
-              ? "video"
-              : /meeting/.test(label)
-                ? "meeting"
-                : /reading/.test(label)
-                  ? "reading"
-                  : /assistant|\bai\b/.test(label)
-                    ? "assistant"
-                    : /music/.test(label)
-                      ? "music"
-                      : /email|mail/.test(label)
-                        ? "mail"
-                        : /calendar/.test(label)
-                          ? "calendar"
-                          : /social/.test(label)
-                            ? "social"
-                            : /settings/.test(label)
-                              ? "settings"
-                              : /brows/.test(label)
-                                ? "browser"
-                                : "unknown";
+    : ((
+        [
+          ["terminal", /terminal/],
+          ["code", /developer|coding|version control|code review/],
+          ["check", /testing|planning/],
+          ["debug", /debugging/],
+          ["cloud", /deployment/],
+          ["pen", /design|writing/],
+          ["data", /data|spreadsheet/],
+          ["shop", /shopping/],
+          ["game", /gaming/],
+          ["message", /messag/],
+          ["video", /video/],
+          ["meeting", /meeting/],
+          ["reading", /reading|research|learning/],
+          ["assistant", /assistant|\bai\b/],
+          ["music", /music/],
+          ["mail", /email|mail/],
+          ["calendar", /calendar/],
+          ["social", /social/],
+          ["settings", /settings/],
+          ["browser", /brows/],
+        ] as const
+      ).find(([, pattern]) => pattern.test(label))?.[0] ?? "unknown");
   const paths = {
+    check: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="3" />
+        <path d="m7 12 3 3 7-7" />
+      </>
+    ),
+    debug: (
+      <>
+        <rect x="7" y="7" width="10" height="14" rx="5" />
+        <path d="m9 3 3 4 3-4M3 10h4m10 0h4M3 16h4m10 0h4M12 8v12" />
+      </>
+    ),
+    cloud: (
+      <>
+        <path d="M7 18H6a4 4 0 0 1-1-8 7 7 0 0 1 13-2 5 5 0 0 1 0 10h-1M12 21V11m-4 4 4-4 4 4" />
+      </>
+    ),
+    pen: (
+      <>
+        <path d="m4 16-1 5 5-1L21 7l-6-6L4 16Zm10-12 6 6M4 16l4 4" />
+      </>
+    ),
+    data: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M3 9h18M3 15h18M9 3v18" />
+      </>
+    ),
+    shop: (
+      <>
+        <path d="M4 7h16l1 14H3L4 7ZM8 7V5a4 4 0 0 1 8 0v2" />
+      </>
+    ),
+    game: (
+      <>
+        <path d="M8 7h8c4 0 6 11 4 13-2 2-5-4-8-4s-6 6-8 4C2 18 4 7 8 7Z" />
+        <path d="M6 11h6m-3-3v6m7-3h.01m2 3h.01" />
+      </>
+    ),
     project: (
       <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
     ),

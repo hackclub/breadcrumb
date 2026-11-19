@@ -1,3 +1,4 @@
+import { classifyActivity } from "./activities";
 import type { Store } from "./store";
 import { summarize, REFERENCE, type Sample } from "./insights";
 type Day = { samples: Record<string, Sample>; updatedAt: string };
@@ -16,14 +17,11 @@ export async function recordSynced(
       : { samples: {}, updatedAt: receivedAt };
     const clean = (value: unknown) => (typeof value === "string" ? value.slice(0, 200) : undefined);
     const context = record.context as { project?: unknown } | undefined;
-    const classification = record.classification as { activity?: unknown } | undefined;
-    const agent = record.agentLabel as { activity?: unknown } | undefined;
     const sample: Sample = {
       date: record.date,
       app: clean(record.app),
       appID: clean(record.bundleID),
-      activity:
-        clean(record.correction) || clean(agent?.activity) || clean(classification?.activity),
+      activity: classifyActivity(record),
       project: clean(context?.project),
       interval:
         typeof record.sampleIntervalSeconds === "number" &&

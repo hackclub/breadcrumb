@@ -62,3 +62,5 @@ To add or update an app, add its 64px PNG in `public/app-icons/`, edit `lib/app-
 The dashboard's day-by-hour grid shows up to 14 recent days. Selecting an hour reveals sampled time, capture count, apps, activity, and detected projects. Hour/day boundaries use UTC. Existing captures gain richer breakdowns through the incremental account index.
 
 Dashboard app totals merge legacy names and bundle/package aliases through the canonical catalog. Activity categories use semantic SVG icons. Signed-in loading renders the same reserved dashboard frames as loaded data; the browser regression test delays authentication, catalog, summaries, and indexing updates and checks zero layout shift at desktop and mobile widths.
+
+Activity rows open daily, app, and project breakdowns. Labels and metadata rules live in `lib/activities.ts`; explicit corrections and agent labels take precedence. The rules use focused window/app/domain metadata, and keep ambiguous browsing, terminals, and videos broad. No extra raw titles or screenshot downloads are needed for these summaries. The incremental account index upgrades older captures automatically.

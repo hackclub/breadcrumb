@@ -1,12 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { duration, type Breakdown, type InsightDay } from "../lib/insights";
 import { appSeed, findApp, mergeApps, type AppEntry } from "../lib/apps";
 import { AppIcon } from "./app-icon";
+import { activityName, activityDescription } from "../lib/activities";
 import { ActivityIcon } from "./activity-icon";
 
 function combined(
-  days: InsightDay[],
+  days: Pick<InsightDay, "seconds" | "apps" | "activities" | "projects">[],
   key: "apps" | "activities" | "projects",
   catalog: AppEntry[] = appSeed,
 ): Breakdown {
@@ -15,8 +16,9 @@ function combined(
     for (const item of day[key] ?? [
       { name: key === "projects" ? "Unassigned" : "Not indexed yet", seconds: day.seconds },
     ]) {
-      const key = item.id || item.name;
-      totals.set(key, { ...item, seconds: (totals.get(key)?.seconds ?? 0) + item.seconds });
+      const name = key === "activities" ? activityName(item.name) : item.name;
+      const id = item.id || name;
+      totals.set(id, { ...item, name, seconds: (totals.get(id)?.seconds ?? 0) + item.seconds });
     }
   const rows = [...totals.values()];
   return key === "apps" ? mergeApps(rows, catalog) : rows.sort((a, b) => b.seconds - a.seconds);
@@ -30,7 +32,9 @@ function Ranking({
   apps,
   project = false,
   loading = false,
+  onSelect,
 }: {
+  onSelect?: (name: string) => void;
   rows: Breakdown;
   total: number;
   apps?: AppEntry[];
@@ -46,8 +50,12 @@ function Ranking({
         {/* Each DOM row is a fixed rank slot, so live reordering never moves its box. */}
         {Array.from({ length: count }, (_, index) => {
           const row = loading ? undefined : rows[index];
+          const Row = row && onSelect ? "button" : "div";
           return (
-            <div
+            <Row
+              title={row && onSelect ? activityDescription(row.name) : undefined}
+              onClick={row && onSelect ? () => onSelect(row.name) : undefined}
+              aria-label={row && onSelect ? `Explore ${row.name}` : undefined}
               className={`rank-row ${!loading && !row ? "rank-slot-empty" : ""}`}
               key={index}
               aria-hidden={!row || undefined}
@@ -87,7 +95,7 @@ function Ranking({
                   }}
                 />
               </span>
-            </div>
+            </Row>
           );
         })}
         {!loading && !rows.length && (
@@ -95,6 +103,7 @@ function Ranking({
         )}
       </div>
       <div className="ranking-more">
+        {onSelect && <span className="muted">Select a category to explore</span>}
         <button
           className="quiet show-all"
           style={{ visibility: more ? "visible" : "hidden" }}
@@ -108,6 +117,113 @@ function Ranking({
     </div>
   );
 }
+function ActivityExplorer({
+  name,
+  days,
+  catalog,
+  onClose,
+  onDay,
+}: {
+  name: string;
+  days: InsightDay[];
+  catalog: AppEntry[];
+  onClose: () => void;
+  onDay: (day: string) => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const node = dialog.current!;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  const points = days.map((day) => ({
+    day: day.day,
+    seconds: (day.activities ?? [])
+      .filter((row) => activityName(row.name) === name)
+      .reduce((n, row) => n + row.seconds, 0),
+    detail: Object.entries(day.activityDetails ?? {})
+      .filter(([key]) => activityName(key) === name)
+      .map(([, value]) => value),
+  }));
+  const total = points.reduce((n, point) => n + point.seconds, 0);
+  const indexed = points.flatMap((point) => point.detail);
+  const join = (key: "apps" | "projects") => combined(indexed, key, catalog);
+  const peak = Math.max(1, ...points.map((point) => point.seconds));
+  const covered = indexed.reduce((n, value) => n + value.seconds, 0);
+  return (
+    <dialog
+      ref={dialog}
+      className="activity-dialog"
+      aria-labelledby="activity-title"
+      onClose={onClose}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          const r = event.currentTarget.getBoundingClientRect();
+          if (
+            event.clientX < r.left ||
+            event.clientX > r.right ||
+            event.clientY < r.top ||
+            event.clientY > r.bottom
+          )
+            onClose();
+        }
+      }}
+    >
+      <header className="activity-dialog-heading">
+        <div>
+          <ActivityIcon name={name} />
+          <h2 id="activity-title">{name}</h2>
+        </div>
+        <button className="quiet" onClick={onClose} aria-label="Close activity details">
+          ✕
+        </button>
+      </header>
+      <p className="muted">{activityDescription(name)}</p>
+      <div className="activity-total">
+        <strong>{duration(total)}</strong>
+        <span>estimated · {points.filter((point) => point.seconds > 0).length} active days</span>
+      </div>
+      <h3>Daily breakdown</h3>
+      <p className="muted">Select a day to explore it on your dashboard.</p>
+      <div className="activity-days">
+        {points.map((point) => (
+          <button
+            key={point.day}
+            onClick={() => onDay(point.day)}
+            disabled={!point.seconds}
+            aria-label={`Explore ${name} on ${point.day}: ${duration(point.seconds)}`}
+            title={`${point.day} · ${duration(point.seconds)}`}
+          >
+            <span className="activity-day-space">
+              <span style={{ height: `${Math.max(2, (point.seconds / peak) * 100)}%` }} />
+            </span>
+            <small>{point.day.slice(5)}</small>
+          </button>
+        ))}
+      </div>
+      {covered < total - 1 && (
+        <p className="small-note">
+          App and project details cover {duration(covered)} of {duration(total)} while older
+          captures are indexed.
+        </p>
+      )}
+      <div className="insight-columns">
+        <section className="ranking-panel">
+          <h3>Apps used</h3>
+          <Ranking rows={join("apps")} total={covered} apps={catalog} />
+        </section>
+        <section className="ranking-panel">
+          <h3>Projects</h3>
+          <Ranking rows={join("projects")} total={covered} project />
+        </section>
+      </div>
+      <p className="small-note">
+        Estimated from focused-window context. Visible content does not establish attention or
+        productive work. Background apps are not added to this time.
+      </p>
+    </dialog>
+  );
+}
 export function TimeDashboard({
   days,
   loading = false,
@@ -115,6 +231,7 @@ export function TimeDashboard({
   days: InsightDay[];
   loading?: boolean;
 }) {
+  const [activity, setActivity] = useState<string | null>(null);
   const [range, setRange] = useState("7"),
     [selected, setSelected] = useState<string | null>(null),
     [hourSelection, setHourSelection] = useState<{ day: string; hour: number } | null>(null),
@@ -173,6 +290,19 @@ export function TimeDashboard({
     });
   return (
     <div className="time-dashboard" aria-busy={pending}>
+      {activity && (
+        <ActivityExplorer
+          name={activity}
+          days={filtered}
+          catalog={catalog}
+          onClose={() => setActivity(null)}
+          onDay={(day) => {
+            setSelected(day);
+            setHourSelection(null);
+            setActivity(null);
+          }}
+        />
+      )}
       <span className="sr-only" role="status">
         {pending ? "Loading time dashboard…" : ""}
       </span>
@@ -334,6 +464,7 @@ export function TimeDashboard({
             rows={combined(filtered, breakdown, catalog)}
             total={total}
             apps={breakdown === "apps" ? catalog : undefined}
+            onSelect={breakdown === "activities" ? setActivity : undefined}
             loading={pending}
           />
         </section>

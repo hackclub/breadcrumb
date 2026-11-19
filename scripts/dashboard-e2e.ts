@@ -87,6 +87,15 @@ try {
             { name: "Another project", seconds: 7000 },
           ]
         : [{ name: "Unassigned", seconds: 18000 }],
+      activityDetails: full
+        ? {
+            Browsing: {
+              seconds: 11000,
+              apps: [{ name: "Helium", seconds: 11000 }],
+              projects: [{ name: "Project one", seconds: 11000 }],
+            },
+          }
+        : {},
       hours: Array(24).fill(750),
     });
     await page.route("**/api/auth/get-session", async (route) => {
@@ -166,6 +175,19 @@ try {
       page.locator(".ranking-panel").first().locator(".category-icon svg").first(),
     ).toBeVisible();
     await page.screenshot({ path: `test-results/dashboard/loaded-${width}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Explore Browsing", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Helium", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Project one", { exact: true })).toBeVisible();
+    await page.screenshot({ path: `test-results/dashboard/activity-${width}.png`, fullPage: true });
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Explore Browsing", exact: true })).toBeFocused();
+    await page.getByRole("button", { name: "Explore Browsing", exact: true }).click();
+    await page.getByRole("button", { name: new RegExp(`Explore Browsing on ${today}`) }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Clear day ×" })).toBeVisible();
     await context.close();
   }
 } finally {

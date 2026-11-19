@@ -1,5 +1,8 @@
 name: Desktop
 on: [push, pull_request]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -16,6 +19,9 @@ jobs:
         with:
           go-version-file: engine/go.mod
           cache: false
+      - if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l .)" && go vet ./...
+        working-directory: engine
       - run: go test -race ./...
         working-directory: engine
   desktop:
@@ -72,3 +78,11 @@ jobs:
       - run: bun run build:web
       - run: bun run test:sync
       - run: bun run test:dashboard
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-failure-screenshots
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7

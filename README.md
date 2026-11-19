@@ -1,10 +1,48 @@
-# Breadcrumb
+<p align="center"><img src="web/app/icon.svg" width="64" height="64" alt="Breadcrumb" /></p>
 
-A personal desktop history and an agent-reviewed activity corpus. The desktop app uses Tauri and React with a local Go engine and native capture adapters. The web/API uses Next.js, Better Auth with PostgreSQL, private Cloudflare R2 storage, and Loops email sign-in. It can run on Vercel or your own server, without a Hack Club account.
+<h1 align="center">Breadcrumb</h1>
+<p align="center">A little context goes a long way.</p>
+<p align="center">A passive desktop history that helps you understand where your time went.</p>
+<p align="center"><a href="https://breadcrumb.hackclub.dev">Web portal</a> · <a href="docs/development.md">Development</a> · <a href="web/README.md">Self-hosting</a> · <a href="LICENSE">AGPLv3</a></p>
 
-## Develop
+![Breadcrumb time dashboard with real capture history](docs/images/dashboard.png)
 
-Install Bun 1.4.4, Go 1.24+, Python 3, and stable Rust. macOS builds need a recent Xcode/Command Line Tools Swift toolchain; the shipped app targets macOS 14 Sonoma or newer on Intel and Apple Silicon. Linux needs the WebKitGTK, GTK, X11, D-Bus, PipeWire, and Wayland development packages listed in `.github/workflows/desktop.yml`.
+## Your day, in context
+
+Breadcrumb stays in your menu bar or system tray and records the display containing your focused window. Your history works offline. Connect to a portal when you want your captures and time dashboard available across devices.
+
+- **See where time went.** Explore daily and hourly patterns, apps, activities, and project context.
+- **Go deeper.** Open an activity to see its daily breakdown, contributing apps, and projects. Categories include coding, debugging, testing, code review, research, AI collaboration, design, and writing.
+- **Keep the whole picture.** Focused and alongside context stay separate. A chat with an AI and a video visible beside it can coexist without counting the same minute twice.
+- **Stay lightweight.** Nearly unchanged screenshots share one image. Uploads reuse acknowledged images, with adjustable concurrency, progress, and an ETA.
+- **Make it yours.** Dark, light, and Catppuccin themes; configurable cadence, retention, storage, OCR, and app exclusions.
+- **Bring your agents.** Editable Python rules and an agent review protocol make labeling extensible.
+
+![Activity details showing contributing apps and projects](docs/images/activity-details.png)
+
+_Screenshots use the maintainer’s real capture history. Time is estimated from capture spacing and focused-window context; it is not verified attention or productive work._
+
+## Local first, optional sync
+
+Recording needs no account. History is stored as plain JSON and JPEG files on your computer. Breadcrumb records no audio or keystrokes. Screenshots and visible window context can contain private information; review your exclusions and capture settings.
+
+To sync, open **Settings → Account**, enter your portal URL, and sign in through your browser. Approving the connection uploads all existing and future captures, including screenshots and captured text/tree context. Signing out stops uploads. Deleting local history does not delete captures already synced.
+
+You can run your own portal. Authentication uses Better Auth and PostgreSQL; capture storage uses private S3-compatible R2. No Hack Club account is required. See [desktop behavior and privacy](docs/desktop.md) and [hosting setup](web/README.md).
+
+## Platforms
+
+| Platform | Capture and context                        | Requirements                                       |
+| -------- | ------------------------------------------ | -------------------------------------------------- |
+| macOS    | ScreenCaptureKit, Accessibility, local OCR | macOS 14+, Intel or Apple Silicon                  |
+| Windows  | Native display capture, UI Automation      | See cross-platform CI for current build validation |
+| Linux    | X11 capture, AT-SPI                        | X11 desktop; Wayland is not yet supported          |
+
+Accessibility is optional on macOS. Windows and Linux do not yet provide local OCR. Public release signing and macOS notarization still need to be configured before broad distribution.
+
+## Run locally
+
+Install **Bun 1.4.4**, **Go 1.24+**, **Python 3**, and **stable Rust**, plus your platform’s native build dependencies. macOS also needs a recent Xcode toolchain.
 
 ```sh
 bun install --frozen-lockfile
@@ -14,52 +52,10 @@ python3 scripts/desktop-prepare.py
 bun run --cwd desktop tauri dev
 ```
 
-`bun run --cwd desktop dev` opens the UI with synthetic browser-preview data. It never records or uploads. Build a native app with `bash scripts/desktop-build.sh`. On macOS, builds use the signing identity pinned in ignored `.breadcrumb-signing-identity`; set `APPLE_SIGNING_IDENTITY` explicitly on another machine. Release signing and notarization must be configured before public distribution. Native builds support macOS, Windows, and Linux; see CI for platform build results.
+For a UI preview with synthetic data, run `bun run --cwd desktop dev`. To build a native app, run `bash scripts/desktop-build.sh`.
 
-```sh
-bun run lint
-bun run format:check
-bun run test:web
-bun run test:desktop
-bun run test:sync
-bun run test:dashboard
-bun run build:web
-bun run build:desktop
-bunx playwright test
-cd engine
-go test -race ./...
-```
-
-Bun manages all JavaScript dependencies. Oxlint checks JavaScript/TypeScript and Oxfmt formats the project. Rust and Go retain their native package managers and formatters.
-
-## Desktop
-
-Breadcrumb lives in the menu bar/system tray, with no Dock/taskbar icon. Click its status icon to open a 360 × 400 overview with recording controls, a recent preview, and Save last hour. History and Settings use the same fixed-size panel; their content scrolls vertically. Back returns to the overview. Clicking away dismisses the popup. Close or Escape hides the panel while recording continues. Right-click the tray icon for pause/resume and Quit. Normal startup stays in the tray; `--show` opens the overview.
-
-History has a desktop preview and scrubber. Sessions group nearby project/domain/app context. Saved ranges pin captures, and export as ZIP. Activity reports estimated sampled time, with overlaps and long gaps handled conservatively. Settings control retention, storage, capture intervals, change detection, image size/quality, OCR, exclusions, and startup.
-
-Screenshots cover the full display containing the focused window. Focused activity and other visible windows are recorded separately: talking to an AI with YouTube visible alongside can represent both without claiming playback or attention. No audio or keystrokes are recorded.
-
-- **macOS:** ScreenCaptureKit, filtered Accessibility tree, local Vision OCR. Requires macOS 14 Sonoma or newer. Screen Recording is required; Accessibility is optional. Stable bundle ID `app.rewind.local` and signing identity retain permission identity across updates; macOS may still request approval after a host or signing change.
-- **Windows:** native display capture, focused/visible window context, filtered UI Automation tree. No local OCR yet.
-- **Linux:** X11 native display capture and filtered AT-SPI tree. Wayland/XWayland sessions are explicitly rejected because their native windows cannot yet be inspected reliably for exclusions. No local OCR yet.
-
-On Windows/Linux, capture skips samples when an excluded window may be visible because those APIs cannot reliably filter arbitrary windows out of the full display. macOS excludes app windows from its capture stream. Accessibility trees skip editable/password values and have bounded traversal. Screenshots and visible labels can still contain private information.
-
-History defaults to keeping data until deletion with a 20 GiB budget. Continuous mode stops at its limit; rolling retention may delete the oldest unsaved captures. Saved clips have a separate budget. Capture pauses below 5 GiB free disk. Shortening retention asks for confirmation; deleting recent history also pauses recording and sync.
-
-Files are plain, unencrypted JSON and JPEGs, private to the current OS user. Local paths are `~/Library/Application Support/Breadcrumb` on macOS, `%LOCALAPPDATA%/Breadcrumb` on Windows, and `$XDG_DATA_HOME/Breadcrumb` (default `~/.local/share/Breadcrumb`) on Linux. `library.json` contains metadata, `<UUID>.json` contains tree/OCR and a screenshot reference, and `images/<sha256>.jpg` stores shared pixels. Consecutive nearly unchanged screens reuse the retained image, while each moment keeps fresh context and timestamps. Older inline screenshots remain readable. Dates use seconds since 2001-01-01 UTC. Existing plain Swift libraries remain compatible; an existing Rewind directory migrates without overwriting an existing Breadcrumb directory. The legacy Swift migration utility remains under `Sources/` for old encrypted libraries and requires macOS 26; this does not affect the Tauri app or capture adapter. Build it explicitly with `bash scripts/migrate-build.sh` only when that migration is needed. Normal `scripts/build.sh`, packaging, and installation use Tauri.
-
-Click the desktop sync progress to open transfer details: active captures, recent rate, bytes sent, retries, and image reuse. Uploads use four workers by default; choose one or two for less bandwidth. Pause/resume affects uploads independently of recording, and the pending queue survives restarts. New images upload directly; acknowledged images use references.
-
-## Agents and corpus
-
-Editable if-statements in `agents/rules.py` classify and flag captures. `agents/breadcrumb.py` lists metadata, exports selected payloads, groups sessions, and explicitly contributes captures. See [agent review protocol](agents/REVIEWING.md) and [hosted API setup](web/README.md).
-
-Recording works offline. Optional sign-in in Settings → Account opens your chosen portal in the browser. Approving the Better Auth OAuth connection starts syncing all existing and future captures, including screenshots, visible text, labels, window context, and accessibility trees. Sync resumes after restarts and connectivity loss; signing out stops uploads while local recording continues. AI corpus review is optional. Deleting local history does not delete captures already synced to the corpus.
-
-The monorepo contains `desktop/` (Tauri/React), `engine/` (local Go process), `native/capture/` (Windows/Linux adapter), `Sources/BreadcrumbCapture*` (macOS adapter), `web/` (Next.js), and `agents/` (Python integrations).
+The monorepo contains a Tauri/React desktop, a local Go engine, native capture adapters, a Next.js portal/API, and Python agent tools. See the [development guide](docs/development.md) for checks and build details, or the [agent protocol](agents/REVIEWING.md) to integrate a reviewer.
 
 ## License
 
-Breadcrumb is licensed under [GNU AGPLv3](LICENSE), SPDX `AGPL-3.0-only`.
+[GNU AGPLv3](LICENSE) · `AGPL-3.0-only`

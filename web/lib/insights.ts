@@ -1,3 +1,4 @@
+import { activityName } from "./activities";
 export type Sample = {
   date: number;
   interval: number;
@@ -14,7 +15,9 @@ export type HourInsight = {
   activities: Breakdown;
   projects: Breakdown;
 };
+export type ActivityDetail = { seconds: number; apps: Breakdown; projects: Breakdown };
 export type InsightDay = {
+  activityDetails?: Record<string, ActivityDetail>;
   day: string;
   seconds: number;
   captures: number;
@@ -40,7 +43,11 @@ export function summarize(samples: Sample[], day: string, now = Date.now() / 100
     .sort((a, b) => a.date - b.date);
   const totals = bucket(),
     hourly = Array.from({ length: 24 }, bucket),
-    appNames = new Map<string, string>();
+    appNames = new Map<string, string>(),
+    details = new Map<
+      string,
+      { seconds: number; apps: Map<string, number>; projects: Map<string, number> }
+    >();
   const hours = Array<number>(24).fill(0),
     counts = Array<number>(24).fill(0);
   const add = (map: Map<string, number>, name: string, seconds: number) =>
@@ -49,7 +56,15 @@ export function summarize(samples: Sample[], day: string, now = Date.now() / 100
     const app = sample.appID || sample.app || "Unknown app";
     appNames.set(app, sample.app || sample.appID || "Unknown app");
     add(target.apps, app, seconds);
-    add(target.activities, sample.activity || "Unclassified", seconds);
+    const activity = activityName(sample.activity);
+    add(target.activities, activity, seconds);
+    if (target === totals) {
+      const detail = details.get(activity) ?? { seconds: 0, apps: new Map(), projects: new Map() };
+      detail.seconds += seconds;
+      add(detail.apps, app, seconds);
+      add(detail.projects, sample.project || "Unassigned", seconds);
+      details.set(activity, detail);
+    }
     add(target.projects, sample.project || "Unassigned", seconds);
   };
   let seconds = 0;
@@ -105,6 +120,20 @@ export function summarize(samples: Sample[], day: string, now = Date.now() / 100
   return {
     seconds,
     ...breakdown(totals),
+    activityDetails: Object.fromEntries(
+      [...details].map(([name, detail]) => [
+        name,
+        {
+          seconds: detail.seconds,
+          apps: rows(detail.apps).map((row) => ({
+            ...row,
+            id: row.name,
+            name: appNames.get(row.name) || row.name,
+          })),
+          projects: rows(detail.projects),
+        },
+      ]),
+    ),
     hours,
     hourly: hourly.map((value, index) => ({
       seconds: hours[index],

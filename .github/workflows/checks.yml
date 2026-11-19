@@ -1,5 +1,13 @@
 name: Checks
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -14,12 +22,16 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun install --cwd web --frozen-lockfile
       - run: bun install --cwd desktop --frozen-lockfile
+      - run: bun audit --audit-level high
+      - run: bun audit --audit-level high
+        working-directory: web
+      - run: bun audit --audit-level high
+        working-directory: desktop
       - run: bun run lint
       - run: bun run format:check
       - run: bun run test:desktop
       - run: bun run test:web
       - run: bun run build:web
-      - run: bun run build:desktop
   agents:
     name: Python agent tools
     runs-on: ubuntu-latest

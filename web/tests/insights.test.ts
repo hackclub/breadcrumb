@@ -65,3 +65,20 @@ test("legacy names and bundle IDs produce one app row without changing total tim
     ]),
   ).toHaveLength(2);
 });
+
+test("activity drilldowns preserve focused time across apps, projects and legacy labels", () => {
+  const date = Date.parse("2026-11-18T13:00:00Z") / 1000 - REFERENCE;
+  const result = summarize(
+    [
+      { date, interval: 60, app: "Browser", activity: "Messaging interface", project: "A" },
+      { date: date + 60, interval: 60, app: "Slick", activity: "Messaging", project: "B" },
+    ],
+    "2026-11-18",
+    date + 90,
+  );
+  expect(result.activities).toEqual([{ name: "Messaging", seconds: 90 }]);
+  const detail = result.activityDetails.Messaging;
+  expect(detail.seconds).toBe(result.seconds);
+  expect(detail.apps.reduce((n, row) => n + row.seconds, 0)).toBe(result.seconds);
+  expect(detail.projects.reduce((n, row) => n + row.seconds, 0)).toBe(result.seconds);
+});
