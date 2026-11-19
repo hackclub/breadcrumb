@@ -1,5 +1,6 @@
 {
   "ignorePatterns": [
+    "desktop/src-tauri/vendor/**",
     "**/node_modules/**",
     "**/target/**",
     ".build/**",

@@ -1,7 +1,7 @@
 // Local, synthetic browser/Go-engine integration harness. Never reads a real library.
 // Build the Go engine first; run with `bun web/scripts/desktop-sync-smoke.ts`.
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtemp, writeFile, readFile, chmod } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Service, sha } from "../lib/service";
@@ -9,8 +9,10 @@ import { MemoryStore } from "../lib/store";
 import { createAuthAccess, type BreadcrumbAuth } from "../lib/auth";
 import { memoryAuth } from "./support/memory-auth";
 import { oauthProviderAuthServerMetadata } from "@better-auth/oauth-provider";
-const directory = await mkdtemp(join(tmpdir(), "breadcrumb-sync-smoke-"));
-const control = randomBytes(32).toString("hex"),
+const directory =
+  process.env.SMOKE_DATA_DIR ?? (await mkdtemp(join(tmpdir(), "breadcrumb-sync-smoke-")));
+await mkdir(directory, { recursive: true, mode: 0o700 });
+const control = process.env.SMOKE_CONTROL ?? randomBytes(32).toString("hex"),
   email = "friend@example.com";
 const store = new MemoryStore();
 let link = "";
@@ -111,7 +113,7 @@ function command(name: string, args: unknown = {}) {
 spawn();
 const server = Bun.serve({
   hostname: "127.0.0.1",
-  port: 0,
+  port: Number(process.env.SMOKE_PORT ?? 0),
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/__test/")) {
@@ -150,8 +152,8 @@ const server = Bun.serve({
             ).length,
             chunks: [...store.data.keys()].filter((key) => key.startsWith("incoming/")).length,
           });
-      } catch (error) {
-        return new Response(error instanceof Error ? error.message : String(error), {
+      } catch {
+        return new Response("Synthetic harness command failed", {
           status: 500,
         });
       }
@@ -188,14 +190,7 @@ auth = memoryAuth({
 });
 await auth.$context;
 
-await writeFile(
-  process.env.SMOKE_CONTEXT_PATH ?? "/tmp/breadcrumb-sync-browser.json",
-  JSON.stringify({ base: env.PUBLIC_URL, control, directory }),
-  { mode: 0o600 },
-);
-console.log(
-  "Synthetic browser sync harness ready; private context is in /tmp/breadcrumb-sync-browser.json",
-);
+console.log("Synthetic browser sync harness ready on " + env.PUBLIC_URL);
 process.on("SIGTERM", () => {
   child.kill();
   server.stop();

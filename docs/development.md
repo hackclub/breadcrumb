@@ -41,3 +41,7 @@ The monorepo contains `desktop/` (Tauri/React), `engine/` (local Go process), `n
 Dependabot groups weekly Bun, Go, Rust, and GitHub Actions updates. CI checks formatting, lint, high/critical JavaScript advisories, Go vet/race tests, native builds on all three platforms, and browser/Better Auth sync flows. The dashboard regression also checks delayed loading, category drilldowns, keyboard focus, and zero layout shift on desktop and mobile. Failed UI runs retain screenshots for seven days. New pushes cancel outdated runs; the main checks also run weekly.
 
 Lint, formatting, each package’s dependency audit, desktop unit tests, web unit tests, and the web build appear as separate GitHub checks. They run independently; one failure does not cancel the others.
+
+## Linux GLib security backport
+
+Tauri’s GTK3 dependency requires GLib 0.18. The desktop pins a local copy of GLib 0.18.5 with the upstream `VariantStrIter` soundness fix backported; its version and MIT license are retained. See [patch provenance](../desktop/src-tauri/vendor/glib/BREADCRUMB_PATCH.md). Linux CI runs the upstream iterator tests in release mode. Remove the override when Tauri accepts a fixed upstream GLib release.

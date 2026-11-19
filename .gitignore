@@ -30,3 +30,7 @@ desktop/dist/
 test-results/
 playwright-report/
 desktop/src-tauri/gen/
+
+# Vendored upstream regression tests create their own build outputs.
+desktop/src-tauri/vendor/glib/target/
+desktop/src-tauri/vendor/glib/Cargo.lock

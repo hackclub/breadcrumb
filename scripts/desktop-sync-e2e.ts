@@ -1,65 +1,79 @@
 // Synthetic only: full browser approval -> local Go engine -> corpus integration.
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const attached = process.argv.includes("--attach");
 const scratch = await mkdtemp(join(tmpdir(), "breadcrumb-e2e-"));
 const artifacts = join(root, "test-results", "sync");
 await mkdir(artifacts, { recursive: true });
-const contextPath = attached ? "/tmp/breadcrumb-sync-browser.json" : join(scratch, "context.json");
+const socket = createServer();
+await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
+const port = (socket.address() as AddressInfo).port;
+await new Promise<void>((resolve) => socket.close(() => resolve()));
+const base = `http://127.0.0.1:${port}`;
+const key = randomBytes(32).toString("hex");
 let web: ReturnType<typeof Bun.spawn> | undefined,
   harness: ReturnType<typeof Bun.spawn> | undefined;
-let context: { base: string; control: string; directory: string } | undefined;
 const browser = await chromium.launch({ headless: true });
 try {
-  if (!attached) {
-    const engine = join(scratch, process.platform === "win32" ? "engine.exe" : "engine");
-    const build = Bun.spawn(["go", "build", "-o", engine, "./cmd/breadcrumb-engine"], {
-      cwd: join(root, "engine"),
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    assert.equal(await build.exited, 0);
-    web = Bun.spawn(["bun", "run", "start", "--port", "3000"], {
-      cwd: join(root, "web"),
-      stdout: "ignore",
-      stderr: "inherit",
-    });
-    let ready = false;
-    for (let attempt = 0; attempt < 50; attempt++) {
-      try {
-        ready = (await fetch("http://127.0.0.1:3000")).ok;
-      } catch {}
-      if (ready) break;
-      await Bun.sleep(200);
-    }
-    assert.ok(ready, "Next.js did not start");
-    harness = Bun.spawn(["bun", "web/scripts/desktop-sync-smoke.ts"], {
-      cwd: root,
-      env: { ...process.env, SMOKE_ENGINE: engine, SMOKE_CONTEXT_PATH: contextPath },
-      stdout: "pipe",
-      stderr: "inherit",
-    });
-    for (let attempt = 0; attempt < 50; attempt++) {
-      if (await Bun.file(contextPath).exists()) break;
-      await Bun.sleep(200);
-    }
+  const engine = join(scratch, process.platform === "win32" ? "engine.exe" : "engine");
+  const build = Bun.spawn(["go", "build", "-o", engine, "./cmd/breadcrumb-engine"], {
+    cwd: join(root, "engine"),
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  assert.equal(await build.exited, 0);
+  web = Bun.spawn(["bun", "run", "start", "--port", "3000"], {
+    cwd: join(root, "web"),
+    stdout: "ignore",
+    stderr: "inherit",
+  });
+  let ready = false;
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try {
+      ready = (await fetch("http://127.0.0.1:3000")).ok;
+    } catch {}
+    if (ready) break;
+    await Bun.sleep(200);
   }
-  context = JSON.parse(await readFile(contextPath, "utf8"));
-  const ctx = context!;
+  assert.ok(ready, "Next.js did not start");
+  harness = Bun.spawn(["bun", "web/scripts/desktop-sync-smoke.ts"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      SMOKE_ENGINE: engine,
+      SMOKE_PORT: String(port),
+      SMOKE_CONTROL: key,
+      SMOKE_DATA_DIR: join(scratch, "library"),
+    },
+    stdout: "ignore",
+    stderr: "inherit",
+  });
   async function control(path: string) {
-    const response = await fetch(ctx.base + "/__test/" + path, {
-      headers: { "x-test-key": ctx.control },
+    const response = await fetch(base + "/__test/" + path, {
+      headers: { "x-test-key": key },
     });
     if (!response.ok) throw Error(await response.text());
     return response.json();
   }
+  let started = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      await control("state");
+      started = true;
+      break;
+    } catch {
+      await Bun.sleep(100);
+    }
+  }
+  assert.ok(started, "Synthetic harness did not start");
   const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
-  await page.goto(ctx.base);
+  await page.goto(base);
   await page.getByLabel("Email address").fill("friend@example.com");
   await page.getByRole("button", { name: "Send sign-in link", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "Check your inbox" }).waitFor();
@@ -88,7 +102,7 @@ try {
   const metrics = await control("metrics");
   assert.equal(metrics.captures, 3);
   assert.ok(metrics.chunks >= 3, "large capture did not use chunk uploads");
-  await page.goto(ctx.base);
+  await page.goto(base);
   await page.locator(".sync-count").filter({ hasText: "3 captures" }).waitFor();
   await page.screenshot({ path: join(artifacts, "synced.png"), fullPage: true });
   for (const width of [375, 320]) {
@@ -132,7 +146,5 @@ try {
   if (harness) await harness.exited;
   web?.kill();
   if (web) await web.exited;
-  if (!attached && context?.directory)
-    await rm(context.directory, { recursive: true, force: true });
   await rm(scratch, { recursive: true, force: true });
 }
