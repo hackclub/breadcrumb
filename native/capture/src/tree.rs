@@ -134,8 +134,11 @@ fn linux_snapshot() -> Result<Vec<Value>, String> {
                     continue;
                 }
                 let role = proxy.get_role_name().await.unwrap_or_default();
-                let editable =
-                    role.contains("text") || role.contains("entry") || role.contains("password");
+                let editable = states.contains(atspi::State::Editable)
+                    || role.contains("text")
+                    || role.contains("entry")
+                    || role.contains("password")
+                    || role == "combo box";
                 let label = if editable {
                     None
                 } else {

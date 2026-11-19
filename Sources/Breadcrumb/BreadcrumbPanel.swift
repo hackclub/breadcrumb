@@ -2,6 +2,7 @@ import SwiftUI
 import ServiceManagement
 import BreadcrumbCore
 
+@available(macOS 26.0, *)
 struct BreadcrumbPanel: View {
     @Bindable var recorder: Recorder
     @AppStorage("captureConsent") private var consent = false
@@ -168,6 +169,7 @@ struct BreadcrumbPanel: View {
     }
 }
 
+@available(macOS 26.0, *)
 struct InsightsContent: View {
     let observations: [CaptureRecord]
     var reviewLabels: () -> Void
@@ -268,6 +270,7 @@ struct InsightsContent: View {
     }
 }
 
+@available(macOS 26.0, *)
 struct CaptureTimeline: View {
     @Bindable var recorder: Recorder
     let clip: Clip?
@@ -425,6 +428,7 @@ struct CaptureTimeline: View {
     }
 }
 
+@available(macOS 26.0, *)
 private struct ClipRow: View {
     let clip: Clip
     @Bindable var recorder: Recorder
@@ -453,6 +457,7 @@ private struct ClipRow: View {
     }
 }
 
+@available(macOS 26.0, *)
 private struct SettingsContent: View {
     @Bindable var recorder: Recorder
     @State private var confirmDelete = false

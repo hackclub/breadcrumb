@@ -65,6 +65,7 @@ export type State = {
     enabled: boolean;
     uploaded: number;
     pending: number;
+    etaSeconds?: number | null;
     uploading: boolean;
     error: string;
     failed: number;

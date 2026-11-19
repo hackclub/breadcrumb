@@ -1,6 +1,7 @@
 import SwiftUI
 
 @main
+@available(macOS 26.0, *)
 struct BreadcrumbApp: App {
     @State private var recorder = Recorder()
 

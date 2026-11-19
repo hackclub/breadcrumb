@@ -1,29 +1,10 @@
 import type { Store } from "./store";
-const REFERENCE = 978307200;
-type Sample = { date: number; interval: number };
+import { summarize, REFERENCE, type Sample } from "./insights";
 type Day = { samples: Record<string, Sample>; updatedAt: string };
-export function sampledSeconds(
-  samples: Sample[],
-  day: string,
-  now = Date.now() / 1000 - REFERENCE,
-) {
-  const start = Date.parse(day + "T00:00:00Z") / 1000 - REFERENCE;
-  const sorted = samples.filter((s) => s.date <= now).sort((a, b) => a.date - b.date);
-  let end = start,
-    seconds = 0;
-  for (const sample of sorted) {
-    const half = Math.min(300, Math.max(15, sample.interval || 60)) / 2;
-    const lower = Math.max(start, sorted[0].date, sample.date - half);
-    const upper = Math.min(start + 86400, now, sample.date + half);
-    if (upper > Math.max(end, lower)) seconds += upper - Math.max(end, lower);
-    end = Math.max(end, upper);
-  }
-  return seconds;
-}
 export async function recordSynced(
   store: Store,
   participant: string,
-  record: { id: string; date: number; sampleIntervalSeconds?: unknown },
+  record: { id: string; date: number; sampleIntervalSeconds?: unknown; [key: string]: unknown },
   receivedAt: string,
 ) {
   const date = new Date((record.date + REFERENCE) * 1000);
@@ -33,15 +14,25 @@ export async function recordSynced(
     const value: Day = current
       ? JSON.parse(Buffer.from(current).toString())
       : { samples: {}, updatedAt: receivedAt };
-    if (value.samples[record.id]) return null;
-    value.samples[record.id] = {
+    const clean = (value: unknown) => (typeof value === "string" ? value.slice(0, 200) : undefined);
+    const context = record.context as { project?: unknown } | undefined;
+    const classification = record.classification as { activity?: unknown } | undefined;
+    const agent = record.agentLabel as { activity?: unknown } | undefined;
+    const sample: Sample = {
       date: record.date,
+      app: clean(record.app),
+      appID: clean(record.bundleID),
+      activity:
+        clean(record.correction) || clean(agent?.activity) || clean(classification?.activity),
+      project: clean(context?.project),
       interval:
         typeof record.sampleIntervalSeconds === "number" &&
         Number.isFinite(record.sampleIntervalSeconds)
           ? Math.min(300, Math.max(15, record.sampleIntervalSeconds))
           : 60,
     };
+    if (JSON.stringify(value.samples[record.id]) === JSON.stringify(sample)) return null;
+    value.samples[record.id] = sample;
     value.updatedAt = [value.updatedAt, receivedAt].sort().at(-1)!;
     return Buffer.from(JSON.stringify(value));
   });
@@ -59,7 +50,7 @@ export async function syncedSummary(store: Store, participant: string, cursor: s
         return {
           day,
           captures: Object.keys(value.samples).length,
-          seconds: sampledSeconds(Object.values(value.samples), day),
+          ...summarize(Object.values(value.samples), day),
           lastSynced: value.updatedAt,
         };
       }),

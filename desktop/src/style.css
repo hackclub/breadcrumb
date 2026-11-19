@@ -1099,3 +1099,44 @@ summary::marker {
   justify-content: flex-start;
   flex-shrink: 0;
 }
+.sync-status {
+  width: 100%;
+  text-align: left;
+}
+.sync-progress {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  font-size: 10px;
+  color: var(--muted);
+}
+.sync-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.sync-eta {
+  font-size: 9px;
+}
+.sync-progress progress {
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--line);
+}
+.sync-progress progress::-webkit-progress-bar {
+  background: var(--line);
+  border-radius: 2px;
+}
+.sync-progress progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 2px;
+}
+.sync-progress progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 2px;
+}

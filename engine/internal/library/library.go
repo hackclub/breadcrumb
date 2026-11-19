@@ -44,6 +44,7 @@ type Node struct {
 }
 type Payload struct {
 	JPEG       []byte  `json:"jpeg"`
+	JPEGRef    string  `json:"jpegRef,omitempty"`
 	Tree       []Node  `json:"tree"`
 	ScreenText *string `json:"screenText,omitempty"`
 }
@@ -168,8 +169,12 @@ func pinned(index Index) map[string]bool {
 }
 func (l *Library) cleanup() error {
 	keep := map[string]bool{}
+	images := map[string]bool{}
 	for _, r := range l.Index.Observations {
 		keep[r.ID()+".json"] = true
+		if ref, ok := r["screenshotRef"].(string); ok {
+			images[ref+".jpg"] = true
+		}
 	}
 	files, e := os.ReadDir(l.Dir)
 	if e != nil {
@@ -179,6 +184,17 @@ func (l *Library) cleanup() error {
 		if len(f.Name()) == 41 && filepath.Ext(f.Name()) == ".json" && !keep[f.Name()] {
 			if e = os.Remove(filepath.Join(l.Dir, f.Name())); e != nil {
 				return e
+			}
+		}
+	}
+	stored, err := os.ReadDir(filepath.Join(l.Dir, "images"))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, f := range stored {
+		if !f.IsDir() && len(f.Name()) == 68 && filepath.Ext(f.Name()) == ".jpg" && !images[f.Name()] {
+			if err = os.Remove(filepath.Join(l.Dir, "images", f.Name())); err != nil {
+				return err
 			}
 		}
 	}
@@ -215,12 +231,32 @@ func (l *Library) SetSettings(s Settings) error {
 	return nil
 }
 func (l *Library) Usage() (history, saved int64) {
-	p := pinned(l.Index)
-	for _, r := range l.Index.Observations {
+	return usage(l.Index)
+}
+func usage(index Index) (history, saved int64) {
+	p := pinned(index)
+	images := map[string]int64{}
+	savedImages := map[string]bool{}
+	for _, r := range index.Observations {
 		if p[r.ID()] {
 			saved += r.Bytes()
 		} else {
 			history += r.Bytes()
+		}
+		if ref, ok := r["screenshotRef"].(string); ok {
+			if size, ok := r["screenshotBytes"].(float64); ok {
+				images[ref] = int64(size)
+			}
+			if p[r.ID()] {
+				savedImages[ref] = true
+			}
+		}
+	}
+	for ref, size := range images {
+		if savedImages[ref] {
+			saved += size
+		} else {
+			history += size
 		}
 	}
 	return
@@ -235,11 +271,12 @@ func (l *Library) Append(r Record, payload Payload, now time.Time) error {
 			return errors.New("duplicate capture ID")
 		}
 	}
+	image := l.deduplicate(r, &payload)
 	b, e := json.Marshal(payload)
 	if e != nil {
 		return e
 	}
-	if len(b) > 12<<20 {
+	if len(b)+len(image) > 12<<20 {
 		return errors.New("capture too large")
 	}
 	if e = l.Expire(now); e != nil {
@@ -247,27 +284,46 @@ func (l *Library) Append(r Record, payload Payload, now time.Time) error {
 	}
 	next := clone(l.Index)
 	p := pinned(next)
-	history, _ := l.Usage()
 	budget := l.Settings.StorageGiB*GiB - (256 << 20)
-	if l.Settings.RetentionHours != 0 {
-		sort.SliceStable(next.Observations, func(i, j int) bool { return next.Observations[i].Date() < next.Observations[j].Date() })
-		kept := []Record{}
-		for _, item := range next.Observations {
-			if history+int64(len(b)) > budget && !p[item.ID()] {
-				history -= item.Bytes()
-			} else {
-				kept = append(kept, item)
-			}
-		}
-		next.Observations = kept
-	}
-	if history+int64(len(b)) > budget {
-		return errors.New("history storage limit reached; old captures preserved")
-	}
 	r["bytes"] = float64(len(b))
 	next.Observations = append(next.Observations, r)
+	if l.Settings.RetentionHours != 0 {
+		sort.SliceStable(next.Observations, func(i, j int) bool { return next.Observations[i].Date() < next.Observations[j].Date() })
+		for i := 0; i < len(next.Observations); {
+			history, _ := usage(next)
+			if history <= budget {
+				break
+			}
+			item := next.Observations[i]
+			if item.ID() != id && !p[item.ID()] {
+				next.Observations = append(next.Observations[:i], next.Observations[i+1:]...)
+			} else {
+				i++
+			}
+		}
+	}
+	if history, _ := usage(next); history > budget {
+		return errors.New("history storage limit reached; old captures preserved")
+	}
+	if len(image) > 0 {
+		if e = os.MkdirAll(filepath.Join(l.Dir, "images"), 0700); e != nil {
+			return e
+		}
+		path, err := l.ImagePath(payload.JPEGRef)
+		if err != nil {
+			return err
+		}
+		if _, err = os.Stat(path); os.IsNotExist(err) {
+			if e = atomic(path, image); e != nil {
+				return e
+			}
+		} else if err != nil {
+			return err
+		}
+	}
 	path := filepath.Join(l.Dir, id+".json")
 	if e = atomic(path, b); e != nil {
+		_ = l.cleanup()
 		return e
 	}
 	if e = l.commit(next); e != nil {
@@ -279,6 +335,7 @@ func (l *Library) Append(r Record, payload Payload, now time.Time) error {
 		}
 		if !found {
 			os.Remove(path)
+			_ = l.cleanup()
 		}
 		return e
 	}
@@ -291,6 +348,9 @@ func (l *Library) Payload(id string) (Payload, error) {
 			b, e := os.ReadFile(filepath.Join(l.Dir, id+".json"))
 			if e == nil {
 				e = json.Unmarshal(b, &p)
+			}
+			if e == nil && p.JPEGRef != "" {
+				p.JPEG, e = l.Image(p.JPEGRef)
 			}
 			return p, e
 		}
@@ -313,16 +373,11 @@ func (l *Library) Save(id, name string, start, end float64) (string, error) {
 	if len(ids) == 0 {
 		return "", errors.New("no captures in this range")
 	}
-	var total int64
-	for _, r := range next.Observations {
-		if p[r.ID()] {
-			total += r.Bytes()
-		}
-	}
+	next.Clips = append(next.Clips, Clip{id, name, Timestamp(time.Now()), ids})
+	_, total := usage(next)
 	if total > l.Settings.SavedStorageGiB*GiB {
 		return "", errors.New("saved clip storage limit reached")
 	}
-	next.Clips = append(next.Clips, Clip{id, name, Timestamp(time.Now()), ids})
 	return id, l.commit(next)
 }
 func (l *Library) DeleteClip(id string) error {

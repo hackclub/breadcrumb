@@ -46,6 +46,7 @@ type engine struct {
 	syncFailures  map[string]syncFailure
 	syncError     string
 	syncLast      string
+	syncSamples   []time.Time
 	syncBackoff   time.Time
 	demo          bool
 }

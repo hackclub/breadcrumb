@@ -1,0 +1,128 @@
+[
+  {
+    "id": "helium",
+    "name": "Helium",
+    "aliases": ["Helium", "net.imput.helium"],
+    "icon": "/app-icons/helium.png",
+    "source": "https://helium.computer"
+  },
+  {
+    "id": "slick",
+    "name": "Slick",
+    "aliases": ["Slick", "dev.slick.byoe.handoff", "app.slick"],
+    "icon": "/app-icons/slick.png",
+    "source": "https://github.com/hackclub/slick"
+  },
+  {
+    "id": "ghostty",
+    "name": "Ghostty",
+    "aliases": ["Ghostty", "com.mitchellh.ghostty"],
+    "icon": "/app-icons/ghostty.png",
+    "source": "https://ghostty.org"
+  },
+  {
+    "id": "zoom",
+    "name": "Zoom",
+    "aliases": ["Zoom", "zoom.us", "us.zoom.xos", "Zoom Workplace"],
+    "icon": "/app-icons/zoom.png",
+    "source": "https://zoom.us"
+  },
+  {
+    "id": "spotify",
+    "name": "Spotify",
+    "aliases": ["Spotify", "com.spotify.client"],
+    "icon": "/app-icons/spotify.png",
+    "source": "https://spotify.com"
+  },
+  {
+    "id": "vscode",
+    "name": "Visual Studio Code",
+    "aliases": ["Code", "Visual Studio Code", "com.microsoft.VSCode", "code.exe"],
+    "icon": "/app-icons/vscode.png",
+    "source": "https://code.visualstudio.com"
+  },
+  {
+    "id": "safari",
+    "name": "Safari",
+    "aliases": ["Safari", "com.apple.Safari"],
+    "icon": "/app-icons/safari.png",
+    "source": "https://apple.com/safari"
+  },
+  {
+    "id": "signal",
+    "name": "Signal",
+    "aliases": ["Signal", "org.whispersystems.signal-desktop"],
+    "icon": "/app-icons/signal.png",
+    "source": "https://signal.org"
+  },
+  {
+    "id": "telegram",
+    "name": "Telegram",
+    "aliases": ["Telegram", "ru.keepcoder.Telegram", "org.telegram.desktop"],
+    "icon": "/app-icons/telegram.png",
+    "source": "https://telegram.org"
+  },
+  {
+    "id": "vesktop",
+    "name": "Vesktop",
+    "aliases": ["Vesktop", "dev.vencord.vesktop"],
+    "icon": "/app-icons/vesktop.png",
+    "source": "https://github.com/Vencord/Vesktop"
+  },
+  {
+    "id": "codex",
+    "name": "Codex",
+    "aliases": ["Codex", "com.openai.codex"],
+    "icon": "/app-icons/codex.png",
+    "source": "https://openai.com/codex"
+  },
+  {
+    "id": "terminal",
+    "name": "Terminal",
+    "aliases": ["Terminal", "com.apple.Terminal", "Apple Terminal"],
+    "icon": "/app-icons/terminal.png",
+    "source": "https://support.apple.com/guide/terminal/welcome/mac"
+  },
+  {
+    "id": "finder",
+    "name": "Finder",
+    "aliases": ["Finder", "com.apple.finder"],
+    "icon": "/app-icons/finder.png",
+    "source": "https://apple.com/macos"
+  },
+  {
+    "id": "github-desktop",
+    "name": "GitHub Desktop",
+    "aliases": ["GitHub Desktop", "com.github.GitHubClient"],
+    "icon": "/app-icons/github-desktop.png",
+    "source": "https://desktop.github.com"
+  },
+  {
+    "id": "notion-calendar",
+    "name": "Notion Calendar",
+    "aliases": ["Notion Calendar", "com.cron.electron", "Cron"],
+    "icon": "/app-icons/notion-calendar.png",
+    "source": "https://notion.com/calendar"
+  },
+  {
+    "id": "iina",
+    "name": "IINA",
+    "aliases": ["IINA", "com.colliderli.iina"],
+    "icon": "/app-icons/iina.png",
+    "source": "https://iina.io"
+  },
+  {
+    "id": "obs",
+    "name": "OBS Studio",
+    "aliases": ["OBS", "OBS Studio", "com.obsproject.obs-studio", "obs64.exe"],
+    "icon": "/app-icons/obs.png",
+    "source": "https://obsproject.com"
+  },
+  {
+    "id": "settings",
+    "name": "System Settings",
+    "aliases": ["System Settings", "System Preferences", "com.apple.systempreferences"],
+    "icon": "/app-icons/settings.png",
+    "source": "https://apple.com/macos"
+  }
+]

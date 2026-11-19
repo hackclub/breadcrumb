@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { applyTheme, readTheme, themes, type Theme } from "../lib/theme";
 import { authClient } from "../lib/auth-client";
-type Day = { day: string; seconds: number; captures: number; lastSynced: string };
+import { TimeDashboard } from "./time-dashboard";
+import type { InsightDay as Day } from "../lib/insights";
 async function request(path: string, body?: unknown) {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
@@ -12,12 +13,6 @@ async function request(path: string, body?: unknown) {
   if (!response.ok) throw Error(await response.text());
   return response.status === 204 ? null : response.json();
 }
-function duration(seconds: number) {
-  if (seconds < 60) return seconds > 0 ? "<1 min" : "0 min";
-  const minutes = Math.round(seconds / 60),
-    hours = Math.floor(minutes / 60);
-  return hours ? `${hours}h ${minutes % 60}m` : `${minutes} min`;
-}
 export default function Portal() {
   const [theme, setTheme] = useState<Theme>("dark"),
     [email, setEmail] = useState(""),
@@ -26,6 +21,7 @@ export default function Portal() {
     [status, setStatus] = useState(""),
     [busy, setBusy] = useState(false),
     [days, setDays] = useState<Day[] | null>(null),
+    [indexing, setIndexing] = useState(false),
     [statsError, setStatsError] = useState("");
   const { data: session, isPending } = authClient.useSession();
   const account = session?.user ?? null,
@@ -50,27 +46,36 @@ export default function Portal() {
       if (loading || cancelled) return;
       loading = true;
       try {
-        let migration;
+        const refresh = async () => {
+          let cursor = "";
+          const values: Day[] = [];
+          do {
+            const page = await request(
+              "/v1/account/summary" + (cursor ? "?cursor=" + encodeURIComponent(cursor) : ""),
+            );
+            values.push(...page.days);
+            cursor = page.nextCursor;
+          } while (cursor && !cancelled);
+          if (!cancelled) {
+            setDays(values);
+            setStatsError("");
+          }
+        };
+        // Show existing summaries immediately while older captures gain breakdowns.
+        await refresh();
+        if (!cancelled) setIndexing(true);
+        let migration,
+          pages = 0;
         do {
           migration = await request("/v1/account/index", {});
+          if (++pages % 5 === 0 && !cancelled) await refresh();
         } while (!migration.done && !cancelled);
-        let cursor = "";
-        const values: Day[] = [];
-        do {
-          const page = await request(
-            "/v1/account/summary" + (cursor ? "?cursor=" + encodeURIComponent(cursor) : ""),
-          );
-          values.push(...page.days);
-          cursor = page.nextCursor;
-        } while (cursor && !cancelled);
-        if (!cancelled) {
-          setDays(values);
-          setStatsError("");
-        }
+        if (!cancelled) await refresh();
       } catch (error) {
         if (!cancelled) setStatsError(error instanceof Error ? error.message : String(error));
       } finally {
         loading = false;
+        if (!cancelled) setIndexing(false);
       }
     }
     void load();
@@ -94,7 +99,6 @@ export default function Portal() {
     }
   }
   const captures = days?.reduce((sum, day) => sum + day.captures, 0) ?? 0;
-  const seconds = days?.reduce((sum, day) => sum + day.seconds, 0) ?? 0;
   const latest = days
     ?.map((day) => day.lastSynced)
     .sort()
@@ -236,16 +240,7 @@ export default function Portal() {
           </section>
         ) : (
           <section>
-            <div className="dashboard-heading">
-              <div>
-                <h1>Your synced history</h1>
-                <p className="account-email">{account.email}</p>
-              </div>
-            </div>
-            <div className="sync-total" aria-label="Estimated synced time">
-              <strong>{days ? duration(seconds) : "—"}</strong>
-              <span>estimated time synced</span>
-            </div>
+            {days ? <TimeDashboard days={days} /> : <h1>Your synced history</h1>}
             <p className="sync-count">
               {days
                 ? `${captures.toLocaleString()} captures`
@@ -255,7 +250,12 @@ export default function Portal() {
               {latest && ` · Last synced ${new Date(latest).toLocaleString()}`}
             </p>
             {statsError && <p role="alert">{statsError}</p>}
-            {!captures && days && (
+            {indexing && (
+              <p className="small-note" role="status">
+                Updating older activity… Your dashboard will fill in as it’s indexed.
+              </p>
+            )}
+            {!captures && days && !indexing && (
               <div className="connect-help">
                 <h2>Connect your desktop</h2>
                 <p>
@@ -264,30 +264,6 @@ export default function Portal() {
                 </p>
               </div>
             )}
-            {Boolean(days?.length) && (
-              <div className="synced-days">
-                {[...days!]
-                  .sort((a, b) => b.day.localeCompare(a.day))
-                  .map((day) => (
-                    <div className="synced-day" key={day.day}>
-                      <time dateTime={day.day}>
-                        {new Date(day.day + "T12:00:00Z").toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                          timeZone: "UTC",
-                        })}
-                      </time>
-                      <span>{day.captures.toLocaleString()} captures</span>
-                      <strong>{duration(day.seconds)}</strong>
-                    </div>
-                  ))}
-              </div>
-            )}
-            <p className="small-note">
-              Time is estimated from synced capture spacing. Overlapping samples count once; long
-              gaps are excluded. Days use UTC.
-            </p>
           </section>
         )}
         {status && (

@@ -2,6 +2,7 @@
   "name": "@breadcrumb/web",
   "version": "0.2.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
@@ -9,7 +10,8 @@
     "start": "next start --hostname 127.0.0.1",
     "test": "bun test ./tests",
     "typecheck": "tsc --noEmit",
-    "auth:migrate": "bun scripts/auth-migrate.ts"
+    "auth:migrate": "bun scripts/auth-migrate.ts",
+    "apps:seed": "bun scripts/app-catalog.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1169.0",

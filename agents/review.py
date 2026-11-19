@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Claim corpus work and invoke an agent command over JSON stdin/stdout."""
 import argparse
+import base64
 import json
 import os
 import shlex
@@ -66,6 +67,16 @@ def main():
                 raise ValueError('Capture exceeds 12 MiB')
             job['capture'] = json.loads(raw)
             del job['captureURL']
+        if job.get('screenshotURL'):
+            url = urllib.parse.urlparse(job['screenshotURL'])
+            if url.scheme != 'https' or url.username or url.password:
+                raise ValueError('Invalid signed screenshot URL')
+            with opener.open(urllib.request.Request(job['screenshotURL']), timeout=90) as response:
+                image = response.read(8 * 1024 * 1024 + 1)
+            if len(image) > 8 * 1024 * 1024:
+                raise ValueError('Screenshot exceeds 8 MiB')
+            job['capture']['upload']['payload']['jpeg'] = base64.b64encode(image).decode()
+            del job['screenshotURL']
         # No shell evaluation and no hidden model destination. The configured command
         # chooses how/where to run its model. Credentials are not passed on stdin.
         command_env = {key: os.environ[key] for key in (

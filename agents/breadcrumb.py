@@ -16,6 +16,15 @@ ACTIVITIES = ['Coding', 'Terminal work', 'Reading', 'Video page', 'Meeting app',
               'Messaging interface', 'AI assistant page', 'Social page', 'Calendar interface',
               'Developer page', 'Browser settings', 'Browsing', 'Music app', 'Email app', 'Unclassified']
 
+def payload_for(library, capture_id):
+    payload = json.loads((library / (capture_id + '.json')).read_text())
+    ref = payload.pop('jpegRef', None)
+    if ref:
+        if len(ref) != 64 or any(c not in '0123456789abcdef' for c in ref):
+            raise ValueError('Invalid screenshot reference')
+        payload['jpeg'] = base64.b64encode((library / 'images' / (ref + '.jpg')).read_bytes()).decode()
+    return payload
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     library_path = Path.home() / 'Library/Application Support/Breadcrumb'
@@ -52,7 +61,7 @@ def main():
         record = next((r for r in records if r['id'].lower() == str(args.id)), None)
         if record is None:
             parser.error('Capture is not in the library')
-        payload = json.loads((args.library / (str(args.id).upper() + '.json')).read_text())
+        payload = payload_for(args.library, record['id'])
         bundle = dict(schemaVersion=1, consent=args.command == 'upload', record=record, payload=payload)
         data = json.dumps(bundle, ensure_ascii=False).encode()
         if args.command == 'bundle':
@@ -117,7 +126,8 @@ def main():
     if args.command == 'show':
         if not any(r['id'].lower() == str(args.id) for r in records):
             parser.error('Capture is not in the library')
-        payload = json.loads((args.library / (str(args.id).upper() + '.json')).read_text())
+        record = next(r for r in records if r['id'].lower() == str(args.id))
+        payload = payload_for(args.library, record['id'])
         if args.jpeg:
             args.jpeg.write_bytes(base64.b64decode(payload['jpeg']))
         print(json.dumps({'tree': payload['tree'], 'screenText': payload.get('screenText')}, ensure_ascii=False, indent=2))

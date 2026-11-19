@@ -74,9 +74,34 @@ test("ingest preserves context, scopes contributor, and handles retries/conflict
   );
   const entries = await store.list("captures/");
   assert.equal(entries.keys.length, 1);
+  const stored = JSON.parse(Buffer.from((await store.get(entries.keys[0]))!).toString()).upload
+    .payload;
+  assert.equal(stored.jpeg, "");
+  assert.deepEqual(stored.tree, upload.payload.tree);
+  const images = await store.list("images/");
+  assert.equal(images.keys.length, 1);
   assert.deepEqual(
-    JSON.parse(Buffer.from((await store.get(entries.keys[0]))!).toString()).upload.payload,
-    upload.payload,
+    Buffer.from((await store.get(images.keys[0]))!),
+    Buffer.from(upload.payload.jpeg, "base64"),
+  );
+  const referenced = {
+    ...upload,
+    record: { ...upload.record, id: "22345678-1234-4234-8234-123456789abc" },
+    payload: { ...upload.payload, jpeg: "", jpegRef: stored.jpegRef },
+  };
+  assert.equal((await service.dispatch(req("/v1/ingest", referenced, token))).status, 201);
+  assert.equal((await store.list("images/")).keys.length, 1);
+  assert.equal(
+    (
+      await service.dispatch(
+        req(
+          "/v1/ingest",
+          { ...referenced, payload: { ...referenced.payload, jpegRef: "f".repeat(64) } },
+          token,
+        ),
+      )
+    ).status,
+    409,
   );
 });
 test("cross-origin account writes and invalid capture payloads are rejected", async () => {
@@ -256,6 +281,27 @@ test("synced history counts concurrent uploads once and excludes overlapping tim
     0,
   );
   assert.ok(seconds < 150 && seconds > 50);
+  for (const day of summary.days) {
+    for (const field of ["apps", "activities", "projects"]) {
+      assert.equal(
+        day[field].reduce((sum: number, row: { seconds: number }) => sum + row.seconds, 0),
+        day.seconds,
+      );
+    }
+    assert.ok(
+      Math.abs(day.hours.reduce((sum: number, value: number) => sum + value, 0) - day.seconds) <
+        0.001,
+    );
+    for (const hour of day.hourly) {
+      for (const field of ["apps", "activities", "projects"])
+        assert.ok(
+          Math.abs(
+            hour[field].reduce((sum: number, row: { seconds: number }) => sum + row.seconds, 0) -
+              hour.seconds,
+          ) < 0.001,
+        );
+    }
+  }
   assert.equal((await service.dispatch(req("/v1/account/summary"))).status, 401);
   const another = "another-session";
   assert.equal(

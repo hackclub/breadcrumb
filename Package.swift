@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Breadcrumb",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v14)],
     products: [
         .library(name: "BreadcrumbCore", targets: ["BreadcrumbCore"]),
         .library(name: "BreadcrumbCaptureSupport", targets: ["BreadcrumbCaptureSupport"]),

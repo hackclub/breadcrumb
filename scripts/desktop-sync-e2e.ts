@@ -66,7 +66,7 @@ try {
   const { link } = await control("link");
   assert.ok(link);
   await page.goto(link);
-  await page.getByRole("heading", { name: "Your synced history", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Where your time went", exact: true }).waitFor();
   await page.getByText("0 captures", { exact: false }).waitFor();
   await page.screenshot({ path: join(artifacts, "empty.png"), fullPage: true });
   const flow = await control("start");

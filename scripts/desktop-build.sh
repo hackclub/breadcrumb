@@ -2,6 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+if [[ "$(uname -s)" == Darwin ]]; then export MACOSX_DEPLOYMENT_TARGET=14.0; fi
 python3 scripts/desktop-prepare.py
 if [[ "${1:-}" == --prepare ]]; then exit 0; fi
 if [[ "$(uname -s)" == Darwin && "${BREADCRUMB_SKIP_SIGNING:-0}" != 1 ]]; then

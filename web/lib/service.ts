@@ -50,7 +50,14 @@ const payloadSchema = z
         (value) =>
           value.length % 4 === 0 && Buffer.from(value, "base64").toString("base64") === value,
         "invalid base64",
-      ),
+      )
+      .nullable()
+      .transform((value) => value ?? "")
+      .default(""),
+    jpegRef: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     tree: z
       .array(
         z.object({
@@ -63,7 +70,10 @@ const payloadSchema = z
     screenText: z.string().max(12000).nullable().optional(),
   })
   .strict()
-  .refine((p) => p.jpeg.length > 0 || p.tree.length > 0, "screenshot or tree required")
+  .refine(
+    (p) => p.jpeg.length > 0 || !!p.jpegRef || p.tree.length > 0,
+    "screenshot or tree required",
+  )
   .refine((p) => Buffer.from(p.jpeg, "base64").length <= 8 * 1024 * 1024, "image too large");
 const uploadSchema = z
   .object({
@@ -178,6 +188,20 @@ export class Service {
   async ingest(raw: unknown, account: Identity) {
     const upload = uploadSchema.parse(raw);
     upload.record.id = upload.record.id.toLowerCase();
+    if (upload.payload.jpeg) {
+      const image = Buffer.from(upload.payload.jpeg, "base64");
+      const ref = sha(image);
+      if (upload.payload.jpegRef && upload.payload.jpegRef !== ref)
+        fail(400, "Screenshot checksum mismatch");
+      await this.store.create(`images/${account.id}/${ref}.jpg`, image);
+      upload.payload.jpegRef = ref;
+      upload.payload.jpeg = "";
+    } else if (
+      upload.payload.jpegRef &&
+      !(await this.store.exists(`images/${account.id}/${upload.payload.jpegRef}.jpg`))
+    ) {
+      fail(409, "Screenshot reference unavailable");
+    }
     const key = `captures/${account.id}/${upload.record.id}.json`;
     const entry: Entry = {
       participant: account.id,
@@ -188,6 +212,11 @@ export class Service {
     let duplicate = false;
     if (!(await this.store.create(key, bytes(entry)))) {
       const previous = await this.read<Entry>(key);
+      // Normalize legacy inline screenshots for idempotent retries after upgrading.
+      if (previous?.upload.payload.jpeg) {
+        previous.upload.payload.jpegRef = sha(Buffer.from(previous.upload.payload.jpeg, "base64"));
+        previous.upload.payload.jpeg = "";
+      }
       if (!previous || canonical(previous.upload) !== canonical(upload))
         fail(409, "Capture ID already contains different data");
       duplicate = true;
@@ -240,6 +269,9 @@ export class Service {
           upload: { schemaVersion: 1, consent: true, record: entry.upload.record },
         },
         captureURL: await this.store.url(item.captureKey),
+        screenshotURL: entry.upload.payload.jpegRef
+          ? await this.store.url(`images/${entry.participant}/${entry.upload.payload.jpegRef}.jpg`)
+          : undefined,
         contextURL: `/v1/review/context/${item.id}`,
         entry,
       };
@@ -275,6 +307,13 @@ export class Service {
     const job = await this.claim("vercel-gateway");
     if (!job.job) return { status: "empty", nextCursor: job.nextCursor };
     const capture = job.entry!.upload;
+    if (!capture.payload.jpeg && capture.payload.jpegRef) {
+      const image = await this.store.get(
+        `images/${job.entry!.participant}/${capture.payload.jpegRef}.jpg`,
+      );
+      if (!image) fail(503, "Screenshot unavailable");
+      capture.payload.jpeg = Buffer.from(image!).toString("base64");
+    }
     const content: unknown[] = [
       {
         type: "text",
@@ -350,7 +389,7 @@ export class Service {
       if (path === "/v1/account/index" && method === "POST") {
         this.sameOrigin(req);
         const account = await this.account(req, "session");
-        const key = `sync/migrations/${account.id}.json`;
+        const key = `sync/migrations/insights-v3/${account.id}.json`;
         const previous = await this.read<{ cursor: string; done: boolean }>(key);
         if (previous?.done) return Response.json({ done: true });
         const page = await this.store.list(`captures/${account.id}/`, previous?.cursor ?? "", 15);

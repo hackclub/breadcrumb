@@ -1,6 +1,6 @@
 # Breadcrumb web and sync service
 
-A small Next.js portal: email sign-in, browser approval for the desktop app, and a dashboard of synced capture time. Better Auth owns email verification, browser sessions, OAuth authorization, consent, access tokens, refresh rotation, and revocation. PostgreSQL holds its tables in the isolated `breadcrumb_auth` schema. R2 holds captures, accessibility trees, review jobs, and lightweight daily sync summaries.
+A small Next.js portal: email sign-in, browser approval for the desktop app, and a time dashboard with daily trends, app/activity rankings, detected projects, and hourly patterns. Better Auth owns email verification, browser sessions, OAuth authorization, consent, access tokens, refresh rotation, and revocation. PostgreSQL holds its tables in the isolated `breadcrumb_auth` schema. R2 holds captures, accessibility trees, review jobs, and lightweight daily sync summaries.
 
 There is no Hack Club identity or internal service dependency. Use any domain, your own PostgreSQL server, R2 bucket, and Loops account. Vercel is optional; the same application runs with `bun run build` and `bun run start`. The desktop accepts your portal's URL.
 
@@ -34,10 +34,10 @@ The durable queue is scoped to server and account. It pins payload files with ha
 
 - `/api/auth/*` is Better Auth's handler. Its OAuth provider exposes authorization, dynamic public-client registration, token, and revocation endpoints.
 - `GET /.well-known/oauth-authorization-server/api/auth` provides the provider's standard metadata.
-- `GET /v1/account/summary` uses a Better Auth browser session and returns paginated daily synced capture counts, estimated seconds, and last-sync timestamps.
+- `GET /v1/account/summary` uses a Better Auth browser session and returns paginated daily synced capture counts, estimated seconds, app/activity/project breakdowns, hourly UTC coverage, and last-sync timestamps.
 - `POST /v1/account/index` incrementally indexes older corpus contributions into lightweight summaries. New uploads update summaries directly with R2 conditional writes, so concurrent uploads and retries do not inflate totals.
 - `POST /v1/ingest` accepts `{schemaVersion:1,consent:true,record,payload}` with a Better Auth access token scoped to `captures:sync` and this server's `/v1` resource. Captures retain idempotent UUIDs; changed data under an existing UUID returns 409.
-- Captures over 4 MiB use `/v1/uploads/start`, `/chunk?index=N`, and `/complete`, keeping requests below serverless body limits. Uploads are scoped to the authenticated contributor. Payloads are limited to 12 MiB with an 8 MiB decoded JPEG ceiling.
+- Captures over 4 MiB use `/v1/uploads/start`, `/chunk?index=N`, and `/complete`, keeping requests below serverless body limits. Uploads are scoped to the authenticated contributor. Payloads are limited to 12 MiB with an 8 MiB decoded JPEG ceiling. JPEGs are stored once per account at `images/<participant>/<sha256>.jpg`; captures retain `jpegRef`. Clients can send only that reference once its pixels exist. Missing references return 409 and the desktop retries with pixels. Legacy inline uploads remain accepted.
 - Review-agent credentials configured in `REVIEW_AGENT_TOKENS` authorize `/v1/review/claim`, `/submit`, `/index`, and `/context/:job`. These service credentials are separate from user sign-in. Claims are leased, and reviews retain evidence and provenance.
 - `GET /healthz` reports configuration. The optional `/api/cron/review` endpoint requires `CRON_SECRET` and can be invoked by any scheduler. Gateway review is disabled unless explicitly enabled and configured.
 
@@ -52,3 +52,11 @@ Keep R2 public access disabled. Expire temporary `incoming/` upload chunks after
 After installing root/web dependencies, building the web app, and installing Playwright Chromium, `bun run test:sync` runs the browser and real Go engine against a temporary synthetic library and Better Auth's official memory adapter. It tests email-link sign-in, consent, PKCE callback, chunked backlog upload, refresh after restart, new-capture upload, sign-out, and mobile layout. It never opens a real capture library or sends a real sign-in email. Screenshots go to `test-results/sync/`.
 
 `SMOKE_URL=https://your-server.example bun web/scripts/live-smoke.ts` checks live health, OAuth discovery, and unauthenticated API rejection without uploading data or sending emails.
+
+## App icon catalog
+
+`breadcrumb_catalog.apps` in PostgreSQL stores canonical app IDs, names, aliases (bundle IDs, package/executable names), icon paths, and official project links. `GET /api/apps` serves the shared catalog with a CDN cache. Icons are small, locally served PNGs; no browsing history is sent to external icon services. Unknown apps retain a monogram fallback.
+
+To add or update an app, add its 64px PNG in `public/app-icons/`, edit `lib/app-seed.json`, then run `bun run apps:seed` from `web/` with `DATABASE_URL` configured. The script creates only its own catalog schema and upserts entries. Bundled entries keep the UI working before seeding or during database outages.
+
+The dashboard's day-by-hour grid shows up to 14 recent days. Selecting an hour reveals sampled time, capture count, apps, activity, and detected projects. Hour/day boundaries use UTC. Existing captures gain richer breakdowns through the incremental account index.

@@ -7,11 +7,11 @@ os.chdir(root)
 target=subprocess.check_output(['rustc','-vV'],text=True).split('host: ')[1].splitlines()[0]
 suffix='.exe' if os.name=='nt' else ''
 folder=root/'desktop/src-tauri/binaries';folder.mkdir(parents=True,exist_ok=True)
+if sys.platform=='darwin':os.environ.setdefault('MACOSX_DEPLOYMENT_TARGET','14.0')
 subprocess.run(['go','build','-trimpath','-o',str(folder/f'breadcrumb-engine-{target}{suffix}'),'./cmd/breadcrumb-engine'],cwd=root/'engine',check=True)
 if sys.platform=='darwin':
     env=dict(os.environ)
-    sdk=Path('/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk')
-    if sdk.exists():env.setdefault('SDKROOT',str(sdk))
+    env.setdefault('SDKROOT',subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip())
     subprocess.run(['swift','build','-c','release','--product','BreadcrumbCapture'],env=env,check=True)
     binary=Path(subprocess.check_output(['swift','build','-c','release','--show-bin-path'],env=env,text=True).strip())/'BreadcrumbCapture'
 else:

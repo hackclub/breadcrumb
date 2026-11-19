@@ -60,6 +60,29 @@ func uploadTo(ctx context.Context, c credentials, record library.Record, payload
 		err = json.Unmarshal(data, &out)
 		return out, err
 	}
+	// Probe with the account-scoped image reference first. Unordered queues and new
+	// servers can miss the image; retry with pixels only when the server needs them.
+	if len(payload.JPEG) > 0 {
+		hash := sha256.Sum256(payload.JPEG)
+		payload.JPEGRef = hex.EncodeToString(hash[:])
+		compact := payload
+		compact.JPEG = nil
+		b, err := json.Marshal(map[string]any{"schemaVersion": 1, "consent": true, "record": record, "payload": compact})
+		if err != nil {
+			return nil, err
+		}
+		result, err := request("/v1/ingest", b, nil)
+		if err == nil {
+			return result, nil
+		}
+		var remote *apiError
+		if !errors.As(err, &remote) || (remote.Status != 400 && !(remote.Status == 409 && strings.Contains(remote.Message, "Screenshot reference unavailable"))) {
+			return nil, err
+		}
+		if remote.Status == 400 {
+			payload.JPEGRef = ""
+		}
+	}
 	bundle := map[string]any{"schemaVersion": 1, "consent": true, "record": record, "payload": payload}
 	b, err := json.Marshal(bundle)
 	if err != nil {

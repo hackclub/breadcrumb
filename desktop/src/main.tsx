@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { SyncProgress } from "./sync-progress";
 import { engine, isNative, hidePanel, withPanelDialog, confirmAction, onPanelOpen } from "./bridge";
 import {
   activities,
@@ -299,11 +300,7 @@ function App() {
               )}
               {state.sync?.enabled && (
                 <button className="sync-status quiet" onClick={() => expand("settings")}>
-                  {state.sync.error
-                    ? "Sync needs attention"
-                    : state.sync.pending
-                      ? `Syncing · ${state.sync.pending.toLocaleString()} remaining`
-                      : "All captures synced"}
+                  <SyncProgress sync={state.sync} />
                 </button>
               )}
               <div className="quick-actions">
@@ -1029,11 +1026,11 @@ function SettingsPage({
       <section className="settings-section">
         <h2>Account</h2>
         {state.sync?.email && <p className="account-email">{state.sync.email}</p>}
-        <p>
-          {state.sync?.enabled
-            ? `${state.sync.uploaded.toLocaleString()} synced · ${state.sync.pending.toLocaleString()} remaining`
-            : "Sign in to sync all your existing and future captures."}
-        </p>
+        {state.sync?.enabled ? (
+          <SyncProgress sync={state.sync} />
+        ) : (
+          <p>Sign in to sync all your existing and future captures.</p>
+        )}
         {state.sync?.error && <p role="alert">{state.sync.error}</p>}
         {Boolean(state.sync?.failed) && !state.sync?.error && (
           <p role="status">{state.sync?.failed} captures are waiting to retry.</p>

@@ -88,6 +88,58 @@ func TestSyncResumesImmutableQueueAfterFailureAndRetention(t *testing.T) {
 		t.Fatal("acknowledged snapshots remain")
 	}
 }
+
+func TestSharedScreenshotQueueRetainsPixelsAndOnlyUploadsThemOnce(t *testing.T) {
+	images, full, references := map[string]bool{}, 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var capture queuedCapture
+		if err := json.NewDecoder(r.Body).Decode(&capture); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		if len(capture.Payload.JPEG) == 0 {
+			if !images[capture.Payload.JPEGRef] {
+				http.Error(w, "Screenshot reference unavailable", 409)
+				return
+			}
+			references++
+		} else {
+			if string(capture.Payload.JPEG) != string([]byte{1, 2, 3}) {
+				t.Error("lost queued pixels")
+			}
+			full++
+			images[capture.Payload.JPEGRef] = true
+		}
+		io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+	e := syncFixture(t, server.URL)
+	if err := e.loadSync(e.credentials); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.lib.DeleteSince(0); err != nil {
+		t.Fatal(err)
+	}
+	restarted := &engine{lib: e.lib, credentials: e.credentials}
+	restarted.syncOnce()
+	restarted.syncOnce()
+	if full != 1 || references != 1 || len(restarted.syncSent) != 2 {
+		t.Fatalf("full=%d references=%d sent=%d error=%s", full, references, len(restarted.syncSent), restarted.syncError)
+	}
+	// Estimates use measured completions and disappear while sync is failing.
+	now := time.Now()
+	restarted.syncPending = map[string]bool{"a": true, "b": true}
+	restarted.syncSamples = []time.Time{now.Add(-20 * time.Second), now.Add(-10 * time.Second), now}
+	state := restarted.syncState()
+	if eta, ok := state["etaSeconds"].(*int); !ok || eta == nil || *eta < 20 || *eta > 21 {
+		t.Fatalf("invalid ETA: %v", state["etaSeconds"])
+	}
+	restarted.syncError = "Offline"
+	if eta := restarted.syncState()["etaSeconds"].(*int); eta != nil {
+		t.Fatal("failure should hide ETA")
+	}
+}
 func TestSyncDoesNotBlockCaptureAndDisconnectCancelsUpload(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})

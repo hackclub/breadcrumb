@@ -1,12 +1,14 @@
 import {
   S3Client,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   DeleteObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 export interface Store {
+  exists(key: string): Promise<boolean>;
   get(key: string): Promise<Uint8Array | null>;
   create(key: string, value: Uint8Array): Promise<boolean>;
   remove(key: string): Promise<void>;
@@ -41,6 +43,18 @@ export class R2Store implements Store {
       responseChecksumValidation: "WHEN_REQUIRED",
     });
   }
+  async exists(key: string) {
+    try {
+      await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: this.prefix + key }),
+      );
+      return true;
+    } catch (e) {
+      if ((e as { $metadata?: { httpStatusCode: number } }).$metadata?.httpStatusCode === 404)
+        return false;
+      throw e;
+    }
+  }
   async get(key: string) {
     try {
       const out = await this.client.send(
@@ -60,7 +74,7 @@ export class R2Store implements Store {
           Bucket: this.bucket,
           Key: this.prefix + key,
           Body: value,
-          ContentType: "application/json",
+          ContentType: key.endsWith(".jpg") ? "image/jpeg" : "application/json",
           IfNoneMatch: "*",
         }),
       );
@@ -143,6 +157,9 @@ export class R2Store implements Store {
 }
 export class MemoryStore implements Store {
   data = new Map<string, Uint8Array>();
+  async exists(key: string) {
+    return this.data.has(key);
+  }
   async get(k: string) {
     return this.data.get(k) ?? null;
   }

@@ -36,7 +36,7 @@
     "targets": "all",
     "externalBin": ["binaries/breadcrumb-engine", "binaries/breadcrumb-capture"],
     "macOS": {
-      "minimumSystemVersion": "26.0",
+      "minimumSystemVersion": "14.0",
       "infoPlist": "Info.plist",
       "hardenedRuntime": true
     },

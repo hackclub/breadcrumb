@@ -4,7 +4,25 @@ use std::io::{self, BufRead, Write};
 mod tree;
 
 fn capabilities() -> Value {
-    json!({"screenshot":true,"accessibility":cfg!(any(windows,target_os="linux")),"ocr":false,"windowContext":true,"exclusions":"skip-when-visible","backend":if cfg!(windows){"Windows native capture + UI Automation"}else{"X11/Wayland capture + AT-SPI"},"permission":"managed-by-desktop"})
+    let supported = session_error().is_none();
+    json!({"screenshot":supported,"accessibility":supported && cfg!(any(windows,target_os="linux")),"ocr":false,"windowContext":supported,"exclusions":if supported {"skip-when-visible"} else {"unsupported-session"},"backend":if cfg!(windows){"Windows native capture + UI Automation"}else{"X11 capture + AT-SPI"},"permission":if supported {"managed-by-desktop"} else {"unsupported-session"}})
+}
+fn session_error() -> Option<&'static str> {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("WAYLAND_DISPLAY").is_ok_and(|value| !value.is_empty())
+            || std::env::var("XDG_SESSION_TYPE")
+                .is_ok_and(|value| value.eq_ignore_ascii_case("wayland"))
+        {
+            return Some("Wayland capture is not supported yet: XWayland cannot reliably identify native windows or enforce exclusions. Use an X11 login session.");
+        }
+        if !std::env::var("DISPLAY").is_ok_and(|value| !value.is_empty()) {
+            return Some(
+                "No X11 display is available. Start Breadcrumb inside an X11 desktop session.",
+            );
+        }
+    }
+    None
 }
 fn excluded(app: &str, exclusions: &[String]) -> bool {
     let app = app.to_lowercase();
@@ -19,6 +37,38 @@ fn excluded(app: &str, exclusions: &[String]) -> bool {
     .any(|s| app.contains(s))
         || exclusions.iter().any(|s| app == s.to_lowercase())
 }
+fn intersects(a: (i32, i32, u32, u32), b: (i32, i32, u32, u32)) -> bool {
+    i64::from(a.0) < i64::from(b.0) + i64::from(b.2)
+        && i64::from(a.0) + i64::from(a.2) > i64::from(b.0)
+        && i64::from(a.1) < i64::from(b.1) + i64::from(b.3)
+        && i64::from(a.1) + i64::from(a.3) > i64::from(b.1)
+}
+fn on_display(window: &xcap::Window, monitor: &xcap::Monitor) -> xcap::XCapResult<bool> {
+    Ok(intersects(
+        (window.x()?, window.y()?, window.width()?, window.height()?),
+        (
+            monitor.x()?,
+            monitor.y()?,
+            monitor.width()?,
+            monitor.height()?,
+        ),
+    ))
+}
+fn ensure_allowed(
+    windows: &[xcap::Window],
+    monitor: &xcap::Monitor,
+    exclusions: &[String],
+) -> Result<(), String> {
+    for window in windows {
+        if !window.is_minimized().unwrap_or(false)
+            && excluded(&window.app_name().unwrap_or_default(), exclusions)
+            && on_display(window, monitor).unwrap_or(true)
+        {
+            return Err("Capture skipped: an excluded app may be visible on this display".into());
+        }
+    }
+    Ok(())
+}
 fn perform(request: &Value) -> Result<Value, String> {
     let command = request["command"].as_str().unwrap_or("");
     if command.starts_with("icon:") {
@@ -26,8 +76,11 @@ fn perform(request: &Value) -> Result<Value, String> {
     }
     if command == "permissions" {
         return Ok(
-            json!({"ok":true,"capabilities":capabilities(),"message":"Use the operating system screen-sharing/accessibility settings. Wayland may show its own chooser."}),
+            json!({"ok":true,"capabilities":capabilities(),"message":session_error().unwrap_or("Use the operating system screen-sharing/accessibility settings.")}),
         );
+    }
+    if let Some(error) = session_error() {
+        return Err(error.into());
     }
     let exclusions: Vec<String> = request["exclusions"]
         .as_array()
@@ -40,9 +93,6 @@ fn perform(request: &Value) -> Result<Value, String> {
     let windows = xcap::Window::all().map_err(|e| format!("Window context unavailable: {e}. Linux requires an X11 session for reliable foreground metadata."))?;
     let focused = windows.iter().find(|w| w.is_focused().unwrap_or(false));
     let Some(focused) = focused else {
-        if cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some() {
-            return Err("This Wayland session does not expose foreground windows. Use an X11 session for capture with exclusions.".into());
-        }
         return Ok(json!({"ok":true,"contextKey":"","capabilities":capabilities()}));
     };
     let app = focused.app_name().unwrap_or_default();
@@ -62,17 +112,7 @@ fn perform(request: &Value) -> Result<Value, String> {
     // These platforms cannot natively omit arbitrary other apps from a display image.
     // Skip a sample when an excluded on-screen window may be visible, instead of
     // claiming it was filtered. This is deliberately conservative about occlusion.
-    for window in &windows {
-        if !window.is_minimized().unwrap_or(true)
-            && window
-                .current_monitor()
-                .map(|m| m.id().ok() == monitor.id().ok())
-                .unwrap_or(false)
-            && excluded(&window.app_name().unwrap_or_default(), &exclusions)
-        {
-            return Err("Capture skipped: an excluded app may be visible on this display".into());
-        }
-    }
+    ensure_allowed(&windows, &monitor, &exclusions)?;
     let image = monitor
         .capture_image()
         .map_err(|e| format!("Screen capture unavailable: {e}"))?;
@@ -101,6 +141,7 @@ fn perform(request: &Value) -> Result<Value, String> {
     let (tree, tree_status) = tree::snapshot();
     // Re-read focus after pixels/tree; never pair them with a different app/window.
     let after = xcap::Window::all().map_err(|e| e.to_string())?;
+    ensure_allowed(&after, &monitor, &exclusions)?;
     if !after.iter().any(|w| {
         w.id().ok() == Some(id)
             && w.is_focused().unwrap_or(false)
@@ -113,16 +154,12 @@ fn perform(request: &Value) -> Result<Value, String> {
         if visible.len() >= 20 {
             break;
         }
-        if window.is_minimized().unwrap_or(true)
+        if window.is_minimized().unwrap_or(false)
             || excluded(&window.app_name().unwrap_or_default(), &exclusions)
         {
             continue;
         }
-        if window
-            .current_monitor()
-            .map(|m| m.id().ok() != monitor.id().ok())
-            .unwrap_or(true)
-        {
+        if !on_display(window, &monitor).unwrap_or(true) {
             continue;
         }
         visible.push(json!({"windowID":window.id().unwrap_or(0),"app":window.app_name().unwrap_or_default(),"bundleID":window.app_name().unwrap_or_default(),"title":window.title().unwrap_or_default(),"focused":window.id().ok()==Some(id),"visibility":"on-screen-window; occlusion unknown"}));
@@ -188,5 +225,12 @@ mod tests {
         assert!(excluded("Bitwarden", &[]));
         assert!(excluded("Example.EXE", &["example.exe".into()]));
         assert!(!excluded("Editor", &[]));
+    }
+    #[test]
+    fn spanning_windows_intersect_both_displays() {
+        assert!(intersects((402, 590, 238, 290), (0, 0, 800, 600)));
+        assert!(intersects((402, 590, 238, 290), (0, 600, 800, 600)));
+        assert!(!intersects((0, 600, 100, 100), (0, 0, 800, 600)));
+        assert!(intersects((-50, -20, 100, 100), (0, 0, 800, 600)));
     }
 }

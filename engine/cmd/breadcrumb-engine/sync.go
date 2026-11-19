@@ -22,6 +22,7 @@ type queuedCapture struct {
 	Record      library.Record  `json:"record"`
 	Payload     library.Payload `json:"payload"`
 	PayloadFile string          `json:"payloadFile,omitempty"`
+	ImageFile   string          `json:"imageFile,omitempty"`
 }
 
 func digestString(value string) string {
@@ -51,6 +52,7 @@ func (e *engine) loadSync(c credentials) error {
 	e.syncFailures = map[string]syncFailure{}
 	e.syncError = ""
 	e.syncLast = ""
+	e.syncSamples = nil
 	e.syncBackoff = time.Time{}
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -99,6 +101,27 @@ func (e *engine) queueCapture(row library.Record) error {
 		}
 	}
 	capture := queuedCapture{Record: row, PayloadFile: id + ".payload"}
+	if ref, ok := row["screenshotRef"].(string); ok {
+		source, err := e.lib.ImagePath(ref)
+		if err != nil {
+			return err
+		}
+		capture.ImageFile = id + ".jpg"
+		target := filepath.Join(e.syncProfile, "pending", capture.ImageFile)
+		if _, err = os.Stat(target); os.IsNotExist(err) {
+			if err = os.Link(source, target); err != nil {
+				data, readErr := os.ReadFile(source)
+				if readErr != nil {
+					return readErr
+				}
+				if err = os.WriteFile(target, data, 0600); err != nil {
+					return err
+				}
+			}
+		} else if err != nil {
+			return err
+		}
+	}
 	if err := writePrivate(filepath.Join(e.syncProfile, "pending", id+".json"), capture); err != nil {
 		return err
 	}
@@ -121,7 +144,14 @@ func (e *engine) syncState() map[string]any {
 			}
 		}
 	}
-	return map[string]any{"email": e.credentials.Email, "enabled": e.credentials.AutoSync, "uploaded": uploaded, "pending": pending, "uploading": e.syncInFlight, "error": e.syncError, "failed": len(e.syncFailures), "lastSynced": e.syncLast, "signingIn": e.auth != nil, "authError": e.authError}
+	var eta *int
+	if n := len(e.syncSamples); pending > 0 && n >= 3 && e.syncError == "" && time.Now().After(e.syncBackoff) {
+		seconds := e.syncSamples[n-1].Sub(e.syncSamples[0]).Seconds() / float64(n-1)
+		seconds = max(seconds, time.Since(e.syncSamples[n-1]).Seconds())
+		remaining := max(1, int(seconds*float64(pending)))
+		eta = &remaining
+	}
+	return map[string]any{"email": e.credentials.Email, "enabled": e.credentials.AutoSync, "uploaded": uploaded, "pending": pending, "etaSeconds": eta, "uploading": e.syncInFlight, "error": e.syncError, "failed": len(e.syncFailures), "lastSynced": e.syncLast, "signingIn": e.auth != nil, "authError": e.authError}
 }
 func (e *engine) syncOnce() {
 	e.mu.Lock()
@@ -213,6 +243,19 @@ func (e *engine) syncOnce() {
 		e.mu.Unlock()
 		return
 	}
+	if capture.ImageFile != "" {
+		if filepath.Base(capture.ImageFile) != capture.ImageFile {
+			err = errors.New("Invalid queued screenshot")
+		} else {
+			capture.Payload.JPEG, err = os.ReadFile(filepath.Join(profile, "pending", capture.ImageFile))
+		}
+		if err != nil {
+			e.syncError = "Could not read queued screenshot"
+			e.syncFailures[id] = syncFailure{err.Error(), time.Now().Add(time.Minute)}
+			e.mu.Unlock()
+			return
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.syncCancel = cancel
 	e.syncInFlight = true
@@ -227,6 +270,9 @@ func (e *engine) syncOnce() {
 			if capture.PayloadFile != "" {
 				_ = os.Remove(filepath.Join(profile, "pending", capture.PayloadFile))
 			}
+			if capture.ImageFile != "" {
+				_ = os.Remove(filepath.Join(profile, "pending", capture.ImageFile))
+			}
 		}
 	}
 	e.mu.Lock()
@@ -238,6 +284,14 @@ func (e *engine) syncOnce() {
 	}
 	if err == nil {
 		e.syncSent[id] = true
+		now := time.Now()
+		if n := len(e.syncSamples); n > 0 && now.Sub(e.syncSamples[n-1]) > 2*time.Minute {
+			e.syncSamples = nil
+		}
+		e.syncSamples = append(e.syncSamples, now)
+		if len(e.syncSamples) > 20 {
+			e.syncSamples = e.syncSamples[1:]
+		}
 		delete(e.syncPending, id)
 		delete(e.syncFailures, id)
 		e.syncLast = time.Now().UTC().Format(time.RFC3339)
@@ -300,6 +354,11 @@ func (e *engine) discardRecentQueue(since float64) error {
 				}
 				if capture.PayloadFile != "" && filepath.Base(capture.PayloadFile) == capture.PayloadFile {
 					if err = os.Remove(filepath.Join(folder, capture.PayloadFile)); err != nil && !os.IsNotExist(err) {
+						return err
+					}
+				}
+				if capture.ImageFile != "" && filepath.Base(capture.ImageFile) == capture.ImageFile {
+					if err = os.Remove(filepath.Join(folder, capture.ImageFile)); err != nil && !os.IsNotExist(err) {
 						return err
 					}
 				}
