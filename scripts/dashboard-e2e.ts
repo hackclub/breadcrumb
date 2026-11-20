@@ -164,6 +164,12 @@ try {
     await page.waitForTimeout(150);
     expect(zones).toContain("America/New_York");
     await expect(page.getByText("Observed time", { exact: true })).toBeVisible();
+    await expect(page.getByText("Captures synced", { exact: true })).toHaveCount(0);
+    await expect(page.locator(".stat-app .catalog-app-icon")).toBeVisible();
+    await page.waitForFunction(() => {
+      const icon = document.querySelector<HTMLImageElement>(".stat-app .catalog-app-icon");
+      return icon?.complete && icon.naturalWidth > 0;
+    });
     await expect(page.getByLabel("History coverage")).toContainText("50%");
     const after = await positions();
     const shifts = await page.evaluate(() => (window as any).__shifts);

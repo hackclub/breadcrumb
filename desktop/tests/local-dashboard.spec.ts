@@ -13,9 +13,9 @@ test("local dashboard explores history without accounts or API requests", async 
   await page.goto("/?view=dashboard");
   await expect(page.getByRole("heading", { name: "Where your time went" })).toBeVisible();
   await expect(page.locator(".time-dashboard")).toHaveAttribute("aria-busy", "false");
-  await expect(page.getByText("Local captures", { exact: true })).toBeVisible();
+  await expect(page.getByText("Local captures", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Captures synced", { exact: true })).toHaveCount(0);
-  await expect(page.locator(".insight-stats")).toContainText("12");
+  await expect(page.locator(".stat-app .app-monogram")).toHaveText("E");
   const coverage = page.getByLabel("History coverage").locator(":scope > div").first();
   const label = await coverage.locator("span").first().boundingBox();
   const value = await coverage.locator("strong").boundingBox();

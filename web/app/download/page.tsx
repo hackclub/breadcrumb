@@ -1,6 +1,6 @@
 import { SiteHeader } from "../site-header";
 
-const release = "https://github.com/hackclub/breadcrumb/releases/download/windows-preview/";
+import { DownloadOptions } from "./download-options";
 export default function DownloadPage() {
   return (
     <main className="portal download-page">
@@ -13,29 +13,7 @@ export default function DownloadPage() {
           Your history, on your device. Record and explore your time without an account. Sign in
           whenever you want to sync.
         </p>
-        <div className="download-options">
-          <a className="download-option" href={release + "Breadcrumb-macOS-Apple-Silicon.dmg"}>
-            <span>
-              <strong>macOS</strong>
-              <small>Preview · Apple Silicon · M1 or newer</small>
-            </span>
-            <span>Download ↓</span>
-          </a>
-          <a className="download-option" href={release + "Breadcrumb-macOS-Intel.dmg"}>
-            <span>
-              <strong>macOS</strong>
-              <small>Preview · Intel</small>
-            </span>
-            <span>Download ↓</span>
-          </a>
-          <a className="download-option" href={release + "Breadcrumb-Windows-x64-setup.exe"}>
-            <span>
-              <strong>Windows</strong>
-              <small>64-bit installer</small>
-            </span>
-            <span>Download ↓</span>
-          </a>
-        </div>
+        <DownloadOptions />
         <p className="small-note">
           macOS 14 or later. On Mac, drag Breadcrumb into Applications, open it, then allow Screen
           Recording when asked. These Mac previews are signed, with notarization pending. If macOS

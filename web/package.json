@@ -13,7 +13,10 @@
     "auth:migrate": "bun scripts/auth-migrate.ts",
     "apps:seed": "bun scripts/app-catalog.ts",
     "profiles:migrate": "bun scripts/profiles-migrate.ts",
-    "test:profiles": "bun scripts/profiles-smoke.ts"
+    "test:profiles": "bun scripts/profiles-smoke.ts",
+    "analytics:migrate": "bun scripts/analytics-migrate.ts",
+    "analytics:backfill": "bun scripts/analytics-backfill.ts",
+    "test:analytics": "bun scripts/analytics-smoke.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1169.0",

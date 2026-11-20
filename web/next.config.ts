@@ -3,6 +3,12 @@ import { fileURLToPath } from "node:url";
 const config: NextConfig = {
   poweredByHeader: false,
   turbopack: { root: fileURLToPath(new URL(".", import.meta.url)) },
+  async redirects() {
+    return [{ source: "/u/:username", destination: "/@:username", permanent: true }];
+  },
+  async rewrites() {
+    return [{ source: "/@:username", destination: "/u/:username" }];
+  },
   async headers() {
     return [
       {

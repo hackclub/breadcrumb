@@ -1,7 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { Store } from "./store";
-import { recordSynced, syncedSummary } from "./sync";
+import { analyticsIndex, type AnalyticsIndex, type IndexedSample } from "./analytics";
+import { recordSynced, syncedSummary, syncSample } from "./sync";
 import { createAuthAccess, type AuthAccess, type Identity } from "./auth";
 export const sha = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex");
 const secret = () => randomBytes(32).toString("hex");
@@ -159,6 +160,7 @@ export class Service {
     public store: Store,
     public env: NodeJS.ProcessEnv = process.env,
     public access: AuthAccess = createAuthAccess(),
+    public analytics: AnalyticsIndex | undefined = analyticsIndex(env),
   ) {}
   async account(req: Request, kind: "session" | "upload") {
     const account = await this.access[kind](req);
@@ -222,6 +224,7 @@ export class Service {
       upload,
     };
     let duplicate = false;
+    let syncedAt = entry.receivedAt;
     if (!(await this.store.create(key, bytes(entry)))) {
       const previous = await this.read<Entry>(key);
       // Normalize legacy inline screenshots for idempotent retries after upgrading.
@@ -232,9 +235,10 @@ export class Service {
       if (!previous || canonical(previous.upload) !== canonical(upload))
         fail(409, "Capture ID already contains different data");
       duplicate = true;
+      syncedAt = previous.receivedAt;
       await this.enqueue(previous!, key);
     } else await this.enqueue(entry, key);
-    await recordSynced(this.store, account.id, upload.record, entry.receivedAt);
+    await recordSynced(this.store, account.id, upload.record, syncedAt, this.analytics);
     return Response.json({ id: upload.record.id, duplicate }, { status: duplicate ? 200 : 201 });
   }
   async latest(job: string) {
@@ -436,15 +440,26 @@ export class Service {
       if (path === "/v1/account/index" && method === "POST") {
         this.sameOrigin(req);
         const account = await this.account(req, "session");
-        const key = `sync/migrations/insights-v4/${account.id}.json`;
+        const revision = this.env.ANALYTICS_INDEX_VERSION || "1";
+        const suffix = this.analytics
+          ? `-${this.analytics.key}-${sha(revision).slice(0, 8)}`
+          : revision === "1"
+            ? ""
+            : `-r2-${sha(revision).slice(0, 8)}`;
+        const key = `sync/migrations/insights-v4${suffix}/${account.id}.json`;
         const previous = await this.read<{ cursor: string; done: boolean }>(key);
         if (previous?.done) return Response.json({ done: true });
         const page = await this.store.list(`captures/${account.id}/`, previous?.cursor ?? "", 15);
+        const batch: IndexedSample[] = [];
         for (const captureKey of page.keys) {
           const entry = await this.read<Entry>(captureKey);
-          if (entry)
-            await recordSynced(this.store, account.id, entry.upload.record, entry.receivedAt);
+          if (entry) {
+            if (this.analytics)
+              batch.push(syncSample(account.id, entry.upload.record, entry.receivedAt));
+            else await recordSynced(this.store, account.id, entry.upload.record, entry.receivedAt);
+          }
         }
+        if (this.analytics) await this.analytics.write(batch);
         await this.store.update(key, (current) => {
           const value = current ? JSON.parse(Buffer.from(current).toString()) : null;
           if (value?.done || (value?.cursor ?? "") !== (previous?.cursor ?? "")) return null;
@@ -460,8 +475,11 @@ export class Service {
         } catch {
           fail(400, "Invalid time zone");
         }
+        const cursor = url.searchParams.get("cursor") ?? "";
+        if (this.analytics && cursor && !/^\d{4}-\d{2}-\d{2}$/.test(cursor))
+          fail(400, "Invalid analytics cursor");
         return Response.json(
-          await syncedSummary(this.store, account.id, url.searchParams.get("cursor") ?? "", zone),
+          await syncedSummary(this.store, account.id, cursor, zone, this.analytics),
         );
       }
       if (path === "/v1/ingest" && method === "POST") {

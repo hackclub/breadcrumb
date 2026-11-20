@@ -802,7 +802,7 @@ form button {
   color: var(--muted);
   margin-top: 4px;
 }
-.download-option > span:last-child {
+.download-actions a {
   color: var(--accent);
   font-size: 13px;
   flex-shrink: 0;
@@ -850,4 +850,69 @@ form button {
     width: 94px;
     flex: 0 0 94px;
   }
+}
+
+.profile-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.profile-card-heading .profile-identity {
+  min-width: 0;
+  flex: 1;
+}
+.profile-edit-button {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .profile-card-heading {
+    flex-wrap: wrap;
+  }
+  .profile-card-heading .profile-identity {
+    flex-basis: 100%;
+  }
+}
+
+.download-platform,
+.download-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.download-platform > svg {
+  flex-shrink: 0;
+}
+.download-actions {
+  flex-shrink: 0;
+}
+.download-actions select {
+  width: 140px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  padding: 8px;
+}
+@media (max-width: 600px) {
+  .download-option {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .download-actions {
+    justify-content: space-between;
+    min-height: 36px;
+  }
+}
+.profile-settings:has(.profile-edit-button) .profile-feedback {
+  height: 24px;
+}
+
+.profile-card-heading .profile-edit-button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 8px 12px;
 }

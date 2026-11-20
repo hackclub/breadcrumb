@@ -367,7 +367,12 @@ export function TimeDashboard({
             {pending ? (
               <Skeleton className="skeleton-metric" />
             ) : apps[0] ? (
-              findApp(catalog, apps[0].name, apps[0].id)?.name || apps[0].name
+              <>
+                <AppIcon apps={catalog} name={apps[0].name} id={apps[0].id} />
+                <span className="stat-app-name">
+                  {findApp(catalog, apps[0].name, apps[0].id)?.name || apps[0].name}
+                </span>
+              </>
             ) : (
               "—"
             )}
@@ -381,13 +386,6 @@ export function TimeDashboard({
               "Waiting for captures"
             )}
           </small>
-        </div>
-        <div>
-          <span>{local ? "Local captures" : "Captures synced"}</span>
-          <strong>
-            {pending ? <Skeleton className="skeleton-metric" /> : captures.toLocaleString()}
-          </strong>
-          <small>Overlapping time counts once</small>
         </div>
       </div>
       <section className="insight-panel daily-panel" aria-label="Daily activity">

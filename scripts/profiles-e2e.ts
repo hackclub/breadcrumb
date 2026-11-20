@@ -8,18 +8,22 @@ import type { Profile } from "../web/lib/profiles";
 import { profileUIFixture } from "../web/scripts/support/profile-ui-fixture";
 const connection = process.env.PROFILE_TEST_DATABASE_URL;
 if (!connection) throw Error("PROFILE_TEST_DATABASE_URL is required for public profile SSR tests");
-const fixture = await profileUIFixture(connection);
+
 const socket = createServer();
 await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
 const port = (socket.address() as AddressInfo).port;
 await new Promise<void>((resolve) => socket.close(() => resolve()));
 const base = `http://127.0.0.1:${port}`;
+const authSecret = randomUUID() + randomUUID();
+const fixture = await profileUIFixture(connection, base, authSecret);
 const server = Bun.spawn(["bun", "run", "--cwd", "web", "start", "--port", String(port)], {
   stdout: "ignore",
   stderr: "inherit",
   env: {
     ...process.env,
     DATABASE_URL: connection,
+    BETTER_AUTH_SECRET: authSecret,
+    ALLOWED_EMAILS: "",
     PUBLIC_URL: base,
     R2_ACCESS_KEY_ID: "",
     R2_SECRET_ACCESS_KEY: "",
@@ -48,15 +52,6 @@ try {
       viewport: { width, height: 1000 },
       locale: "en-US",
     });
-    await context.addCookies([
-      {
-        name: "better-auth.session_token",
-        value: "synthetic-profile-layout-hint",
-        domain: "127.0.0.1",
-        path: "/",
-        httpOnly: true,
-      },
-    ]);
     const page = await context.newPage();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -78,6 +73,7 @@ try {
     const ownerId = "profile_ui_" + randomUUID(),
       suffix = randomUUID().slice(0, 8),
       username = `maker_${width}_${suffix}`;
+    await context.addCookies(await fixture.cookies(ownerId));
     let owner: Profile | null = null,
       claims = 0,
       uploads = 0,
@@ -199,15 +195,23 @@ try {
         );
       expect(value).toBe(0);
     };
-    const ready = () => expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "false");
+    const ready = async () => {
+      await expect(
+        page.locator('.profile-form[aria-busy="false"], .profile-edit-button').first(),
+      ).toBeVisible();
+      if (await page.getByRole("button", { name: "Edit profile", exact: true }).isVisible())
+        await page.getByRole("button", { name: "Edit profile", exact: true }).click();
+    };
     const saveProfile = async () => {
       await page.getByRole("button", { name: "Save profile" }).click();
       await expect(page.locator(".profile-feedback")).toHaveText("Profile saved.");
+      await expect(page.getByRole("button", { name: "Edit profile", exact: true })).toBeVisible();
+      await expect(page.locator(".profile-form")).toHaveCount(0);
     };
     const uploadInput = () => page.getByLabel("Upload profile picture", { exact: true });
     const photo = { name: "photo.png", mimeType: "image/png", buffer: png };
     await page.goto(base + "/profile");
-    await expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "true");
+    await expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "false");
     const before = await page.locator(".profile-app-options").boundingBox();
     await ready();
     expect(before).toEqual(await page.locator(".profile-app-options").boundingBox());
@@ -236,7 +240,18 @@ try {
     await expect(page.locator("#username-status")).toContainText("Available");
     await page.getByRole("button", { name: "Reserve username" }).click();
     await expect(page.locator(".profile-feedback")).toHaveText("Your username is reserved.");
+    await expect(page.getByRole("button", { name: "Edit profile", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Edit profile", exact: true }).click();
     await expect(page.getByLabel("Username", { exact: true })).toHaveAttribute("readonly", "");
+    const savedWrites = patches.length;
+    await page.getByLabel(/Display name/).fill("Discard this draft");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "A fellow builder", exact: true }),
+    ).toBeVisible();
+    expect(patches.length).toBe(savedWrites);
+    await page.getByRole("button", { name: "Edit profile", exact: true }).click();
+    await expect(page.getByLabel(/Display name/)).toHaveValue("A fellow builder");
     expect(patches.at(-1)).toMatchObject({
       username,
       visibility: "private",
@@ -253,9 +268,11 @@ try {
       () => document.querySelector<HTMLImageElement>(".profile-avatar img")?.naturalWidth,
     );
     expect(avatarRequests).toBeGreaterThan(0);
-    await page.getByRole("link", { name: /View your profile/ }).click();
-    await expect(page.getByRole("heading", { name: "Profile not found" })).toBeVisible();
-    await expect(page.getByText("A fellow builder", { exact: true })).toHaveCount(0);
+    const anonymous = await browser.newContext({ viewport: { width, height: 1000 } });
+    const visitor = await anonymous.newPage();
+    await visitor.goto(base + "/@" + username);
+    await expect(visitor.getByRole("heading", { name: "Profile not found" })).toBeVisible();
+    await expect(visitor.getByText("A fellow builder", { exact: true })).toHaveCount(0);
     expect((await context.request.get(`${base}/api/profiles/${username}/avatar`)).status()).toBe(
       404,
     );
@@ -286,6 +303,7 @@ try {
     );
     await saveProfile();
     expect(patches.at(-1)).not.toHaveProperty("avatarMode");
+    await page.getByRole("button", { name: "Edit profile", exact: true }).click();
     await page.getByRole("button", { name: "Remove picture", exact: true }).click();
     await expect(page.locator(".profile-avatar-feedback")).toHaveText("Profile picture removed.");
     await expect(page.getByLabel("Profile picture source")).toHaveValue("none");
@@ -296,9 +314,24 @@ try {
     await page.getByRole("switch", { name: /Public profile/ }).check();
     await page.getByRole("switch", { name: /Share my selected apps/ }).uncheck();
     await saveProfile();
+    await expect(page.getByRole("link", { name: /View your profile/ })).toHaveAttribute(
+      "href",
+      `/@${username}`,
+    );
     await page.getByRole("link", { name: /View your profile/ }).click();
+    await expect(page).toHaveURL(base + "/@" + username);
+    const legacy = await page.request.get(base + "/u/" + username, { maxRedirects: 0 });
+    expect(legacy.status()).toBe(308);
+    expect(new URL(legacy.headers().location, base).pathname).toBe("/@" + username);
+    await page.reload();
+    await expect(page).toHaveURL(base + "/@" + username);
     await expect(page.getByRole("heading", { name: "A fellow builder" })).toBeVisible();
     await expect(page.getByText("No apps shared.", { exact: true })).toBeVisible();
+    await visitor.goto(base + "/@" + username);
+    await expect(
+      visitor.getByRole("heading", { name: "A fellow builder", exact: true }),
+    ).toBeVisible();
+    await expect(visitor.getByRole("button", { name: "Edit profile", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /GitHub profile/ })).toHaveAttribute(
       "href",
       "https://github.com/fellow-builder",
@@ -309,7 +342,7 @@ try {
     );
     await expect(page.locator(".profile-avatar img")).toHaveAttribute(
       "src",
-      new RegExp(`^/api/profiles/${username}/avatar`),
+      new RegExp(`^/api/profile/avatar`),
     );
     const card = await page.locator(".public-profile-card").boundingBox();
     await page.waitForFunction(
@@ -353,7 +386,7 @@ try {
         avatarMode: "none",
         avatarURL: null,
       });
-      await page.goto(base + "/u/" + longName);
+      await page.goto(base + "/@" + longName);
       await expect(page.getByRole("heading", { name: "w".repeat(60), exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
       await checkCLS("long-profile");
@@ -362,6 +395,7 @@ try {
     console.log(
       `Profiles ${width}px: immutable claims, actual public SSR/privacy, links, explicit Gravatar opt-in, upload limits/progress/error/retry/removal, no overflow, CLS=0.`,
     );
+    await anonymous.close();
     await context.close();
   }
   const page = await browser.newPage();

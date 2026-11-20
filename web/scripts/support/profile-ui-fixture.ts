@@ -1,10 +1,14 @@
 // Only for UI tests against a disposable local PostgreSQL database.
+import { betterAuth } from "better-auth";
+import { testUtils } from "better-auth/plugins";
+import { getMigrations } from "better-auth/db/migration";
+import { createAuth } from "../../lib/auth";
 import { createHash } from "node:crypto";
 import { Pool } from "pg";
 import { PostgresProfiles, type Profile } from "../../lib/profiles";
 import { profilesSchema } from "../../lib/profiles-schema";
 
-export async function profileUIFixture(connection: string) {
+export async function profileUIFixture(connection: string, baseURL: string, secret: string) {
   const url = new URL(connection);
   if (
     !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
@@ -16,17 +20,37 @@ export async function profileUIFixture(connection: string) {
   const owners = new Set<string>();
   const key = (owner: string) =>
     `profile-avatars/${createHash("sha256").update(owner).digest("hex")}/00000000-0000-4000-8000-000000000001.webp`;
-  await pool.query(
-    'CREATE SCHEMA IF NOT EXISTS breadcrumb_auth; CREATE TABLE IF NOT EXISTS breadcrumb_auth."user" (id text PRIMARY KEY)',
-  );
+  await pool.query("CREATE SCHEMA IF NOT EXISTS breadcrumb_auth");
+  const authPool = new Pool({
+    connectionString: connection,
+    options: "-c search_path=breadcrumb_auth",
+    max: 2,
+  });
+  const options = createAuth({ database: authPool, baseURL, secret, send: async () => {} }).options;
+  const auth = betterAuth({ ...options, plugins: [...(options.plugins ?? []), testUtils()] });
+  await (await getMigrations(auth.options)).runMigrations();
+  const { test } = await auth.$context;
+  async function ensureOwner(owner: string) {
+    if (owners.has(owner)) return;
+    if (!owner.startsWith("profile_ui_")) throw Error("Invalid UI fixture owner");
+    await test.saveUser(
+      test.createUser({
+        id: owner,
+        email: `${owner}@example.invalid`,
+        emailVerified: true,
+        name: "Preview",
+      }),
+    );
+    owners.add(owner);
+  }
   await pool.query(profilesSchema);
   return {
+    async cookies(owner: string) {
+      await ensureOwner(owner);
+      return test.getCookies({ userId: owner });
+    },
     async save(owner: string, profile: Profile) {
-      if (!owners.has(owner)) {
-        if (!owner.startsWith("profile_ui_")) throw Error("Invalid UI fixture owner");
-        await pool.query('INSERT INTO breadcrumb_auth."user" (id) VALUES ($1)', [owner]);
-        owners.add(owner);
-      }
+      await ensureOwner(owner);
       await repo.save(
         owner,
         {
@@ -51,6 +75,7 @@ export async function profileUIFixture(connection: string) {
           key(owner),
         ]);
       }
+      await authPool.end();
       await pool.end();
     },
   };
