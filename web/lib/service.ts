@@ -87,6 +87,18 @@ type Upload = z.infer<typeof uploadSchema>;
 type Entry = { participant: string; receivedAt: string; digest: string; upload: Upload };
 type Item = { id: string; captureKey: string; participant: string; record: Upload["record"] };
 type Lease = { agent: string; secretHash: string; expires: string; generation: number };
+type ReviewCursor = { cursor: string; revision: number };
+type ReviewClaim = {
+  job: string;
+  lease: string;
+  generation: number;
+  expires: string;
+  capture: Pick<Entry, "participant" | "receivedAt"> & { upload: Omit<Upload, "payload"> };
+  captureURL: string;
+  screenshotURL?: string;
+  contextURL: string;
+  entry: Entry;
+};
 const reviewSchema = z
   .object({
     job: z.string().regex(/^[a-f0-9]{64}$/),
@@ -234,7 +246,10 @@ export class Service {
     }
     return keys.length ? this.read<Lease>(keys.sort().at(-1)!) : null;
   }
-  async claim(agent: string, cursor = "") {
+  private async claimPage(
+    agent: string,
+    cursor: string,
+  ): Promise<{ claim: ReviewClaim | null; nextCursor: string }> {
     const page = await this.store.list("review/items/", cursor, 30);
     for (const key of page.keys) {
       const item = await this.read<Item>(key);
@@ -259,24 +274,54 @@ export class Service {
       )
         continue;
       return {
-        job: item.id,
-        lease: token,
-        generation: lease.generation,
-        expires: lease.expires,
-        capture: {
-          participant: entry.participant,
-          receivedAt: entry.receivedAt,
-          upload: { schemaVersion: 1, consent: true, record: entry.upload.record },
+        nextCursor: page.cursor,
+        claim: {
+          job: item.id,
+          lease: token,
+          generation: lease.generation,
+          expires: lease.expires,
+          capture: {
+            participant: entry.participant,
+            receivedAt: entry.receivedAt,
+            upload: { schemaVersion: 1, consent: true, record: entry.upload.record },
+          },
+          captureURL: await this.store.url(item.captureKey),
+          screenshotURL: entry.upload.payload.jpegRef
+            ? await this.store.url(
+                `images/${entry.participant}/${entry.upload.payload.jpegRef}.jpg`,
+              )
+            : undefined,
+          contextURL: `/v1/review/context/${item.id}`,
+          entry,
         },
-        captureURL: await this.store.url(item.captureKey),
-        screenshotURL: entry.upload.payload.jpegRef
-          ? await this.store.url(`images/${entry.participant}/${entry.upload.payload.jpegRef}.jpg`)
-          : undefined,
-        contextURL: `/v1/review/context/${item.id}`,
-        entry,
       };
     }
-    return { job: null, nextCursor: page.cursor };
+    return { claim: null, nextCursor: page.cursor };
+  }
+  async claim(
+    agent: string,
+    cursor = "",
+  ): Promise<ReviewClaim | { job: null; nextCursor: string; entry?: never }> {
+    const page = await this.claimPage(agent, cursor);
+    if (page.claim) return page.claim;
+    return { job: null, nextCursor: page.nextCursor };
+  }
+  private async scheduledClaim() {
+    const key = "review/cursors/vercel-gateway.json";
+    const previous = (await this.read<ReviewCursor>(key)) ?? { cursor: "", revision: 0 };
+    let page = await this.claimPage("vercel-gateway", previous.cursor);
+    // Bound R2 work per invocation, then resume on the next cron run.
+    for (let scanned = 1; scanned < 4 && !page.claim && page.nextCursor; scanned++)
+      page = await this.claimPage("vercel-gateway", page.nextCursor);
+    // Save before model/network work. Overlapping invocations must not rewind
+    // a checkpoint already advanced by another worker.
+    await this.store.update(key, (raw) => {
+      const current = raw ? (JSON.parse(Buffer.from(raw).toString()) as ReviewCursor) : null;
+      return (current?.revision ?? 0) === previous.revision
+        ? bytes({ cursor: page.nextCursor, revision: previous.revision + 1 })
+        : null;
+    });
+    return page;
   }
   async submit(raw: unknown, agent: string) {
     const result = reviewSchema.parse(raw);
@@ -304,9 +349,11 @@ export class Service {
     if (this.env.ENABLE_AI_REVIEWS !== "true") return { status: "disabled" };
     if (!this.env.AI_GATEWAY_API_KEY || !this.env.AI_GATEWAY_MODEL)
       fail(503, "AI Gateway is not configured");
-    const job = await this.claim("vercel-gateway");
-    if (!job.job) return { status: "empty", nextCursor: job.nextCursor };
-    const capture = job.entry!.upload;
+    const page = await this.scheduledClaim();
+    const job = page.claim;
+    if (!job)
+      return { status: page.nextCursor ? "scanning" : "empty", nextCursor: page.nextCursor };
+    const capture = job.entry.upload;
     if (!capture.payload.jpeg && capture.payload.jpegRef) {
       const image = await this.store.get(
         `images/${job.entry!.participant}/${capture.payload.jpegRef}.jpg`,
