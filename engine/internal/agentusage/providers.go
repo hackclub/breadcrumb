@@ -40,14 +40,15 @@ type Event struct {
 	Project  string    `json:"project"`
 }
 type Context struct {
-	Session string    `json:"session"`
-	Parent  string    `json:"parent,omitempty"`
-	Model   string    `json:"model"`
-	Project string    `json:"project"`
-	Total   int64     `json:"total"`
-	Modern  bool      `json:"modern"`
-	Started time.Time `json:"started"`
-	Fork    bool      `json:"fork"`
+	OwnUsageStarted bool      `json:"ownUsageStarted"`
+	Session         string    `json:"session"`
+	Parent          string    `json:"parent,omitempty"`
+	Model           string    `json:"model"`
+	Project         string    `json:"project"`
+	Total           int64     `json:"total"`
+	Modern          bool      `json:"modern"`
+	Started         time.Time `json:"started"`
+	Fork            bool      `json:"fork"`
 }
 
 // Provider implementations must extract only allowlisted metadata and numbers.
@@ -213,13 +214,21 @@ func (p builtin) Parse(r io.Reader, c *Context) (*Event, error) {
 				return nil, nil
 			}
 			total := number(f, "payload.info.total_token_usage.total_tokens")
+			if c.Fork {
+				if c.Started.IsZero() || e.Time.Before(c.Started) {
+					return nil, nil
+				}
+				// The child's own cumulative counter can restart below inherited totals.
+				// Its first fresh last_token_usage still represents new work.
+				if !c.OwnUsageStarted {
+					c.Total = 0
+					c.OwnUsageStarted = true
+				}
+			}
 			if total <= c.Total {
 				return nil, nil
 			}
 			c.Total = total
-			if c.Fork && (c.Started.IsZero() || e.Time.Before(c.Started)) {
-				return nil, nil
-			}
 			e.ID = c.Session + ":" + strconv.FormatInt(total, 10)
 			e.Tokens = usage(f, "payload.info.last_token_usage.", false)
 		default:

@@ -232,3 +232,28 @@ func TestNativeReadersDiscardImportNamedContent(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyForkCountsFreshUsageAfterCounterReset(t *testing.T) {
+	p := Providers()[1]
+	started := time.Now().UTC().Add(-10 * time.Minute)
+	meta := fmt.Sprintf(`{"type":"session_meta","payload":{"id":"child","forked_from_id":"parent","timestamp":%q}}`, started.Format(time.RFC3339))
+	c := Context{Model: "gpt-5.4"}
+	if _, err := p.Parse(strings.NewReader(meta), &c); err != nil {
+		t.Fatal(err)
+	}
+	record := func(at time.Time, total int) string {
+		return fmt.Sprintf(`{"type":"event_msg","timestamp":%q,"payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":%d},"last_token_usage":{"input_tokens":15,"cached_input_tokens":5,"output_tokens":5}}}}`, at.Format(time.RFC3339), total)
+	}
+	inherited := record(started.Add(-time.Minute), 1000)
+	if event, err := p.Parse(strings.NewReader(inherited), &c); err != nil || event != nil {
+		t.Fatal("inherited usage counted")
+	}
+	fresh := record(started.Add(time.Minute), 20)
+	event, err := p.Parse(strings.NewReader(fresh), &c)
+	if err != nil || event == nil || event.Input != 10 {
+		t.Fatal("fresh fork usage lost after reset")
+	}
+	if event, err := p.Parse(strings.NewReader(fresh), &c); err != nil || event != nil {
+		t.Fatal("fresh usage counted twice")
+	}
+}
