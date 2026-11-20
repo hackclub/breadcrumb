@@ -82,3 +82,47 @@ test("activity drilldowns preserve focused time across apps, projects and legacy
   expect(detail.apps.reduce((n, row) => n + row.seconds, 0)).toBe(result.seconds);
   expect(detail.projects.reduce((n, row) => n + row.seconds, 0)).toBe(result.seconds);
 });
+
+test("local midnight and fractional time zones preserve coverage and place samples in local hours", () => {
+  const midnight = Date.parse("2026-11-19T05:00:00Z") / 1000 - REFERENCE;
+  const samples = [
+    { date: midnight - 10, interval: 60, app: "Editor" },
+    { date: midnight + 5, interval: 60, app: "Browser" },
+  ];
+  const before = summarize(samples, "2026-11-18", midnight + 20, "America/New_York");
+  const after = summarize(samples, "2026-11-19", midnight + 20, "America/New_York");
+  expect(before.seconds).toBe(10);
+  expect(after.seconds).toBe(20);
+  expect(before.captures + after.captures).toBe(2);
+  const boundary = Date.parse("2026-11-19T12:15:00Z") / 1000 - REFERENCE;
+  const fractional = summarize(
+    samples.map((s) => ({ ...s, date: s.date - midnight + boundary })),
+    "2026-11-19",
+    boundary + 20,
+    "Asia/Kathmandu",
+  );
+  expect(fractional.hours[17]).toBe(10);
+  expect(fractional.hours[18]).toBe(20);
+  expect(fractional.seconds).toBe(30);
+});
+
+test("daylight-saving skipped and repeated hours never add or lose elapsed coverage", () => {
+  for (const [instant, expected] of [
+    ["2026-03-08T07:00:00Z", [10, 0, 20]],
+    ["2026-11-01T06:00:00Z", [30, 0, 0]],
+  ] as const) {
+    const boundary = Date.parse(instant) / 1000 - REFERENCE;
+    const value = summarize(
+      [
+        { date: boundary - 10, interval: 60 },
+        { date: boundary + 5, interval: 60 },
+      ],
+      instant.slice(0, 10),
+      boundary + 20,
+      "America/New_York",
+    );
+    expect(value.seconds).toBe(30);
+    expect(value.hours.slice(1, 4)).toEqual([...expected]);
+    expect(value.hourly.reduce((n, h) => n + h.seconds, 0)).toBe(value.seconds);
+  }
+});

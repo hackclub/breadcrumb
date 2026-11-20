@@ -1,10 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import { applyTheme, readTheme, themes, type Theme } from "../lib/theme";
 import { authClient } from "../lib/auth-client";
 import { TimeDashboard } from "./time-dashboard";
 import type { InsightDay as Day } from "../lib/insights";
-import { BrandIcon } from "../lib/brand";
+import { SiteHeader } from "./site-header";
 async function request(path: string, body?: unknown) {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
@@ -21,7 +20,7 @@ export default function Portal({
   initialDashboard?: boolean;
   initialDesktop?: string;
 }) {
-  const [theme, setTheme] = useState<Theme>("dark"),
+  const [timeZone, setTimeZone] = useState("UTC"),
     [email, setEmail] = useState(""),
     [desktop, setDesktop] = useState(initialDesktop),
     [approval, setApproval] = useState(Boolean(initialDesktop)),
@@ -35,7 +34,7 @@ export default function Portal({
     ready = !isPending;
   const dashboardVisible = !desktop && (Boolean(account) || (!ready && initialDashboard));
   useEffect(() => {
-    setTheme(readTheme());
+    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
     const query = new URLSearchParams(location.search);
     const client = query.get("client_id");
     if (client && query.has("sig")) {
@@ -56,16 +55,16 @@ export default function Portal({
       try {
         const refresh = async () => {
           let cursor = "";
-          const values: Day[] = [];
+          const values = new Map<string, Day>();
           do {
-            const page = await request(
-              "/v1/account/summary" + (cursor ? "?cursor=" + encodeURIComponent(cursor) : ""),
-            );
-            values.push(...page.days);
+            const query = new URLSearchParams({ timeZone });
+            if (cursor) query.set("cursor", cursor);
+            const page = await request("/v1/account/summary?" + query);
+            for (const day of page.days as Day[]) values.set(day.day, day);
             cursor = page.nextCursor;
           } while (cursor && !cancelled);
           if (!cancelled) {
-            setDays(values);
+            setDays([...values.values()]);
             setStatsError("");
           }
         };
@@ -94,7 +93,7 @@ export default function Portal({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [account?.id]);
+  }, [account?.id, timeZone]);
   async function action(fn: () => Promise<void>) {
     setBusy(true);
     setStatus("");
@@ -122,7 +121,7 @@ export default function Portal({
   }
   const dashboard = (
     <section>
-      <TimeDashboard days={days ?? []} loading={!ready || days === null} />
+      <TimeDashboard days={days ?? []} loading={!ready || days === null} timeZone={timeZone} />
       <div className="dashboard-feedback">
         <p className="sync-count">
           <span>{days ? `${captures.toLocaleString()} captures` : "Loading synced captures…"}</span>
@@ -139,44 +138,28 @@ export default function Portal({
   );
   return (
     <main className="portal">
-      <header>
-        <a className="wordmark" href="/" aria-label="Breadcrumb home">
-          <BrandIcon size={25} className="brand-icon" />
-          Breadcrumb
-        </a>
-        <div className="header-actions">
-          <select
-            aria-label="Theme"
-            value={theme}
-            onChange={(event) => {
-              const value = event.currentTarget.value as Theme;
-              applyTheme(value);
-              setTheme(value);
-            }}
+      <SiteHeader>
+        {(account || (!ready && initialDashboard)) && (
+          <a className="profile-nav" href="/profile">
+            Profile
+          </a>
+        )}
+        {(account || (!ready && initialDashboard)) && (
+          <button
+            className="quiet"
+            disabled={busy || !ready}
+            onClick={() =>
+              action(async () => {
+                const result = await authClient.signOut();
+                if (result.error) throw Error(result.error.message ?? "Could not sign out");
+                setDays(null);
+              })
+            }
           >
-            {themes.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          {(account || (!ready && initialDashboard)) && (
-            <button
-              className="quiet"
-              disabled={busy || !ready}
-              onClick={() =>
-                action(async () => {
-                  const result = await authClient.signOut();
-                  if (result.error) throw Error(result.error.message ?? "Could not sign out");
-                  setDays(null);
-                })
-              }
-            >
-              Sign out
-            </button>
-          )}
-        </div>
-      </header>
+            Sign out
+          </button>
+        )}
+      </SiteHeader>
       <div className={dashboardVisible ? "dashboard" : "auth-page"}>
         {!ready ? (
           dashboardVisible ? (

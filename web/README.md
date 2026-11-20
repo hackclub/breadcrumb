@@ -41,7 +41,7 @@ The durable queue is scoped to server and account. It pins payload files with ha
 - Review-agent credentials configured in `REVIEW_AGENT_TOKENS` authorize `/v1/review/claim`, `/submit`, `/index`, and `/context/:job`. These service credentials are separate from user sign-in. Claims are leased, and reviews retain evidence and provenance.
 - `GET /healthz` reports configuration. The optional `/api/cron/review` endpoint requires `CRON_SECRET` and can be invoked by any scheduler. Gateway review is disabled unless explicitly enabled and configured.
 
-Synced time estimates merge overlapping sample windows, cap uncertain coverage at five minutes per capture, and exclude long gaps. They describe sampled desktop history, not verified work or attention. Days use UTC. The dashboard never downloads screenshots to calculate totals.
+Synced time estimates merge overlapping sample windows, cap uncertain coverage at five minutes per capture, and exclude long gaps. They describe sampled desktop history, not verified work or attention. Storage partitions use UTC; the dashboard groups days and hours in the viewer’s local timezone. The dashboard never downloads screenshots to calculate totals.
 
 Keep R2 public access disabled. Expire temporary `incoming/` upload chunks after one day. Corpus retention is independent of local retention. Capture ownership continues using the hash of the verified email address, preserving access to existing contributions after the Better Auth migration. Old bespoke sign-in cookies and upload tokens are no longer accepted; users must sign in again.
 
@@ -59,8 +59,10 @@ After installing root/web dependencies, building the web app, and installing Pla
 
 To add or update an app, add its 64px PNG in `public/app-icons/`, edit `lib/app-seed.json`, then run `bun run apps:seed` from `web/` with `DATABASE_URL` configured. The script creates only its own catalog schema and upserts entries. Bundled entries keep the UI working before seeding or during database outages.
 
-The dashboard's day-by-hour grid shows up to 14 recent days. Selecting an hour reveals sampled time, capture count, apps, activity, and detected projects. Hour/day boundaries use UTC. Existing captures gain richer breakdowns through the incremental account index.
+The dashboard's day-by-hour grid shows up to 14 recent days. Selecting an hour reveals sampled time, capture count, apps, activity, and detected projects. Local hour/day boundaries include daylight-saving changes and fractional timezones; repeated hours combine without counting time twice. Existing captures gain richer breakdowns through the incremental account index.
 
 Dashboard app totals merge legacy names and bundle/package aliases through the canonical catalog. Activity categories use semantic SVG icons. Signed-in loading renders the same reserved dashboard frames as loaded data; the browser regression test delays authentication, catalog, summaries, and indexing updates and checks zero layout shift at desktop and mobile widths.
 
 Activity rows open daily, app, and project breakdowns. Labels and metadata rules live in `lib/activities.ts`; explicit corrections and agent labels take precedence. The rules use focused window/app/domain metadata, and keep ambiguous browsing, terminals, and videos broad. No extra raw titles or screenshot downloads are needed for these summaries. The incremental account index upgrades older captures automatically.
+
+Observed time describes sampled coverage, while history span is the first-to-last capture in the selected range. The dashboard shows unsampled gaps separately rather than filling sleep, pauses, or exclusions with invented activity. The desktop overview shows capture age and observed time instead of repeating capture counts.

@@ -407,8 +407,14 @@ export class Service {
       }
       if (path === "/v1/account/summary" && method === "GET") {
         const account = await this.account(req, "session");
+        const zone = url.searchParams.get("timeZone") || "UTC";
+        try {
+          new Intl.DateTimeFormat("en", { timeZone: zone });
+        } catch {
+          fail(400, "Invalid time zone");
+        }
         return Response.json(
-          await syncedSummary(this.store, account.id, url.searchParams.get("cursor") ?? ""),
+          await syncedSummary(this.store, account.id, url.searchParams.get("cursor") ?? "", zone),
         );
       }
       if (path === "/v1/ingest" && method === "POST") {

@@ -4,7 +4,7 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
-    "lint": "oxlint web/app web/lib web/tests web/scripts desktop/src desktop/vite.config.ts desktop/tests playwright.config.ts desktop/unit scripts/desktop-sync-e2e.ts scripts/dashboard-e2e.ts",
+    "lint": "oxlint web/app web/lib web/tests web/scripts desktop/src desktop/vite.config.ts desktop/tests playwright.config.ts desktop/unit scripts/desktop-sync-e2e.ts scripts/dashboard-e2e.ts scripts/profiles-e2e.ts",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "test:web": "bun run --cwd web test",
@@ -12,7 +12,8 @@
     "build:desktop": "bun run --cwd desktop build",
     "test:desktop": "bun run --cwd desktop test",
     "test:sync": "bun scripts/desktop-sync-e2e.ts",
-    "test:dashboard": "bun scripts/dashboard-e2e.ts"
+    "test:dashboard": "bun scripts/dashboard-e2e.ts",
+    "test:profiles": "bun scripts/profiles-e2e.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",

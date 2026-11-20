@@ -11,7 +11,12 @@ $results = [Collections.Generic.List[string]]::new()
 
 function Assert($condition, [string]$message) { if (-not $condition) { throw $message } }
 function Run([string]$exe, [string]$arguments) {
-    $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru
+    Write-Host "Running $(Split-Path $exe -Leaf) $arguments"
+    $process = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru
+    if (-not $process.WaitForExit(300000)) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        throw 'Installer did not exit within five minutes'
+    }
     Assert ($process.ExitCode -eq 0) "$exe exited $($process.ExitCode)"
 }
 function Installed {
@@ -32,7 +37,8 @@ function Uninstall([switch]$DeleteData) {
         Start-Sleep -Milliseconds 200
     }
     Assert (-not (Test-Path (Join-Path $install 'breadcrumb-desktop.exe'))) 'Uninstall left the application behind'
-    Assert (-not (Get-ItemPropertyValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Breadcrumb' -ErrorAction SilentlyContinue)) 'Uninstall retained autostart'
+    $key = Get-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue
+    Assert (($null -eq $key) -or ($null -eq $key.GetValue('Breadcrumb', $null))) 'Uninstall retained autostart'
 }
 
 try {

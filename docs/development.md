@@ -45,3 +45,11 @@ Lint, formatting, each package’s dependency audit, desktop unit tests, web uni
 ## Linux GLib security backport
 
 Tauri’s GTK3 dependency requires GLib 0.18. The desktop pins a local copy of GLib 0.18.5 with the upstream `VariantStrIter` soundness fix backported; its version and MIT license are retained. See [patch provenance](../desktop/src-tauri/vendor/glib/BREADCRUMB_PATCH.md). Linux CI runs the upstream iterator tests in release mode. Remove the override when Tauri accepts a fixed upstream GLib release.
+
+## Profiles
+
+Profiles use the existing Better Auth session and an additive PostgreSQL schema. Run `bun run --cwd web profiles:migrate` with the portal's configured `DATABASE_URL` before enabling profile routes. A signed-in, verified account can reserve one permanent username at `/profile`, choose a display name and bio, and manage visibility. Public profiles live at `/u/<username>`.
+
+A public profile exposes its chosen identity. App sharing is separately opt-in and includes only selected catalog entries; screenshots, titles, emails, capture history and time totals stay private. A private profile returns the same404 as an unknown name, and profile responses are not cached. Username reservations are enforced atomically in PostgreSQL.
+
+`bun run test:profiles` checks the UI on desktop and mobile. The separate PostgreSQL CI check exercises real reservation races, ownership, Better Auth cookies, privacy changes, and account cleanup in a disposable local database.

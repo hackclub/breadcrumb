@@ -1,6 +1,6 @@
 import { classifyActivity } from "./activities";
 import type { Store } from "./store";
-import { summarize, REFERENCE, type Sample } from "./insights";
+import { summarize, calendarClock, REFERENCE, type Sample } from "./insights";
 type Day = { samples: Record<string, Sample>; updatedAt: string };
 export async function recordSynced(
   store: Store,
@@ -35,25 +35,72 @@ export async function recordSynced(
     return Buffer.from(JSON.stringify(value));
   });
 }
-export async function syncedSummary(store: Store, participant: string, cursor: string) {
-  const page = await store.list(`sync/days/${participant}/`, cursor, 60);
-  const days = [];
-  for (let offset = 0; offset < page.keys.length; offset += 5) {
-    const batch = await Promise.all(
-      page.keys.slice(offset, offset + 5).map(async (key) => {
+const dayOffset = (day: string, offset: number) =>
+  new Date(Date.parse(day + "T12:00:00Z") + offset * 86400000).toISOString().slice(0, 10);
+export async function syncedSummary(
+  store: Store,
+  participant: string,
+  cursor: string,
+  timeZone = "UTC",
+) {
+  const prefix = `sync/days/${participant}/`;
+  const page = await store.list(prefix, cursor, 60);
+  if (!page.keys.length) return { days: [], nextCursor: page.cursor, timeZone };
+  const dateOf = (key: string) => key.split("/").at(-1)!.slice(0, -5);
+  // UTC remains the storage partition. Read neighboring partitions so local
+  // midnight and page boundaries never truncate a day's samples.
+  const keys = [
+    ...new Set([
+      ...page.keys,
+      prefix + dayOffset(dateOf(page.keys[0]), -1) + ".json",
+      prefix + dayOffset(dateOf(page.keys.at(-1)!), 1) + ".json",
+    ]),
+  ];
+  const source = new Map<string, Day>();
+  for (let offset = 0; offset < keys.length; offset += 5) {
+    await Promise.all(
+      keys.slice(offset, offset + 5).map(async (key) => {
         const raw = await store.get(key);
-        if (!raw) return null;
-        const value: Day = JSON.parse(Buffer.from(raw).toString());
-        const day = key.split("/").at(-1)!.slice(0, -5);
-        return {
-          day,
-          captures: Object.keys(value.samples).length,
-          ...summarize(Object.values(value.samples), day),
-          lastSynced: value.updatedAt,
-        };
+        if (raw) source.set(dateOf(key), JSON.parse(Buffer.from(raw).toString()));
       }),
     );
-    days.push(...batch.filter((value) => value !== null));
   }
-  return { days, nextCursor: page.cursor };
+  const firstKey = cursor ? (await store.list(prefix, "", 1)).keys[0] : page.keys[0];
+  const firstDay =
+    source.get(dateOf(firstKey)) ??
+    (JSON.parse(Buffer.from((await store.get(firstKey))!).toString()) as Day);
+  const historyStart = Math.min(...Object.values(firstDay.samples).map((sample) => sample.date));
+  const clock = calendarClock(timeZone);
+  const wanted = new Set<string>();
+  for (const key of page.keys)
+    for (const sample of Object.values(source.get(dateOf(key))?.samples ?? {})) {
+      const half = Math.min(300, Math.max(15, sample.interval || 60)) / 2;
+      for (const offset of [-half, 0, half]) wanted.add(clock(sample.date + offset).day);
+    }
+  const days = [...wanted].sort().flatMap((day) => {
+    const nearby = [-1, 0, 1].flatMap((offset) => {
+      const value = source.get(dayOffset(day, offset));
+      return value ? [value] : [];
+    });
+    const value = summarize(
+      nearby.flatMap((d) => Object.values(d.samples)),
+      day,
+      undefined,
+      timeZone,
+      historyStart,
+    );
+    if (!value.seconds && !value.captures) return [];
+    return [
+      {
+        day,
+        ...value,
+        lastSynced:
+          nearby
+            .map((d) => d.updatedAt)
+            .sort()
+            .at(-1) ?? "",
+      },
+    ];
+  });
+  return { days, nextCursor: page.cursor, timeZone };
 }

@@ -1,5 +1,6 @@
 // Synthetic delayed responses: canonical app rows, category icons, skeleton geometry and zero CLS.
 import { chromium, expect } from "@playwright/test";
+import { calendarClock, REFERENCE } from "../web/lib/insights";
 import { appSeed } from "../web/lib/apps";
 import { createServer, type AddressInfo } from "node:net";
 import { mkdir } from "node:fs/promises";
@@ -26,6 +27,7 @@ try {
     const context = await browser.newContext({
       viewport: { width, height: 1000 },
       locale: "en-US",
+      timezoneId: "America/New_York",
     });
     await context.addCookies([
       {
@@ -55,12 +57,14 @@ try {
             });
       }).observe({ type: "layout-shift", buffered: true });
     });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = calendarClock("America/New_York")(Date.now() / 1000 - REFERENCE).day;
     let summaries = 0,
       indexes = 0;
     const dataset = (full: boolean) => ({
       day: today,
       seconds: 18000,
+      firstCapture: Date.parse(today + "T12:00:00Z") / 1000 - REFERENCE,
+      lastCapture: Date.parse(today + "T22:00:00Z") / 1000 - REFERENCE,
       captures: full ? 1000 : 50,
       lastSynced: new Date().toISOString(),
       apps: full
@@ -120,7 +124,9 @@ try {
       await new Promise((r) => setTimeout(r, 1600));
       await route.fulfill({ json: { apps: appSeed } });
     });
+    const zones: string[] = [];
     await page.route("**/v1/account/summary*", async (route) => {
+      zones.push(new URL(route.request().url()).searchParams.get("timeZone") ?? "");
       const count = ++summaries;
       await new Promise((r) => setTimeout(r, 1100));
       await route.fulfill({ json: { days: [dataset(count > 1)], nextCursor: "" } });
@@ -156,6 +162,9 @@ try {
     );
     await expect(page.locator(".sync-count")).toContainText("1,000 captures");
     await page.waitForTimeout(150);
+    expect(zones).toContain("America/New_York");
+    await expect(page.getByText("Observed time", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("History coverage")).toContainText("50%");
     const after = await positions();
     const shifts = await page.evaluate(() => (window as any).__shifts);
     const cls = shifts.reduce((s: any, e: any) => s + e.value, 0);

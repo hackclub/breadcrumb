@@ -60,7 +60,8 @@ export function estimateTimeline(
 }
 
 export function estimatedTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 60) return "<1 min";
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0 min";
+  if (seconds < 60) return "<1 min";
   const minutes = Math.round(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;

@@ -296,7 +296,23 @@ function App() {
               </div>
               <div className="quick-caption">
                 <strong>{current?.app || "No captures yet"}</strong>
-                <time>{current ? time(current.date) : ""}</time>
+                <time title={current ? date(current.date).toLocaleString() : undefined}>
+                  {current
+                    ? (() => {
+                        const age = Math.max(0, (Date.now() - date(current.date).getTime()) / 1000);
+                        return age < 60
+                          ? "Just captured"
+                          : age < 3600
+                            ? `${Math.floor(age / 60)}m ago`
+                            : age < 86400
+                              ? `${Math.floor(age / 3600)}h ago`
+                              : date(current.date).toLocaleDateString([], {
+                                  month: "short",
+                                  day: "numeric",
+                                });
+                      })()
+                    : ""}
+                </time>
               </div>
               <p className="quick-title">
                 {current?.windowTitle || "Start recording, then return to another app."}
@@ -340,7 +356,11 @@ function App() {
                     History
                   </span>
                   <span className="history-count">
-                    {state.observations.length.toLocaleString()} captures
+                    <span
+                      title={`${state.observations.length.toLocaleString()} captures; estimated from capture spacing, with gaps excluded.`}
+                    >
+                      {estimatedTime(estimates.seconds)} observed
+                    </span>
                     <Icon name="chevron" size={14} />
                   </span>
                 </button>

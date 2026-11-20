@@ -1,6 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { duration, type Breakdown, type InsightDay } from "../lib/insights";
+import {
+  duration,
+  calendarClock,
+  REFERENCE,
+  type Breakdown,
+  type InsightDay,
+} from "../lib/insights";
 import { appSeed, findApp, mergeApps, type AppEntry } from "../lib/apps";
 import { AppIcon } from "./app-icon";
 import { activityName, activityDescription } from "../lib/activities";
@@ -227,9 +233,11 @@ function ActivityExplorer({
 export function TimeDashboard({
   days,
   loading = false,
+  timeZone = "UTC",
 }: {
   days: InsightDay[];
   loading?: boolean;
+  timeZone?: string;
 }) {
   const [activity, setActivity] = useState<string | null>(null);
   const [range, setRange] = useState("7"),
@@ -238,7 +246,8 @@ export function TimeDashboard({
     [catalog, setCatalog] = useState<AppEntry[]>(appSeed),
     [catalogReady, setCatalogReady] = useState(false),
     [breakdown, setBreakdown] = useState<"apps" | "activities">("apps");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = calendarClock(timeZone)(Date.now() / 1000 - REFERENCE).day;
+  const zoneLabel = timeZone === "UTC" ? "UTC" : "Local time";
   useEffect(() => {
     const controller = new AbortController();
     let mounted = true;
@@ -268,6 +277,13 @@ export function TimeDashboard({
   const filtered = selected ? period.filter((day) => day.day === selected) : period;
   const total = filtered.reduce((sum, day) => sum + day.seconds, 0);
   const captures = filtered.reduce((sum, day) => sum + day.captures, 0);
+  const first = Math.min(
+    ...filtered.flatMap((day) => (day.firstCapture == null ? [] : [day.firstCapture])),
+  );
+  const last = Math.max(
+    ...filtered.flatMap((day) => (day.lastCapture == null ? [] : [day.lastCapture])),
+  );
+  const span = Number.isFinite(first) && Number.isFinite(last) ? Math.max(0, last - first) : null;
   const apps = combined(filtered, "apps", catalog);
   const chartDays: InsightDay[] = [];
   const start = range === "all" ? end - 89 * 86400000 : cutoff;
@@ -328,7 +344,7 @@ export function TimeDashboard({
       </div>
       <div className="insight-stats">
         <div>
-          <span>Estimated time</span>
+          <span>Observed time</span>
           <strong>{pending ? <Skeleton className="skeleton-metric" /> : duration(total)}</strong>
           <small>
             {pending ? (
@@ -410,7 +426,7 @@ export function TimeDashboard({
                   }}
                 />
               </span>
-              <span className="day-tick">
+              <span className="day-tick" style={{ visibility: pending ? "hidden" : undefined }}>
                 {chartDays.length <= 7
                   ? new Date(day.day + "T12:00:00Z").toLocaleDateString(undefined, {
                       weekday: "short",
@@ -429,7 +445,10 @@ export function TimeDashboard({
             {pending ? (
               <Skeleton className="skeleton-caption" />
             ) : (
-              <>Peak {duration(Math.max(0, ...chartDays.map((day) => day.seconds)))}/day · UTC</>
+              <>
+                Peak {duration(Math.max(0, ...chartDays.map((day) => day.seconds)))}/day ·{" "}
+                {zoneLabel}
+              </>
             )}
           </span>
           <span>{readable(chartDays.at(-1)!.day)}</span>
@@ -483,11 +502,13 @@ export function TimeDashboard({
       <section className="insight-panel">
         <div className="panel-heading">
           <h2>Day by hour</h2>
-          <span>Select an hour to see its breakdown · UTC</span>
+          <span title={timeZone}>Select an hour to see its breakdown · {zoneLabel}</span>
         </div>
         <div className="hour-scroll" style={{ height: range === "7" ? 220 : 340 }}>
           <div className="hour-grid">
-            <span className="hour-grid-label">UTC</span>
+            <span className="hour-grid-label" title={timeZone}>
+              {zoneLabel === "UTC" ? "UTC" : "Local"}
+            </span>
             {Array.from({ length: 24 }, (_, hour) => (
               <span key={hour} className="hour-grid-label">
                 {hour % 3 === 0 ? String(hour).padStart(2, "0") : ""}
@@ -512,9 +533,9 @@ export function TimeDashboard({
                       key={hour}
                       className="hour-cell"
                       disabled={pending}
-                      aria-label={`${readable(day.day)}, ${String(hour).padStart(2, "0")}:00 UTC: ${duration(seconds)}`}
+                      aria-label={`${readable(day.day)}, ${String(hour).padStart(2, "0")}:00 ${zoneLabel}: ${duration(seconds)}`}
                       aria-pressed={hourSelection?.day === day.day && hourSelection.hour === hour}
-                      title={`${readable(day.day)} · ${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00 UTC · ${duration(seconds)}`}
+                      title={`${readable(day.day)} · ${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00 ${zoneLabel} · ${duration(seconds)}`}
                       onClick={() => setHourSelection({ day: day.day, hour })}
                     >
                       <span
@@ -550,7 +571,7 @@ export function TimeDashboard({
             <div className="panel-heading">
               <h3>
                 {readable(hourSelection.day)} · {String(hourSelection.hour).padStart(2, "0")}:00–
-                {String(hourSelection.hour + 1).padStart(2, "0")}:00 UTC
+                {String(hourSelection.hour + 1).padStart(2, "0")}:00 {zoneLabel}
               </h3>
               <button className="quiet" onClick={() => setHourSelection(null)}>
                 Close hourly breakdown
@@ -588,9 +609,22 @@ export function TimeDashboard({
           </div>
         )}
       </section>
+      <div className="coverage-strip" aria-label="History coverage">
+        {[
+          ["History span", span == null ? "—" : duration(span)],
+          ["Without samples", span == null ? "—" : duration(Math.max(0, span - total))],
+          ["Coverage", span ? `${Math.min(100, Math.round((total / span) * 100))}%` : "—"],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>{pending ? <Skeleton className="skeleton-time" /> : value}</strong>
+          </div>
+        ))}
+      </div>
       <p className="small-note">
-        Estimated from capture spacing, with long gaps excluded. Visible context isn’t verified
-        attention or productive time. Background apps aren’t added to focused time.
+        History span runs from the first to the last capture in this range. Observed time estimates
+        sampled coverage; gaps can include sleep, pauses, or excluded apps. Visible context does not
+        establish attention or productive work. Background apps are not added to focused time.
       </p>
     </div>
   );

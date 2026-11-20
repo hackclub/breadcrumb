@@ -18,6 +18,8 @@ export type HourInsight = {
 export type ActivityDetail = { seconds: number; apps: Breakdown; projects: Breakdown };
 export type InsightDay = {
   activityDetails?: Record<string, ActivityDetail>;
+  firstCapture?: number;
+  lastCapture?: number;
   day: string;
   seconds: number;
   captures: number;
@@ -36,8 +38,37 @@ function bucket() {
     projects: new Map<string, number>(),
   };
 }
-export function summarize(samples: Sample[], day: string, now = Date.now() / 1000 - REFERENCE) {
-  const start = Date.parse(day + "T00:00:00Z") / 1000 - REFERENCE;
+export function calendarClock(timeZone = "UTC") {
+  const format = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  return (date: number) => {
+    const parts = Object.fromEntries(
+      format.formatToParts(new Date((date + REFERENCE) * 1000)).map((p) => [p.type, p.value]),
+    );
+    return {
+      day: `${parts.year}-${parts.month}-${parts.day}`,
+      hour: Number(parts.hour),
+      minute: Number(parts.minute),
+      second: Number(parts.second),
+    };
+  };
+}
+export function summarize(
+  samples: Sample[],
+  day: string,
+  now = Date.now() / 1000 - REFERENCE,
+  timeZone = "UTC",
+  historyStart?: number,
+) {
+  const clock = calendarClock(timeZone);
   const sorted = samples
     .filter((s) => Number.isFinite(s.date) && s.date <= now)
     .sort((a, b) => a.date - b.date);
@@ -68,40 +99,41 @@ export function summarize(samples: Sample[], day: string, now = Date.now() / 100
     add(target.projects, sample.project || "Unassigned", seconds);
   };
   let seconds = 0;
+  let firstCapture: number | undefined, lastCapture: number | undefined;
   for (const [index, sample] of sorted.entries()) {
-    const hour = Math.floor((sample.date - start) / 3600);
-    if (hour >= 0 && hour < 24) counts[hour]++;
+    const stamp = clock(sample.date);
+    if (stamp.day === day) {
+      counts[stamp.hour]++;
+      firstCapture ??= sample.date;
+      lastCapture = sample.date;
+    }
     const half = Math.min(300, Math.max(15, sample.interval || 60)) / 2;
     const previous = sorted[index - 1],
       next = sorted[index + 1];
     const lower = Math.max(
-      start,
-      sorted[0].date,
+      historyStart ?? sorted[0].date,
       sample.date - half,
       previous ? (previous.date + sample.date) / 2 : -Infinity,
     );
     const upper = Math.min(
-      start + 86400,
       now,
       sample.date + half,
       next ? (sample.date + next.date) / 2 : Infinity,
     );
-    const duration = Math.max(0, upper - lower);
-    if (duration) {
-      seconds += duration;
-      record(totals, sample, duration);
-      for (
-        let hour = Math.floor((lower - start) / 3600);
-        hour < 24 && start + hour * 3600 < upper;
-        hour++
-      ) {
-        const part = Math.max(
-          0,
-          Math.min(upper, start + (hour + 1) * 3600) - Math.max(lower, start + hour * 3600),
-        );
-        hours[hour] += part;
-        record(hourly[hour], sample, part);
+    // Split at actual local-hour boundaries. Repeated DST hours combine in one
+    // cell, while elapsed seconds remain counted once. Half-hour zones work too.
+    for (let cursor = lower; cursor < upper;) {
+      const part = clock(cursor);
+      const boundary = Math.floor(cursor) + 3600 - part.minute * 60 - part.second;
+      const end = Math.min(upper, Math.max(cursor + 0.001, boundary));
+      if (part.day === day) {
+        const duration = end - cursor;
+        seconds += duration;
+        hours[part.hour] += duration;
+        record(totals, sample, duration);
+        record(hourly[part.hour], sample, duration);
       }
+      cursor = end;
     }
   }
   const rows = (map: Map<string, number>): Breakdown =>
@@ -119,6 +151,9 @@ export function summarize(samples: Sample[], day: string, now = Date.now() / 100
   });
   return {
     seconds,
+    firstCapture,
+    lastCapture,
+    captures: counts.reduce((n, count) => n + count, 0),
     ...breakdown(totals),
     activityDetails: Object.fromEntries(
       [...details].map(([name, detail]) => [
