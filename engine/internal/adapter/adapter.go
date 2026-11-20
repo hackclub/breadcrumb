@@ -44,6 +44,7 @@ type Process struct {
 
 func Start(path string) (*Process, error) {
 	cmd := exec.Command(path)
+	configureCommand(cmd)
 	in, e := cmd.StdinPipe()
 	if e != nil {
 		return nil, e

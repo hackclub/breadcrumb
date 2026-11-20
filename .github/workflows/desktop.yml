@@ -58,7 +58,18 @@ jobs:
       - if: runner.os == 'Linux'
         name: GLib iterator security regression (release mode)
         run: cargo test --release --manifest-path desktop/src-tauri/vendor/glib/Cargo.toml --lib variant_iter
-      - run: bun run --cwd desktop tauri build --no-bundle
+      - if: runner.os != 'Windows'
+        run: bun run --cwd desktop tauri build --no-bundle
+      - if: runner.os == 'Windows'
+        name: Build Windows NSIS installer
+        run: bun run --cwd desktop tauri build --bundles nsis
+      - if: runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Breadcrumb-Windows-x64-setup
+          path: desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 7
       - if: runner.os == 'Linux'
         run: xvfb-run -a dbus-run-session env WAYLAND_DISPLAY= XDG_SESSION_TYPE=x11 python3 scripts/linux-smoke.py
   ui:

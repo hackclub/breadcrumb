@@ -8,6 +8,23 @@ fn capabilities() -> Value {
     json!({"screenshot":supported,"accessibility":supported && cfg!(any(windows,target_os="linux")),"ocr":false,"windowContext":supported,"exclusions":if supported {"skip-when-visible"} else {"unsupported-session"},"backend":if cfg!(windows){"Windows native capture + UI Automation"}else{"X11 capture + AT-SPI"},"permission":if supported {"managed-by-desktop"} else {"unsupported-session"}})
 }
 fn session_error() -> Option<&'static str> {
+    #[cfg(windows)]
+    {
+        #[link(name = "user32")]
+        extern "system" {
+            fn OpenInputDesktop(flags: u32, inherit: i32, access: u32) -> *mut std::ffi::c_void;
+            fn CloseDesktop(desktop: *mut std::ffi::c_void) -> i32;
+        }
+        // A service session, lock screen, or secure UAC desktop cannot be captured
+        // by this normal, non-UIAccess app. Retry after the user desktop returns.
+        let desktop = unsafe { OpenInputDesktop(0, 0, 1) };
+        if desktop.is_null() {
+            return Some("Screen capture is unavailable in this Windows session. Unlock Windows and run Breadcrumb in your signed-in desktop, not as a service.");
+        }
+        unsafe {
+            CloseDesktop(desktop);
+        }
+    }
     #[cfg(target_os = "linux")]
     {
         if std::env::var("WAYLAND_DISPLAY").is_ok_and(|value| !value.is_empty())

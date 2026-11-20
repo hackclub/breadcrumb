@@ -129,7 +129,7 @@ fn sidecar(name: &str) -> Result<PathBuf, String> {
         return Ok(dev);
     }
     Err(format!(
-        "Missing native binary {name}; run scripts/desktop-build.sh --prepare"
+        "Missing required component: {name}. Reinstall Breadcrumb to repair it."
     ))
 }
 // Transparent menu-bar artwork: the recording indicator is independent of the Dock icon.
@@ -257,8 +257,25 @@ fn open_after_launch(app: tauri::AppHandle) {
         let _ = app.run_on_main_thread(move || open_panel(&handle, None));
     });
 }
+#[cfg(windows)]
+fn startup_error(message: &str) {
+    #[link(name = "user32")]
+    extern "system" {
+        fn MessageBoxW(
+            window: *mut std::ffi::c_void,
+            text: *const u16,
+            title: *const u16,
+            flags: u32,
+        ) -> i32;
+    }
+    let text: Vec<u16> = format!("Breadcrumb could not start.\n\n{message}\n\nRun the Breadcrumb installer again to repair its files and WebView2 runtime. Your history is kept unless you choose Delete app data.").encode_utf16().chain(Some(0)).collect();
+    let title: Vec<u16> = "Breadcrumb setup".encode_utf16().chain(Some(0)).collect();
+    unsafe {
+        MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), 0x10);
+    }
+}
 fn main() {
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             open_after_launch(app.clone());
         }))
@@ -275,6 +292,11 @@ fn main() {
             let binary = sidecar("breadcrumb-engine").map_err(std::io::Error::other)?;
             let capture = sidecar("breadcrumb-capture").map_err(std::io::Error::other)?;
             let mut command = Command::new(binary);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                command.creation_flags(0x08000000); // CREATE_NO_WINDOW for the console sidecar.
+            }
             command
                 .arg("--capture-helper")
                 .arg(capture)
@@ -358,7 +380,13 @@ fn main() {
                     _ => {}
                 });
             tray.build(app)?;
-            if std::env::args().any(|arg| arg == "--show" || arg == "--demo") {
+            let first_launch = app
+                .state::<Engine>()
+                .request("status", json!({}))
+                .ok()
+                .and_then(|state| state["needsSetup"].as_bool())
+                .unwrap_or(true);
+            if first_launch || std::env::args().any(|arg| arg == "--show" || arg == "--demo") {
                 open_after_launch(app.handle().clone());
             }
             let handle = app.handle().clone();
@@ -445,6 +473,11 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![engine, hide_panel, panel_dialog])
-        .run(tauri::generate_context!())
-        .expect("Breadcrumb could not start");
+        .run(tauri::generate_context!());
+    if let Err(error) = result {
+        #[cfg(windows)]
+        startup_error(&error.to_string());
+        eprintln!("Breadcrumb could not start: {error}");
+        std::process::exit(1);
+    }
 }

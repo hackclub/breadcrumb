@@ -21,6 +21,7 @@ import (
 )
 
 type engine struct {
+	needsSetup          bool
 	mu                  sync.Mutex
 	lib                 *library.Library
 	capture             adapter.Adapter
@@ -235,7 +236,7 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 	case "state":
 		return e.state(), nil
 	case "status":
-		return map[string]any{"recording": e.recording, "status": e.status, "authCompleted": e.authCompleted}, nil
+		return map[string]any{"recording": e.recording, "status": e.status, "authCompleted": e.authCompleted, "needsSetup": e.needsSetup}, nil
 	case "toggle":
 		e.recording = !e.recording
 		if e.demo {
@@ -249,6 +250,7 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 		if err := writePrivate(filepath.Join(e.lib.Dir, "desktop-state.json"), map[string]any{"recording": e.recording, "exclusions": e.exclusions}); err != nil {
 			return nil, err
 		}
+		e.needsSetup = false
 		return e.state(), nil
 	case "settings":
 		var s library.Settings
@@ -273,6 +275,7 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 		if err := writePrivate(filepath.Join(e.lib.Dir, "desktop-state.json"), map[string]any{"recording": e.recording, "exclusions": e.exclusions}); err != nil {
 			return nil, err
 		}
+		e.needsSetup = false
 		return e.state(), nil
 	case "payload":
 		var input struct {
@@ -454,6 +457,7 @@ func main() {
 		Exclusions []string `json:"exclusions"`
 	}
 	_, stateErr := os.Stat(filepath.Join(*dir, "desktop-state.json"))
+	e.needsSetup = os.IsNotExist(stateErr)
 	if data, err := os.ReadFile(filepath.Join(*dir, "desktop-state.json")); err == nil {
 		json.Unmarshal(data, &previous)
 		e.recording = previous.Recording

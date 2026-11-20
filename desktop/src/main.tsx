@@ -286,6 +286,11 @@ function App() {
                   <span className="preview-placeholder">
                     <Icon name="image" size={22} />
                     {current ? "Loading capture…" : "Your history starts here"}
+                    {!current && (
+                      <small>
+                        Screenshots and app context stay on this device. Press Start to begin.
+                      </small>
+                    )}
                   </span>
                 )}
               </div>
@@ -806,6 +811,7 @@ function SettingsPage({
   action: (f: () => Promise<unknown>, success?: string) => Promise<void>;
   refresh: () => Promise<void>;
 }) {
+  const windows = state.capabilities.backend.startsWith("Windows");
   const [draft, setDraft] = useState(state.settings),
     [exclusions, setExclusions] = useState(state.exclusions.join("\n")),
     [server, setServer] = useState(state.server || ""),
@@ -975,24 +981,33 @@ function SettingsPage({
         <div className="setting-row">
           <span>Screen recording</span>
           <span>
-            {state.capabilities.permission === "granted"
-              ? "Allowed"
-              : state.capabilities.permission === "required"
-                ? "Required"
-                : state.capabilities.permission || "Unavailable"}
+            {state.capabilities.permission === "managed-by-desktop"
+              ? "Available"
+              : state.capabilities.permission === "granted"
+                ? "Allowed"
+                : state.capabilities.permission === "required"
+                  ? "Required"
+                  : state.capabilities.permission || "Unavailable"}
           </span>
         </div>
         <div className="setting-row">
           <span>Accessibility</span>
           <span>{state.capabilities.accessibility ? "Available" : "Not available"}</span>
         </div>
-        <button
-          className="outline"
-          disabled={!isNative || state.demo}
-          onClick={() => action(() => engine("permissions"))}
-        >
-          Open permission settings
-        </button>
+        {windows ? (
+          <p className="muted">
+            Windows desktop capture needs no separate permission prompt. Administrator-only and
+            protected windows may provide less context.
+          </p>
+        ) : (
+          <button
+            className="outline"
+            disabled={!isNative || state.demo}
+            onClick={() => action(() => engine("permissions"))}
+          >
+            Open permission settings
+          </button>
+        )}
         <label>
           Never capture these apps
           <textarea
