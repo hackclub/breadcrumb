@@ -1,6 +1,6 @@
 # Development
 
-Install Bun 1.4.4, Go 1.24+, Python 3, and stable Rust. macOS builds need a recent Xcode/Command Line Tools Swift toolchain; the shipped app targets macOS 14 Sonoma or newer on Intel and Apple Silicon. Linux needs the WebKitGTK, GTK, X11, D-Bus, PipeWire, and Wayland development packages listed in `.github/workflows/desktop.yml`.
+Install Bun 1.4.4, Go 1.26+, Python 3, and stable Rust. macOS builds need a recent Xcode/Command Line Tools Swift toolchain; the shipped app targets macOS 14 Sonoma or newer on Intel and Apple Silicon. Linux needs the WebKitGTK, GTK, X11, D-Bus, PipeWire, and Wayland development packages listed in `.github/workflows/desktop.yml`.
 
 ```sh
 bun install --frozen-lockfile

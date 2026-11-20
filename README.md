@@ -43,7 +43,7 @@ Accessibility is optional on macOS. Windows and Linux do not yet provide local O
 
 ## Run locally
 
-Install **Bun 1.4.4**, **Go 1.24+**, **Python 3**, and **stable Rust**, plus your platform’s native build dependencies. macOS also needs a recent Xcode toolchain.
+Install **Bun 1.4.4**, **Go 1.26+**, **Python 3**, and **stable Rust**, plus your platform’s native build dependencies. macOS also needs a recent Xcode toolchain.
 
 ```sh
 bun install --frozen-lockfile
