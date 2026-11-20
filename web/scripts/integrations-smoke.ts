@@ -22,6 +22,8 @@ if (
 )
   throw Error("Use a disposable local breadcrumb_api_test database");
 process.env.DATABASE_URL = connection;
+process.env.AUTH_DATABASE_URL = connection;
+process.env.ALLOWED_EMAILS = "";
 process.env.PUBLIC_URL = "https://breadcrumb.example";
 process.env.BETTER_AUTH_SECRET = randomBytes(48).toString("hex");
 const pool = new Pool({ connectionString: connection, max: 3 });
@@ -40,6 +42,7 @@ const options = authOptions({
   send: async () => {},
 });
 const auth = betterAuth({ ...options, plugins: [...options.plugins, testUtils()] });
+const registeredClients: string[] = [];
 const ids = [
   "api_smoke_" + randomBytes(8).toString("hex"),
   "api_smoke_" + randomBytes(8).toString("hex"),
@@ -127,6 +130,85 @@ try {
     [expired.id],
   );
   await assert.rejects(images.resolve(expired.url.split("/s/")[1]));
+  const requestAuth = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
+    auth.handler(
+      new Request(root + "/api/auth" + path, {
+        method: body === undefined ? "GET" : "POST",
+        headers: { Origin: root, "Content-Type": "application/json", ...headers },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+    );
+  const registered = await requestAuth("/oauth2/register", {
+    client_name: "Integration fixture",
+    application_type: "native",
+    token_endpoint_auth_method: "none",
+    redirect_uris: ["http://127.0.0.1:49201/callback"],
+    grant_types: ["authorization_code"],
+    response_types: ["code"],
+    scope: "time:read",
+    resources: [root + "/api/v1"],
+  });
+  assert.equal(registered.status, 201);
+  const oauthClient = await registered.json();
+  registeredClients.push(oauthClient.client_id);
+  const verifier = randomBytes(32).toString("base64url");
+  const start = await requestAuth(
+    "/oauth2/authorize?" +
+      new URLSearchParams({
+        client_id: oauthClient.client_id,
+        response_type: "code",
+        redirect_uri: oauthClient.redirect_uris[0],
+        scope: "time:read",
+        resource: root + "/api/v1",
+        prompt: "consent",
+        code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+        code_challenge_method: "S256",
+      }),
+    undefined,
+    { Cookie: cookies[0], Accept: "text/html" },
+  );
+  const consent = new URL(start.headers.get("location")!, root);
+  const approved = await requestAuth(
+    "/oauth2/consent",
+    { accept: true, oauth_query: consent.search.slice(1) },
+    { Cookie: cookies[0] },
+  );
+  const callback = new URL((await approved.json()).url);
+  const exchanged = await auth.handler(
+    new Request(root + "/api/auth/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: oauthClient.client_id,
+        redirect_uri: oauthClient.redirect_uris[0],
+        resource: root + "/api/v1",
+        code: callback.searchParams.get("code")!,
+        code_verifier: verifier,
+      }),
+    }),
+  );
+  assert.equal(exchanged.status, 200);
+  const accessToken = (await exchanged.json()).access_token;
+  const read = (path: string) =>
+    integrationsAPI(
+      new Request(root + "/api/v1/" + path, {
+        headers: { Authorization: "Bearer " + accessToken },
+      }),
+      store,
+    );
+  const scoped = await read("activity?from=2026-01-02&to=2026-01-02");
+  assert.equal(scoped.status, 200);
+  const activity = await scoped.json();
+  assert.ok(activity.days[0].seconds > 0);
+  assert.equal(activity.days[0].apps, undefined);
+  assert.equal(activity.days[0].projects, undefined);
+  assert.equal((await read("screenshots")).status, 403);
+  const grants = await auth.api.getOAuthConsents({ headers: new Headers({ Cookie: cookies[0] }) });
+  await call("connections", "DELETE", {
+    id: grants.find((g) => g.clientId === oauthClient.client_id)!.id,
+  });
+  assert.equal((await read("activity")).status, 401);
   const defaults = await (await call("leaderboard/preferences")).json();
   assert.equal(defaults.enabled, true);
   assert.equal(defaults.shareApps, false);
@@ -137,12 +219,15 @@ try {
   assert.equal(limited.status, 429);
   assert.ok(limited.headers.get("Retry-After"));
   console.log(
-    "Passed: database-backed sessions, screenshot ownership, hashed share secrets, expiry, cross-owner/revocation, CSRF, default leaderboard settings and durable quotas.",
+    "Passed: database-backed sessions and scoped OAuth/PKCE, live withdrawal, screenshot ownership, hashed share secrets, expiry, cross-owner/revocation, CSRF, default leaderboard settings and durable quotas.",
   );
 } finally {
   await pool.query('DELETE FROM breadcrumb_auth."user" WHERE id=ANY($1)', [ids]);
   await pool.query("DELETE FROM breadcrumb_integrations.limits WHERE id=ANY($1)", [
     ids.map((id) => id + ":browser"),
+  ]);
+  await pool.query('DELETE FROM breadcrumb_auth."oauthClient" WHERE "clientId"=ANY($1)', [
+    registeredClients,
   ]);
   await authPool.end();
   await pool.end();

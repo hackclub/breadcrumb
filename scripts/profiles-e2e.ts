@@ -22,6 +22,7 @@ const server = Bun.spawn(["bun", "run", "--cwd", "web", "start", "--port", Strin
   env: {
     ...process.env,
     DATABASE_URL: connection,
+    AUTH_DATABASE_URL: connection,
     BETTER_AUTH_SECRET: authSecret,
     ALLOWED_EMAILS: "",
     PUBLIC_URL: base,
