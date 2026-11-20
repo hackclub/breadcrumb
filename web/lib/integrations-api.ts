@@ -38,6 +38,9 @@ export async function quota(principal: Pick<DataPrincipal, "owner" | "client">) 
   return headers;
 }
 export async function integrationsAPI(request: Request, store?: Store) {
+  let responseHeaders: Record<string, string> = {};
+  const json = (value: unknown, headers: Record<string, string> = {}) =>
+    apiJSON(value, { ...responseHeaders, ...headers });
   try {
     const url = new URL(request.url),
       path = url.pathname.replace(/^\/api\/v1\/?/, ""),
@@ -85,7 +88,7 @@ export async function integrationsAPI(request: Request, store?: Store) {
           "Unknown leaderboard parameter.",
           "Use range, limit and cursor.",
         );
-      return apiJSON(
+      return json(
         await getLeaderboards().leaderboard({
           range: (url.searchParams.get("range") ?? "7") as "7" | "30" | "all",
           limit: Number(url.searchParams.get("limit") ?? 20),
@@ -97,7 +100,7 @@ export async function integrationsAPI(request: Request, store?: Store) {
     if (path === "activity") {
       const principal = await dataAccess(request, "/api/v1");
       const headers = await quota(principal);
-      return apiJSON(
+      return json(
         await readActivity(store, principal, Object.fromEntries(url.searchParams)),
         headers,
       );
@@ -111,13 +114,13 @@ export async function integrationsAPI(request: Request, store?: Store) {
         for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);
         return response;
       }
-      return apiJSON(
+      return json(
         await screenshots.list(principal.participant, url.searchParams.get("cursor") ?? ""),
         headers,
       );
     }
     const owner = await browserOwner(request);
-    await quota({ ...owner, client: "browser" });
+    responseHeaders = await quota({ ...owner, client: "browser" });
     if (method !== "GET") sameOrigin(request, serverURL());
     if (path === "connections") {
       const auth = getAuth();
@@ -131,7 +134,7 @@ export async function integrationsAPI(request: Request, store?: Store) {
             "Send the id returned by GET /api/v1/connections.",
           );
         await auth.api.deleteOAuthConsent({ headers: request.headers, body: { id: body.id } });
-        return apiJSON({ disconnected: true });
+        return json({ disconnected: true });
       }
       const consents = await auth.api.getOAuthConsents({ headers: request.headers });
       const entries = [];
@@ -159,10 +162,10 @@ export async function integrationsAPI(request: Request, store?: Store) {
           )),
         );
       }
-      return apiJSON({ entries });
+      return json({ entries });
     }
     if (path === "leaderboard/preferences")
-      return apiJSON(
+      return json(
         method === "GET"
           ? await getLeaderboards().preferences(owner.owner)
           : await getLeaderboards().savePreferences(
@@ -183,18 +186,18 @@ export async function integrationsAPI(request: Request, store?: Store) {
           "Invalid refresh cursor.",
           "Use nextCursor from the previous response.",
         );
-      return apiJSON(
+      return json(
         await getLeaderboards().refresh(owner.participant, store, (body?.cursor as string) ?? ""),
       );
     }
-    if (method === "GET") return apiJSON(await screenshots.shares(owner.owner));
+    if (method === "GET") return json(await screenshots.shares(owner.owner));
     if (method === "POST") {
       const shared = await screenshots.share(
         owner.owner,
         owner.participant,
         await smallJSON(request),
       );
-      return apiJSON({
+      return json({
         id: shared.id,
         url: serverURL() + "/s/" + shared.token,
         expiresAt: shared.expiresAt,
@@ -209,7 +212,7 @@ export async function integrationsAPI(request: Request, store?: Store) {
         "Send the id returned when creating the link.",
       );
     await screenshots.revoke(owner.owner, body.id);
-    return apiJSON({ revoked: true });
+    return json({ revoked: true });
   } catch (caught) {
     let error = caught;
     if (isAPIError(error) && [400, 401, 403, 404].includes(error.statusCode))

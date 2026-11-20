@@ -21,7 +21,7 @@ export function problem(error: unknown, request: Request) {
         );
   return Response.json(
     {
-      type: `https://breadcrumb.hackclub.com/docs/api#${issue.code}`,
+      type: `https://breadcrumb.hackclub.com/docs#${issue.code}`,
       title: issue.code.replaceAll("_", " "),
       status: issue.status,
       code: issue.code,
