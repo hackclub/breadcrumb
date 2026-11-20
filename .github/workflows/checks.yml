@@ -99,6 +99,41 @@ jobs:
         env:
           PROFILE_TEST_DATABASE_URL: postgres://profile_test@127.0.0.1:5432/breadcrumb_profiles_test
 
+  integrations:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: API, MCP and screenshot sharing
+            database: breadcrumb_api_test
+            command: test:integrations
+          - name: Leaderboard privacy and accounting
+            database: breadcrumb_leaderboards_test
+            command: test:leaderboards
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:526f86d93c6ea08fd3f1fe5605650cacc781b2c6013169a0ad8f42c7d3d84f32
+        env:
+          POSTGRES_USER: integration_test
+          POSTGRES_DB: ${{ matrix.database }}
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U integration_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --cwd web --frozen-lockfile
+      - run: bun run --cwd web ${{ matrix.command }}
+        env:
+          INTEGRATIONS_TEST_DATABASE_URL: postgres://integration_test@127.0.0.1:5432/${{ matrix.database }}
+          LEADERBOARD_TEST_DATABASE_URL: postgres://integration_test@127.0.0.1:5432/${{ matrix.database }}
+
   analytics:
     name: Analytics database parity
     runs-on: ubuntu-latest

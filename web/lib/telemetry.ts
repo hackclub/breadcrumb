@@ -1,6 +1,7 @@
 export function redactTelemetryURL<T extends { url: string }>(event: T): T | null {
   try {
     const url = new URL(event.url);
+    if (url.pathname.startsWith("/s/")) return null;
     url.search = "";
     url.hash = "";
     url.username = "";

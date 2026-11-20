@@ -85,3 +85,23 @@ Backfill is idempotent and prints a continuation cursor after each batch. Resume
 All backends use the same time accounting, including overlaps, gaps and local day boundaries. ClickHouse reads deduplicate retries before summaries are calculated, and inserts wait for persistence before an upload is acknowledged. A database outage leaves the capture in R2 and returns an error so the desktop can retry safely.
 
 `bun run test:analytics` checks real PostgreSQL and ClickHouse instances using synthetic data. It requires explicit `ANALYTICS_TEST_POSTGRES_URL` and `ANALYTICS_TEST_CLICKHOUSE_URL` pointing to disposable local databases, with optional `ANALYTICS_TEST_CLICKHOUSE_USER` and `ANALYTICS_TEST_CLICKHOUSE_PASSWORD`. The PostgreSQL test database must be named `breadcrumb_analytics_test`. CI runs the same parity checks.
+
+## Connected apps, API and MCP
+
+`/docs` describes the stable `/api/v1` API, `/openapi.json` publishes its OpenAPI 3.2.1 contract, and `/.well-known/api-catalog` provides RFC 9727 discovery. `/mcp` uses the official TypeScript SDK’s stateless Streamable HTTP handler for MCP 2026-07-28 and legacy 2025 clients. `/llms.txt` links the integration surfaces.
+
+Better Auth owns authorization-code/PKCE, refresh tokens, consent, revocation, Client ID Metadata Documents, and compatibility dynamic registration. REST and MCP are separate OAuth resources (`PUBLIC_URL` plus `/api/v1` or `/mcp`); upload tokens cannot query these resources. Request `time:read`, adding `apps:read`, `projects:read`, or `screenshots:read` only as needed. Email is disclosed only with the email scope. Screenshots never appear in ordinary activity responses; raw screen text and accessibility trees are not exposed by the read API.
+
+`/connect` verifies the signed authorization request before offering approval. `/connections` lists grants and disconnects them. Every data request checks its token audience, scopes, and current grant, so disconnecting immediately blocks future API and MCP reads. Authenticated reads are limited to120 requests per user/client per minute with durable database counters. Errors use RFC 9457 problem details. For browser-based MCP clients, explicitly configure `MCP_ALLOWED_ORIGINS`; native clients need no additional origin setting. Deployment protection, when enabled, remains an additional access gate.
+
+Screenshot sharing is an explicit browser action: preview a capture, choose 1 hour–7 days, and create an unlisted link. Links expose only the selected image and can be revoked in Connections. Secrets are stored as hashes; both the share page and image check expiry/revocation and disable caching. Anyone with a valid link can view it. Shared screenshot URLs are excluded from performance telemetry.
+
+After migrating auth and profiles, run `bun run integrations:migrate` and `bun run leaderboards:migrate` before deploying these routes. The integration migration creates only quota and screenshot-link tables. For an explicitly requested deployment migration, set the build-only `BREADCRUMB_APPLY_MIGRATIONS=1` flag; the build installs both new schemas under a database advisory lock. Ordinary builds skip this step. Auth and profiles must already be migrated. `bun run test:integrations` requires `INTEGRATIONS_TEST_DATABASE_URL` pointing to a disposable local database named `breadcrumb_api_test`; it checks real sessions, sharing and access boundaries.
+
+## Community leaderboard
+
+Public profiles participate by default. `/leaderboard` offers 7-day, 30-day and all-time observed-time rankings, plus an immediate opt-out. Private profiles are always excluded. Measured app usage is separately hidden by default; enabling it shares the top apps for that ranking period, independently of the profile’s curated app list.
+
+An indexed PostgreSQL daily aggregate powers public reads; leaderboard requests never scan contributors’ capture files. Background updates follow successful capture syncs. Canonical summaries retain overlap and gap accounting. Run `bun run leaderboards:backfill --pages 10` to index existing public profiles; continue with the printed `--cursor` until done. This operation remains bounded and respects opt-outs. Dates use UTC and the UI refreshes once a minute while visible.
+
+`bun run test:leaderboards` requires `LEADERBOARD_TEST_DATABASE_URL` pointing to a disposable local `breadcrumb_leaderboards_test` database. CI checks participation defaults, privacy withdrawal, app permissions, pagination, retries and accounting. Leaderboard time is estimated observed coverage, not a productive-work score or proof of effort.

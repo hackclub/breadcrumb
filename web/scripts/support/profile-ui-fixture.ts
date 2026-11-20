@@ -1,8 +1,8 @@
-// Only for UI tests against a disposable local PostgreSQL database.
 import { betterAuth } from "better-auth";
+// Only for UI tests against a disposable local PostgreSQL database.
 import { testUtils } from "better-auth/plugins";
 import { getMigrations } from "better-auth/db/migration";
-import { createAuth } from "../../lib/auth";
+import { authOptions } from "../../lib/auth";
 import { createHash } from "node:crypto";
 import { Pool } from "pg";
 import { PostgresProfiles, type Profile } from "../../lib/profiles";
@@ -26,8 +26,8 @@ export async function profileUIFixture(connection: string, baseURL: string, secr
     options: "-c search_path=breadcrumb_auth",
     max: 2,
   });
-  const options = createAuth({ database: authPool, baseURL, secret, send: async () => {} }).options;
-  const auth = betterAuth({ ...options, plugins: [...(options.plugins ?? []), testUtils()] });
+  const options = authOptions({ database: authPool, baseURL, secret, send: async () => {} });
+  const auth = betterAuth({ ...options, plugins: [...options.plugins, testUtils()] });
   await (await getMigrations(auth.options)).runMigrations();
   const { test } = await auth.$context;
   async function ensureOwner(owner: string) {

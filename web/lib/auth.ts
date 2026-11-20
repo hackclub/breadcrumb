@@ -1,10 +1,13 @@
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { isAPIError } from "better-auth/api";
 import { magicLink, jwt } from "better-auth/plugins";
+import { cimd } from "@better-auth/cimd";
+import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { oauthProviderResourceClient } from "@better-auth/oauth-provider/resource-client";
 import { createHash } from "node:crypto";
 import { Pool } from "pg";
+import { dataScopes } from "./permissions";
 export const participantID = (email: string) =>
   createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 export const allowedEmail = (email: string, env: NodeJS.ProcessEnv) =>
@@ -33,7 +36,7 @@ export async function sendSignInEmail(
   });
   if (!response.ok) throw Error("Could not send sign-in email");
 }
-export function createAuth(options: {
+export function authOptions(options: {
   database: BetterAuthOptions["database"];
   baseURL: string;
   secret: string;
@@ -42,7 +45,7 @@ export function createAuth(options: {
 }) {
   const env = options.env ?? process.env,
     resource = options.baseURL.replace(/\/$/, "") + "/v1";
-  return betterAuth({
+  return {
     appName: "Breadcrumb",
     advanced: { disableOriginCheck: false, disableCSRFCheck: false },
     baseURL: options.baseURL,
@@ -60,17 +63,29 @@ export function createAuth(options: {
         },
       }),
       jwt({ disableSettingJwtHeader: true }),
+      cimd({ fetchClientMetadataResource, metadataProfile: "mcp-2026-07-28" }),
       oauthProvider({
         loginPage: "/",
-        consentPage: "/",
-        scopes: ["email", "offline_access", "captures:sync"],
+        consentPage: "/connect",
+        scopes: ["email", "offline_access", "captures:sync", ...dataScopes],
         grantTypes: ["authorization_code", "refresh_token"],
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
         clientRegistrationDefaultApplicationType: "native",
-        clientRegistrationDefaultScopes: ["email", "offline_access", "captures:sync"],
-        clientRegistrationAllowedScopes: ["email", "offline_access", "captures:sync"],
+        clientRegistrationDefaultScopes: ["time:read"],
+        clientRegistrationAllowedScopes: [
+          "email",
+          "offline_access",
+          "captures:sync",
+          ...dataScopes,
+        ],
         resources: [
+          ...["/api/v1", "/mcp"].map((path) => ({
+            identifier: options.baseURL.replace(/\/$/, "") + path,
+            allowedScopes: ["email", "offline_access", ...dataScopes],
+            accessTokenTtl: 300,
+            refreshTokenTtl: 90 * 86400,
+          })),
           {
             identifier: resource,
             allowedScopes: ["email", "offline_access", "captures:sync"],
@@ -78,22 +93,30 @@ export function createAuth(options: {
             refreshTokenTtl: 90 * 86400,
           },
         ],
-        clientRegistrationDefaultResources: [resource],
+        clientRegistrationDefaultResources: [
+          resource,
+          ...["/api/v1", "/mcp"].map((path) => options.baseURL.replace(/\/$/, "") + path),
+        ],
         clientPrivileges: () => false,
         resourcePrivileges: () => false,
         accessTokenExpiresIn: 300,
         refreshTokenExpiresIn: 90 * 86400,
-        customAccessTokenClaims: ({ user }) => ({
-          email: user?.email,
-          email_verified: user?.emailVerified,
-        }),
-        customTokenResponseFields: ({ user }) => ({
-          email: user?.email,
-          participant: user ? participantID(user.email) : undefined,
+        customAccessTokenClaims: ({ user, scopes }) =>
+          scopes.includes("email")
+            ? { email: user?.email, email_verified: user?.emailVerified }
+            : {},
+        customTokenResponseFields: ({ user, scopes }) => ({
+          ...(scopes.includes("email") ? { email: user?.email } : {}),
+          ...(scopes.includes("captures:sync") && user
+            ? { participant: participantID(user.email) }
+            : {}),
         }),
       }),
     ],
-  });
+  } satisfies BetterAuthOptions;
+}
+export function createAuth(options: Parameters<typeof authOptions>[0]) {
+  return betterAuth(authOptions(options));
 }
 export type BreadcrumbAuth = ReturnType<typeof createAuth>;
 let instance: BreadcrumbAuth | undefined;
@@ -146,6 +169,25 @@ export function createAuthAccess(
           typeof claims.email !== "string" ||
           claims.email_verified !== true ||
           !allowedEmail(claims.email, env)
+        )
+          return null;
+        if (typeof claims.sub !== "string" || typeof claims.client_id !== "string") return null;
+        const grants = await (
+          await instance.$context
+        ).adapter.findMany<{ scopes: string[]; resources?: string[] }>({
+          model: "oauthConsent",
+          where: [
+            { field: "userId", value: claims.sub },
+            { field: "clientId", value: claims.client_id },
+          ],
+        });
+        const audience = (instance.options.baseURL as string).replace(/\/$/, "") + "/v1";
+        if (
+          !grants.some(
+            (grant) =>
+              grant.scopes.includes("captures:sync") &&
+              (!grant.resources?.length || grant.resources.includes(audience)),
+          )
         )
           return null;
         return { id: participantID(claims.email), email: claims.email };

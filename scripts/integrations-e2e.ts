@@ -1,0 +1,113 @@
+// Synthetic browser checks for connection controls and explicit screenshot sharing.
+import { chromium, expect } from "@playwright/test";
+import { createServer, type AddressInfo } from "node:net";
+import { mkdir } from "node:fs/promises";
+const socket = createServer();
+await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
+const port = (socket.address() as AddressInfo).port;
+await new Promise<void>((resolve) => socket.close(() => resolve()));
+const origin = `http://127.0.0.1:${port}`;
+const server = Bun.spawn(["bun", "run", "--cwd", "web", "start", "--port", String(port)], {
+  stdout: "ignore",
+  stderr: "inherit",
+});
+const browser = await chromium.launch();
+try {
+  for (let n = 0; n < 100; n++) {
+    try {
+      if ((await fetch(origin + "/icon.svg")).ok) break;
+    } catch {}
+    await Bun.sleep(100);
+  }
+  await mkdir("test-results/integrations", { recursive: true });
+  for (const width of [1280, 320]) {
+    const page = await browser.newPage({ viewport: { width, height: 1000 } });
+    const captureId = "00000000-0000-4000-8000-000000000001";
+    let revoked = false,
+      disconnected = false;
+    await page.route("**/api/v1/connections", async (route) => {
+      if (route.request().method() === "DELETE") {
+        expect(route.request().postDataJSON()).toEqual({ id: "grant" });
+        disconnected = true;
+        await route.fulfill({ json: { disconnected: true } });
+      } else
+        await route.fulfill({
+          json: {
+            entries: [
+              {
+                id: "grant",
+                name: "Personal assistant",
+                clientId: "client",
+                scopes: ["time:read", "apps:read"],
+              },
+            ],
+          },
+        });
+    });
+    await page.route("**/api/v1/screenshots", (route) =>
+      route.fulfill({
+        json: {
+          entries: [{ id: captureId, date: "2026-01-02T12:00:00Z", hasScreenshot: true }],
+          nextCursor: "",
+        },
+      }),
+    );
+    await page.route("**/api/v1/screenshots/*/image", (route) =>
+      route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+          "base64",
+        ),
+      }),
+    );
+    await page.route("**/api/v1/shares", async (route) => {
+      const method = route.request().method();
+      if (method === "POST") {
+        expect(route.request().postDataJSON()).toEqual({ captureId, expiresInHours: 1 });
+        await route.fulfill({
+          json: {
+            id: "share",
+            url: origin + "/s/synthetic-link",
+            expiresAt: "2026-01-03T12:00:00Z",
+          },
+        });
+      } else if (method === "DELETE") {
+        expect(route.request().postDataJSON()).toEqual({ id: "share" });
+        revoked = true;
+        await route.fulfill({ json: { revoked: true } });
+      } else await route.fulfill({ json: { entries: [] } });
+    });
+    await page.goto(origin + "/connections");
+    await expect(page.getByText("Personal assistant", { exact: true })).toBeVisible();
+    await expect(page.locator(".screenshot-preview")).toHaveCount(0);
+    await page.locator(".capture-choice").click();
+    await expect(page.locator(".screenshot-preview img")).toBeVisible();
+    await page.getByRole("combobox", { name: "Link expires after" }).selectOption("1");
+    await page.getByRole("button", { name: "Create share link" }).click();
+    await expect(page.getByRole("textbox", { name: "Screenshot share link" })).toHaveValue(
+      origin + "/s/synthetic-link",
+    );
+    await page.getByRole("button", { name: "Revoke link", exact: true }).click();
+    expect(revoked).toBe(true);
+    await expect(page.getByRole("textbox", { name: "Screenshot share link" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+    expect(disconnected).toBe(true);
+    await expect(page.getByText("No apps connected yet.")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: `test-results/integrations/sharing-${width}.png`,
+      fullPage: true,
+    });
+    await page.close();
+  }
+  console.log(
+    "Passed: desktop/mobile connection withdrawal, screenshot preview, explicit link creation, expiry choice, link revocation and no horizontal overflow.",
+  );
+} finally {
+  await browser.close();
+  server.kill();
+  await server.exited;
+}
