@@ -3,6 +3,7 @@ import { ownProfile } from "../../profile-owner";
 import { appCatalog } from "../../../lib/app-catalog";
 import { PublicProfile, ProfileSettings } from "../../profile-pages";
 import { profileRoute } from "../../../lib/profiles";
+import { serverSignedIn } from "../../server-session";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Profile · Breadcrumb",
@@ -18,9 +19,10 @@ export default async function Page({ params }: { params: Promise<{ username: str
     "public",
     username,
   );
-  const value = await response.json();
+  const [value, signedIn] = await Promise.all([response.json(), serverSignedIn()]);
   return (
     <PublicProfile
+      signedIn={signedIn}
       profile={value.profile ?? null}
       failed={response.status !== 404 && !response.ok}
     />

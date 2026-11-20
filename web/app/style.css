@@ -109,10 +109,48 @@ form button {
   height: 25px;
   flex-shrink: 0;
 }
+.portal > header .wordmark {
+  margin-right: auto;
+}
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-right: 22px;
+}
+.site-nav a,
+.sign-in-nav {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.site-nav a:hover,
+.site-nav a[aria-current="page"],
+.sign-in-nav:hover {
+  color: var(--ink);
+}
 .header-actions {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+.header-actions button {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+@media (max-width: 600px) {
+  .portal > header {
+    flex-wrap: wrap;
+    row-gap: 14px;
+  }
+  .site-nav {
+    order: 3;
+    flex-basis: 100%;
+    margin-right: 0;
+    gap: 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
 }
 .header-actions select {
   font-size: 12px;
@@ -488,7 +526,8 @@ form button {
   max-width: 370px;
   line-height: 1.7;
 }
-.profile-button {
+.profile-button,
+.button-link {
   display: inline-block;
   padding: 9px 15px;
   border-radius: 6px;
