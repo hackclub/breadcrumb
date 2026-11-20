@@ -143,11 +143,20 @@ function ProfileLink({ url, kind }: { url?: string; kind: "github" | "website" }
   );
 }
 
-export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: boolean }) {
-  const [profile, setProfile] = useState<Profile | null>(null),
-    [draft, setDraft] = useState(empty),
-    [catalog, setCatalog] = useState<AppEntry[]>(appSeed),
-    [loading, setLoading] = useState(true),
+export function ProfileSettings({
+  initialSignedIn = true,
+  initialProfile,
+  initialCatalog = appSeed,
+}: {
+  initialSignedIn?: boolean;
+  initialProfile?: Profile | null;
+  initialCatalog?: AppEntry[];
+}) {
+  const [profile, setProfile] = useState<Profile | null>(initialProfile ?? null),
+    [draft, setDraft] = useState(initialProfile ? { ...empty, ...initialProfile } : empty),
+    [catalog, setCatalog] = useState<AppEntry[]>(initialCatalog),
+    [loading, setLoading] = useState(initialProfile === undefined),
+    [editing, setEditing] = useState(false),
     [unauthorized, setUnauthorized] = useState(!initialSignedIn),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
@@ -175,6 +184,11 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
     [preview],
   );
   useEffect(() => {
+    if (!initialSignedIn) {
+      setLoading(false);
+      return;
+    }
+    if (initialProfile !== undefined && retry === 0) return;
     let active = true;
     setLoading(true);
     setMessage("");
@@ -189,6 +203,8 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
         if (!active) return;
         if (Array.isArray(apps?.apps)) setCatalog(apps.apps);
         setProfile(value.profile);
+        if (value.profile)
+          window.history.replaceState(window.history.state, "", `/@${value.profile.username}`);
         setDraft(value.profile ? { ...empty, ...value.profile } : empty);
         setUnauthorized(false);
       })
@@ -204,7 +220,10 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
     return () => {
       active = false;
     };
-  }, [retry]);
+  }, [retry, initialProfile, initialSignedIn]);
+  useEffect(() => {
+    if (editing) document.getElementById("profile-name")?.focus({ preventScroll: true });
+  }, [editing]);
   useEffect(() => {
     if (loading || profile || !valid(draft.username)) {
       setAvailability({ state: "idle", message: "" });
@@ -273,6 +292,9 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
       setProfile(value.profile);
       setDraft({ ...empty, ...value.profile });
       setMessage(profile ? "Profile saved." : "Your username is reserved.");
+      setEditing(false);
+      setPreview(null);
+      window.history.replaceState(window.history.state, "", `/@${value.profile.username}`);
     } catch (error) {
       setFailed(true);
       setMessage(error instanceof Error ? error.message : "Could not save your profile.");
@@ -362,373 +384,468 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
   const apps = catalog.filter((app) =>
     `${app.name} ${app.aliases.join(" ")}`.toLowerCase().includes(query.toLowerCase()),
   );
+  const editor = (
+    <form onSubmit={save} aria-busy={loading} className="profile-form">
+      <fieldset disabled={loading || busy || uploading || (failed && !profile && !draft.username)}>
+        <section className="profile-section">
+          <h2>Your name</h2>
+          <label htmlFor="profile-username">Username</label>
+          <div className="username-field">
+            <span aria-hidden="true">@</span>
+            <input
+              id="profile-username"
+              name="username"
+              autoComplete="username"
+              spellCheck={false}
+              required
+              minLength={3}
+              maxLength={24}
+              pattern="[a-z0-9][a-z0-9_]{2,23}"
+              value={draft.username}
+              readOnly={Boolean(profile)}
+              onChange={(event) =>
+                setDraft({ ...draft, username: event.target.value.toLowerCase() })
+              }
+              aria-describedby="username-help username-status"
+              aria-invalid={
+                availability.state === "taken" || availability.state === "invalid" || undefined
+              }
+              placeholder={loading ? "Loading…" : "your_name"}
+            />
+          </div>
+          <p id="username-help" className="profile-help">
+            {profile
+              ? "Reserved to this account. Your username cannot be changed."
+              : "3–24 lowercase letters, numbers, or underscores, starting with a letter or number. Reservations stay with your account."}
+          </p>
+          <p
+            id="username-status"
+            className={`profile-availability ${availability.state}`}
+            role="status"
+          >
+            {loading ? (
+              <span className="skeleton skeleton-caption" />
+            ) : profile ? (
+              <a href={`/@${profile.username}`}>View your profile ↗</a>
+            ) : (
+              availability.message || "\u00a0"
+            )}
+          </p>
+          <label htmlFor="profile-name">
+            Display name <span className="muted">optional</span>
+          </label>
+          <input
+            id="profile-name"
+            name="displayName"
+            autoComplete="nickname"
+            maxLength={60}
+            value={draft.displayName}
+            onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
+            placeholder="What should people call you?"
+          />
+          <label htmlFor="profile-bio">
+            A little about you <span className="muted">optional</span>
+          </label>
+          <textarea
+            id="profile-bio"
+            name="bio"
+            maxLength={280}
+            rows={3}
+            value={draft.bio}
+            onChange={(event) => setDraft({ ...draft, bio: event.target.value })}
+            placeholder="What are you making or exploring?"
+          />
+        </section>
+        <section className="profile-section">
+          <h2>Profile picture</h2>
+          <div className="profile-avatar-editor">
+            <Avatar
+              name={draft.displayName || draft.username}
+              source={
+                draft.avatarMode === "upload" && preview
+                  ? preview
+                  : draft.avatarMode === profile?.avatarMode
+                    ? profile?.avatarURL
+                    : null
+              }
+            />
+            <div className="profile-avatar-controls">
+              <label htmlFor="profile-avatar-mode" className="sr-only">
+                Profile picture source
+              </label>
+              <select
+                id="profile-avatar-mode"
+                value={draft.avatarMode}
+                disabled={!profile}
+                onChange={(event) => {
+                  setDraft({
+                    ...draft,
+                    avatarMode: event.target.value as typeof draft.avatarMode,
+                  });
+                  setPreview(null);
+                  setAvatarMessage("");
+                  setAvatarFailed(false);
+                }}
+              >
+                <option value="none">Default icon</option>
+                <option value="gravatar">Gravatar (opt in)</option>
+                <option value="upload">Upload an image</option>
+              </select>
+              <div className="profile-avatar-actions">
+                <button
+                  type="button"
+                  className="quiet"
+                  disabled={!profile || draft.avatarMode !== "upload"}
+                  onClick={() => fileInput.current?.click()}
+                >
+                  Choose image
+                </button>
+                <button
+                  type="button"
+                  className="quiet"
+                  disabled={!profile || profile.avatarMode === "none"}
+                  onClick={() => void removeAvatar()}
+                >
+                  Remove picture
+                </button>
+              </div>
+              <input
+                ref={fileInput}
+                type="file"
+                className="sr-only"
+                tabIndex={-1}
+                accept="image/jpeg,image/png,image/webp"
+                aria-label="Upload profile picture"
+                disabled={!profile || draft.avatarMode !== "upload"}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  void upload(file);
+                }}
+              />
+            </div>
+          </div>
+          <p className="profile-help">
+            Gravatar receives a hash of your account email only if you choose it and save. Visitors
+            receive the picture through Breadcrumb; your email is not published.
+          </p>
+          <p className="profile-help">
+            JPG, PNG, or WebP · up to 2 MiB. Uploading or removing a picture applies immediately.
+          </p>
+          <div
+            className="profile-upload-track"
+            role={uploading ? "progressbar" : undefined}
+            aria-label="Updating profile picture"
+            aria-valuemin={uploading ? 0 : undefined}
+            aria-valuemax={uploading ? 100 : undefined}
+            aria-valuenow={uploading ? progress : undefined}
+            aria-hidden={!uploading}
+            style={{ visibility: uploading ? "visible" : "hidden" }}
+          >
+            <span style={{ transform: `scaleX(${progress / 100})` }} />
+          </div>
+          <p
+            className={`profile-avatar-feedback ${avatarFailed ? "error" : ""}`}
+            role={avatarFailed ? "alert" : "status"}
+          >
+            {uploading
+              ? avatarMessage ||
+                (progress === 100 ? "Processing picture…" : `Uploading… ${progress}%`)
+              : avatarMessage ||
+                (!profile
+                  ? "Reserve a username first to choose a picture."
+                  : draft.avatarMode === "upload" && profile.avatarMode !== "upload"
+                    ? "Choose an image to finish selecting Upload."
+                    : draft.avatarMode !== profile.avatarMode
+                      ? "Save your profile to apply this picture source."
+                      : "\u00a0")}
+          </p>
+        </section>
+        <section className="profile-section">
+          <h2>Links</h2>
+          <p className="profile-help">Optional links appear only when your profile is public.</p>
+          <label htmlFor="profile-github">GitHub</label>
+          <input
+            id="profile-github"
+            name="githubUrl"
+            type="url"
+            inputMode="url"
+            autoComplete="url"
+            pattern="https://.*"
+            maxLength={300}
+            value={draft.githubUrl}
+            onChange={(event) => setDraft({ ...draft, githubUrl: event.target.value })}
+            placeholder="https://github.com/yourname"
+          />
+          <label htmlFor="profile-website">Personal website</label>
+          <input
+            id="profile-website"
+            name="websiteUrl"
+            type="url"
+            inputMode="url"
+            autoComplete="url"
+            pattern="https://.*"
+            maxLength={300}
+            value={draft.websiteUrl}
+            onChange={(event) => setDraft({ ...draft, websiteUrl: event.target.value })}
+            placeholder="https://example.com"
+          />
+        </section>
+        <section className="profile-section">
+          <h2>What people can see</h2>
+          <label className="profile-switch">
+            <span>
+              Public profile
+              <small>
+                Anyone can see your name, picture, bio, and links when this is on. Turning it off
+                keeps your username reserved.
+              </small>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={draft.visibility === "public"}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  visibility: event.target.checked ? "public" : "private",
+                })
+              }
+            />
+          </label>
+          <label className="profile-switch">
+            <span>
+              Share my selected apps
+              <small>Only the apps you select below. No usage time or capture history.</small>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={draft.shareApps}
+              onChange={(event) => setDraft({ ...draft, shareApps: event.target.checked })}
+            />
+          </label>
+          <p className="profile-help">
+            Screenshots, window titles, email, and raw history never appear on your public profile.
+          </p>
+        </section>
+        <section className="profile-section">
+          <div className="profile-app-heading">
+            <h2>Apps you use</h2>
+            <span>{draft.apps.length} selected</span>
+          </div>
+          <p className="profile-help">
+            Curate your toolkit. These choices are separate from the apps in your captures.
+          </p>
+          <label htmlFor="profile-app-search" className="sr-only">
+            Find an app
+          </label>
+          <input
+            id="profile-app-search"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Find an app…"
+            disabled={!draft.shareApps}
+          />
+          <div
+            className={`profile-app-options ${!draft.shareApps ? "not-shared" : ""}`}
+            aria-label="Choose apps to share"
+          >
+            {loading
+              ? Array.from({ length: 8 }, (_, i) => (
+                  <span className="profile-app-skeleton skeleton" key={i} />
+                ))
+              : apps.map((app) => (
+                  <label key={app.id} className="profile-app-option">
+                    <AppIcon apps={catalog} name={app.name} id={app.id} />
+                    <span>{app.name}</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.apps.includes(app.id)}
+                      disabled={
+                        !draft.shareApps ||
+                        (!draft.apps.includes(app.id) && draft.apps.length >= 30)
+                      }
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          apps: event.target.checked
+                            ? [...draft.apps, app.id]
+                            : draft.apps.filter((id) => id !== app.id),
+                        })
+                      }
+                    />
+                  </label>
+                ))}
+            {!loading && !apps.length && <p className="profile-help">No matching apps.</p>}
+          </div>
+          <p className="profile-help">
+            {draft.shareApps
+              ? draft.visibility === "public"
+                ? "Selected apps will be visible on your public profile."
+                : "Private profiles hide selected apps."
+              : "App sharing is off. Your selections stay private."}
+          </p>
+        </section>
+      </fieldset>
+      <div className="profile-save-row">
+        <button
+          disabled={
+            loading ||
+            busy ||
+            uploading ||
+            (draft.avatarMode === "upload" && profile?.avatarMode !== "upload") ||
+            (failed && !profile && !draft.username) ||
+            !valid(draft.username) ||
+            availability.state === "taken" ||
+            availability.state === "invalid" ||
+            availability.state === "checking"
+          }
+        >
+          {busy ? "Saving…" : profile ? "Save profile" : "Reserve username"}
+        </button>
+        <span className="muted">
+          {profile ? "Save to apply changes." : "Choose your privacy settings before reserving."}
+        </span>
+      </div>
+    </form>
+  );
   return (
     <Shell>
       <section className="profile-settings">
-        <div className="profile-page-heading">
-          <div>
-            <h1>Your profile</h1>
-            <p className="muted">A small place for your name and the tools you choose to share.</p>
-          </div>
-        </div>
-        {unauthorized ? (
-          <div className="profile-auth-card">
-            <h2>Make it yours</h2>
-            <p>Sign in to reserve a username and choose what appears on your profile.</p>
-            <a className="profile-button" href="/">
-              Sign in
-            </a>
+        {profile ? (
+          <div className="public-profile-card">
+            {editing ? (
+              <>
+                <div className="profile-page-heading">
+                  <h1>Edit profile</h1>
+                  <button
+                    type="button"
+                    className="quiet"
+                    disabled={busy || uploading}
+                    onClick={() => {
+                      setDraft({ ...empty, ...profile });
+                      setPreview(null);
+                      setMessage("");
+                      setAvatarMessage("");
+                      setEditing(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {editor}
+              </>
+            ) : (
+              <ProfileDetails
+                profile={{
+                  ...profile,
+                  avatarURL: profile.avatarURL ?? undefined,
+                  apps: profile.shareApps
+                    ? catalog.filter((app) => profile.apps.includes(app.id))
+                    : [],
+                }}
+                actions={
+                  <button
+                    type="button"
+                    className="quiet profile-edit-button"
+                    onClick={() => {
+                      setMessage("");
+                      setEditing(true);
+                    }}
+                  >
+                    Edit profile
+                  </button>
+                }
+              />
+            )}
           </div>
         ) : (
-          <form onSubmit={save} aria-busy={loading} className="profile-form">
-            <fieldset
-              disabled={loading || busy || uploading || (failed && !profile && !draft.username)}
-            >
-              <section className="profile-section">
-                <h2>Your name</h2>
-                <label htmlFor="profile-username">Username</label>
-                <div className="username-field">
-                  <span aria-hidden="true">@</span>
-                  <input
-                    id="profile-username"
-                    name="username"
-                    autoComplete="username"
-                    spellCheck={false}
-                    required
-                    minLength={3}
-                    maxLength={24}
-                    pattern="[a-z0-9][a-z0-9_]{2,23}"
-                    value={draft.username}
-                    readOnly={Boolean(profile)}
-                    onChange={(event) =>
-                      setDraft({ ...draft, username: event.target.value.toLowerCase() })
-                    }
-                    aria-describedby="username-help username-status"
-                    aria-invalid={
-                      availability.state === "taken" ||
-                      availability.state === "invalid" ||
-                      undefined
-                    }
-                    placeholder={loading ? "Loading…" : "your_name"}
-                  />
-                </div>
-                <p id="username-help" className="profile-help">
-                  {profile
-                    ? "Reserved to this account. Your username cannot be changed."
-                    : "3–24 lowercase letters, numbers, or underscores, starting with a letter or number. Reservations stay with your account."}
+          <>
+            <div className="profile-page-heading">
+              <div>
+                <h1>Your profile</h1>
+                <p className="muted">
+                  A small place for your name and the tools you choose to share.
                 </p>
-                <p
-                  id="username-status"
-                  className={`profile-availability ${availability.state}`}
-                  role="status"
-                >
-                  {loading ? (
-                    <span className="skeleton skeleton-caption" />
-                  ) : profile ? (
-                    <a href={`/u/${profile.username}`}>View your profile ↗</a>
-                  ) : (
-                    availability.message || "\u00a0"
-                  )}
-                </p>
-                <label htmlFor="profile-name">
-                  Display name <span className="muted">optional</span>
-                </label>
-                <input
-                  id="profile-name"
-                  name="displayName"
-                  autoComplete="nickname"
-                  maxLength={60}
-                  value={draft.displayName}
-                  onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
-                  placeholder="What should people call you?"
-                />
-                <label htmlFor="profile-bio">
-                  A little about you <span className="muted">optional</span>
-                </label>
-                <textarea
-                  id="profile-bio"
-                  name="bio"
-                  maxLength={280}
-                  rows={3}
-                  value={draft.bio}
-                  onChange={(event) => setDraft({ ...draft, bio: event.target.value })}
-                  placeholder="What are you making or exploring?"
-                />
-              </section>
-              <section className="profile-section">
-                <h2>Profile picture</h2>
-                <div className="profile-avatar-editor">
-                  <Avatar
-                    name={draft.displayName || draft.username}
-                    source={
-                      draft.avatarMode === "upload" && preview
-                        ? preview
-                        : draft.avatarMode === profile?.avatarMode
-                          ? profile?.avatarURL
-                          : null
-                    }
-                  />
-                  <div className="profile-avatar-controls">
-                    <label htmlFor="profile-avatar-mode" className="sr-only">
-                      Profile picture source
-                    </label>
-                    <select
-                      id="profile-avatar-mode"
-                      value={draft.avatarMode}
-                      disabled={!profile}
-                      onChange={(event) => {
-                        setDraft({
-                          ...draft,
-                          avatarMode: event.target.value as typeof draft.avatarMode,
-                        });
-                        setPreview(null);
-                        setAvatarMessage("");
-                        setAvatarFailed(false);
-                      }}
-                    >
-                      <option value="none">Default icon</option>
-                      <option value="gravatar">Gravatar (opt in)</option>
-                      <option value="upload">Upload an image</option>
-                    </select>
-                    <div className="profile-avatar-actions">
-                      <button
-                        type="button"
-                        className="quiet"
-                        disabled={!profile || draft.avatarMode !== "upload"}
-                        onClick={() => fileInput.current?.click()}
-                      >
-                        Choose image
-                      </button>
-                      <button
-                        type="button"
-                        className="quiet"
-                        disabled={!profile || profile.avatarMode === "none"}
-                        onClick={() => void removeAvatar()}
-                      >
-                        Remove picture
-                      </button>
-                    </div>
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      className="sr-only"
-                      tabIndex={-1}
-                      accept="image/jpeg,image/png,image/webp"
-                      aria-label="Upload profile picture"
-                      disabled={!profile || draft.avatarMode !== "upload"}
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0];
-                        event.currentTarget.value = "";
-                        void upload(file);
-                      }}
-                    />
-                  </div>
-                </div>
-                <p className="profile-help">
-                  Gravatar receives a hash of your account email only if you choose it and save.
-                  Visitors receive the picture through Breadcrumb; your email is not published.
-                </p>
-                <p className="profile-help">
-                  JPG, PNG, or WebP · up to 2 MiB. Uploading or removing a picture applies
-                  immediately.
-                </p>
-                <div
-                  className="profile-upload-track"
-                  role={uploading ? "progressbar" : undefined}
-                  aria-label="Updating profile picture"
-                  aria-valuemin={uploading ? 0 : undefined}
-                  aria-valuemax={uploading ? 100 : undefined}
-                  aria-valuenow={uploading ? progress : undefined}
-                  aria-hidden={!uploading}
-                  style={{ visibility: uploading ? "visible" : "hidden" }}
-                >
-                  <span style={{ transform: `scaleX(${progress / 100})` }} />
-                </div>
-                <p
-                  className={`profile-avatar-feedback ${avatarFailed ? "error" : ""}`}
-                  role={avatarFailed ? "alert" : "status"}
-                >
-                  {uploading
-                    ? avatarMessage ||
-                      (progress === 100 ? "Processing picture…" : `Uploading… ${progress}%`)
-                    : avatarMessage ||
-                      (!profile
-                        ? "Reserve a username first to choose a picture."
-                        : draft.avatarMode === "upload" && profile.avatarMode !== "upload"
-                          ? "Choose an image to finish selecting Upload."
-                          : draft.avatarMode !== profile.avatarMode
-                            ? "Save your profile to apply this picture source."
-                            : "\u00a0")}
-                </p>
-              </section>
-              <section className="profile-section">
-                <h2>Links</h2>
-                <p className="profile-help">
-                  Optional links appear only when your profile is public.
-                </p>
-                <label htmlFor="profile-github">GitHub</label>
-                <input
-                  id="profile-github"
-                  name="githubUrl"
-                  type="url"
-                  inputMode="url"
-                  autoComplete="url"
-                  pattern="https://.*"
-                  maxLength={300}
-                  value={draft.githubUrl}
-                  onChange={(event) => setDraft({ ...draft, githubUrl: event.target.value })}
-                  placeholder="https://github.com/yourname"
-                />
-                <label htmlFor="profile-website">Personal website</label>
-                <input
-                  id="profile-website"
-                  name="websiteUrl"
-                  type="url"
-                  inputMode="url"
-                  autoComplete="url"
-                  pattern="https://.*"
-                  maxLength={300}
-                  value={draft.websiteUrl}
-                  onChange={(event) => setDraft({ ...draft, websiteUrl: event.target.value })}
-                  placeholder="https://example.com"
-                />
-              </section>
-              <section className="profile-section">
-                <h2>What people can see</h2>
-                <label className="profile-switch">
-                  <span>
-                    Public profile
-                    <small>
-                      Anyone can see your name, picture, bio, and links when this is on. Turning it
-                      off keeps your username reserved.
-                    </small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={draft.visibility === "public"}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        visibility: event.target.checked ? "public" : "private",
-                      })
-                    }
-                  />
-                </label>
-                <label className="profile-switch">
-                  <span>
-                    Share my selected apps
-                    <small>Only the apps you select below. No usage time or capture history.</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={draft.shareApps}
-                    onChange={(event) => setDraft({ ...draft, shareApps: event.target.checked })}
-                  />
-                </label>
-                <p className="profile-help">
-                  Screenshots, window titles, email, and raw history never appear on your public
-                  profile.
-                </p>
-              </section>
-              <section className="profile-section">
-                <div className="profile-app-heading">
-                  <h2>Apps you use</h2>
-                  <span>{draft.apps.length} selected</span>
-                </div>
-                <p className="profile-help">
-                  Curate your toolkit. These choices are separate from the apps in your captures.
-                </p>
-                <label htmlFor="profile-app-search" className="sr-only">
-                  Find an app
-                </label>
-                <input
-                  id="profile-app-search"
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Find an app…"
-                  disabled={!draft.shareApps}
-                />
-                <div
-                  className={`profile-app-options ${!draft.shareApps ? "not-shared" : ""}`}
-                  aria-label="Choose apps to share"
-                >
-                  {loading
-                    ? Array.from({ length: 8 }, (_, i) => (
-                        <span className="profile-app-skeleton skeleton" key={i} />
-                      ))
-                    : apps.map((app) => (
-                        <label key={app.id} className="profile-app-option">
-                          <AppIcon apps={catalog} name={app.name} id={app.id} />
-                          <span>{app.name}</span>
-                          <input
-                            type="checkbox"
-                            checked={draft.apps.includes(app.id)}
-                            disabled={
-                              !draft.shareApps ||
-                              (!draft.apps.includes(app.id) && draft.apps.length >= 30)
-                            }
-                            onChange={(event) =>
-                              setDraft({
-                                ...draft,
-                                apps: event.target.checked
-                                  ? [...draft.apps, app.id]
-                                  : draft.apps.filter((id) => id !== app.id),
-                              })
-                            }
-                          />
-                        </label>
-                      ))}
-                  {!loading && !apps.length && <p className="profile-help">No matching apps.</p>}
-                </div>
-                <p className="profile-help">
-                  {draft.shareApps
-                    ? draft.visibility === "public"
-                      ? "Selected apps will be visible on your public profile."
-                      : "Private profiles hide selected apps."
-                    : "App sharing is off. Your selections stay private."}
-                </p>
-              </section>
-            </fieldset>
-            <div className="profile-save-row">
-              <button
-                disabled={
-                  loading ||
-                  busy ||
-                  uploading ||
-                  (draft.avatarMode === "upload" && profile?.avatarMode !== "upload") ||
-                  (failed && !profile && !draft.username) ||
-                  !valid(draft.username) ||
-                  availability.state === "taken" ||
-                  availability.state === "invalid" ||
-                  availability.state === "checking"
-                }
-              >
-                {busy ? "Saving…" : profile ? "Save profile" : "Reserve username"}
-              </button>
-              <span className="muted">
-                {profile
-                  ? "Save to apply changes."
-                  : "Choose your privacy settings before reserving."}
-              </span>
+              </div>
             </div>
-            <p
-              className={`profile-feedback ${failed ? "error" : ""}`}
-              role={failed ? "alert" : "status"}
-            >
-              {message || "\u00a0"}
-              {failed && !profile && !draft.username && (
-                <button type="button" className="quiet" onClick={() => setRetry(retry + 1)}>
-                  Try again
-                </button>
-              )}
-            </p>
-          </form>
+            {unauthorized ? (
+              <div className="profile-auth-card">
+                <h2>Make it yours</h2>
+                <p>Sign in to reserve a username and choose what appears on your profile.</p>
+                <a className="profile-button" href="/">
+                  Sign in
+                </a>
+              </div>
+            ) : (
+              editor
+            )}
+          </>
+        )}
+        {(message || !profile || editing) && (
+          <p
+            className={`profile-feedback ${failed ? "error" : ""}`}
+            role={failed ? "alert" : "status"}
+          >
+            {message || "\u00a0"}
+            {failed && !profile && !draft.username && (
+              <button type="button" className="quiet" onClick={() => setRetry(retry + 1)}>
+                Try again
+              </button>
+            )}
+          </p>
+        )}
+        {profile && !editing && (
+          <p className="profile-public-note">
+            {profile.visibility === "private"
+              ? "Your profile is private. Only you can see it."
+              : "Capture history stays private."}{" "}
+            <a href={`/@${profile.username}`}>View your profile ↗</a>
+          </p>
         )}
       </section>
     </Shell>
+  );
+}
+
+function ProfileDetails({ profile, actions }: { profile: ProfileView; actions?: ReactNode }) {
+  return (
+    <>
+      <div className="profile-card-heading">
+        <div className="profile-identity">
+          <Avatar name={profile.displayName || profile.username} source={profile.avatarURL} />
+          <div>
+            <h1>{profile.displayName || profile.username}</h1>
+            <p className="muted">@{profile.username}</p>
+          </div>
+        </div>
+        {actions}
+      </div>
+      {profile.bio && <p className="profile-biography">{profile.bio}</p>}
+      {(profile.githubUrl || profile.websiteUrl) && (
+        <nav className="profile-links" aria-label="Profile links">
+          <ProfileLink url={profile.githubUrl} kind="github" />
+          <ProfileLink url={profile.websiteUrl} kind="website" />
+        </nav>
+      )}
+      <div className="public-apps">
+        <h2>Apps</h2>
+        <div className="public-app-list">
+          {profile.apps?.length ? (
+            profile.apps.map((app) => (
+              <div className="public-app" key={app.id}>
+                <AppIcon apps={profile.apps!} name={app.name} id={app.id} />
+                <span>{app.name}</span>
+              </div>
+            ))
+          ) : (
+            <p className="muted">No apps shared.</p>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -745,35 +862,7 @@ export function PublicProfile({
         <div className="public-profile-card">
           {profile ? (
             <>
-              <div className="profile-identity">
-                <Avatar name={profile.displayName || profile.username} source={profile.avatarURL} />
-                <div>
-                  <h1>{profile.displayName || profile.username}</h1>
-                  <p className="muted">@{profile.username}</p>
-                </div>
-              </div>
-              {profile.bio && <p className="profile-biography">{profile.bio}</p>}
-              {(profile.githubUrl || profile.websiteUrl) && (
-                <nav className="profile-links" aria-label="Profile links">
-                  <ProfileLink url={profile.githubUrl} kind="github" />
-                  <ProfileLink url={profile.websiteUrl} kind="website" />
-                </nav>
-              )}
-              <div className="public-apps">
-                <h2>Apps</h2>
-                <div className="public-app-list">
-                  {profile.apps?.length ? (
-                    profile.apps.map((app) => (
-                      <div className="public-app" key={app.id}>
-                        <AppIcon apps={profile.apps!} name={app.name} id={app.id} />
-                        <span>{app.name}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="muted">No apps shared.</p>
-                  )}
-                </div>
-              </div>
+              <ProfileDetails profile={profile} />
             </>
           ) : (
             <div className="profile-unavailable">

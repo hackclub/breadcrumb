@@ -1,23 +1,22 @@
 import { classifyActivity } from "./activities";
 import type { Store } from "./store";
-import { summarize, calendarClock, REFERENCE, type Sample } from "./insights";
-type Day = { samples: Record<string, Sample>; updatedAt: string };
-export async function recordSynced(
-  store: Store,
+import { summarize, calendarClock, REFERENCE } from "./insights";
+import type { AnalyticsIndex, IndexedSample, SampleDay as Day } from "./analytics";
+export function syncSample(
   participant: string,
   record: { id: string; date: number; sampleIntervalSeconds?: unknown; [key: string]: unknown },
   receivedAt: string,
-) {
+): IndexedSample {
   const date = new Date((record.date + REFERENCE) * 1000);
   if (!Number.isFinite(date.getTime())) throw Error("Invalid capture date");
-  const day = date.toISOString().slice(0, 10);
-  await store.update(`sync/days/${participant}/${day}.json`, (current) => {
-    const value: Day = current
-      ? JSON.parse(Buffer.from(current).toString())
-      : { samples: {}, updatedAt: receivedAt };
-    const clean = (value: unknown) => (typeof value === "string" ? value.slice(0, 200) : undefined);
-    const context = record.context as { project?: unknown } | undefined;
-    const sample: Sample = {
+  const clean = (value: unknown) =>
+    typeof value === "string" ? value.slice(0, 200).toWellFormed() : undefined;
+  const context = record.context as { project?: unknown } | undefined;
+  return {
+    participant,
+    id: record.id,
+    receivedAt,
+    sample: {
       date: record.date,
       app: clean(record.app),
       appID: clean(record.bundleID),
@@ -28,9 +27,25 @@ export async function recordSynced(
         Number.isFinite(record.sampleIntervalSeconds)
           ? Math.min(300, Math.max(15, record.sampleIntervalSeconds))
           : 60,
-    };
-    if (JSON.stringify(value.samples[record.id]) === JSON.stringify(sample)) return null;
-    value.samples[record.id] = sample;
+    },
+  };
+}
+export async function recordSynced(
+  store: Store,
+  participant: string,
+  record: { id: string; date: number; sampleIntervalSeconds?: unknown; [key: string]: unknown },
+  receivedAt: string,
+  index?: AnalyticsIndex,
+) {
+  const row = syncSample(participant, record, receivedAt);
+  if (index) return index.write([row]);
+  const day = new Date((record.date + REFERENCE) * 1000).toISOString().slice(0, 10);
+  await store.update(`sync/days/${participant}/${day}.json`, (current) => {
+    const value: Day = current
+      ? JSON.parse(Buffer.from(current).toString())
+      : { samples: {}, updatedAt: receivedAt };
+    if (JSON.stringify(value.samples[record.id]) === JSON.stringify(row.sample)) return null;
+    value.samples[record.id] = row.sample;
     value.updatedAt = [value.updatedAt, receivedAt].sort().at(-1)!;
     return Buffer.from(JSON.stringify(value));
   });
@@ -42,34 +57,51 @@ export async function syncedSummary(
   participant: string,
   cursor: string,
   timeZone = "UTC",
+  index?: AnalyticsIndex,
 ) {
   const prefix = `sync/days/${participant}/`;
-  const page = await store.list(prefix, cursor, 60);
-  if (!page.keys.length) return { days: [], nextCursor: page.cursor, timeZone };
   const dateOf = (key: string) => key.split("/").at(-1)!.slice(0, -5);
-  // UTC remains the storage partition. Read neighboring partitions so local
-  // midnight and page boundaries never truncate a day's samples.
-  const keys = [
-    ...new Set([
-      ...page.keys,
-      prefix + dayOffset(dateOf(page.keys[0]), -1) + ".json",
-      prefix + dayOffset(dateOf(page.keys.at(-1)!), 1) + ".json",
-    ]),
-  ];
-  const source = new Map<string, Day>();
-  for (let offset = 0; offset < keys.length; offset += 5) {
-    await Promise.all(
-      keys.slice(offset, offset + 5).map(async (key) => {
-        const raw = await store.get(key);
-        if (raw) source.set(dateOf(key), JSON.parse(Buffer.from(raw).toString()));
-      }),
+  let page: { keys: string[]; cursor: string },
+    source: Map<string, Day>,
+    historyStart: number | undefined;
+  if (index) {
+    if (cursor && !/^\d{4}-\d{2}-\d{2}$/.test(cursor)) throw Error("Invalid analytics cursor");
+    const value = await index.page(participant, cursor, 60);
+    page = { keys: value.days.map((day) => prefix + day + ".json"), cursor: value.nextCursor };
+    if (!page.keys.length) return { days: [], nextCursor: page.cursor, timeZone };
+    source = await index.read(
+      participant,
+      dayOffset(value.days[0], -1),
+      dayOffset(value.days.at(-1)!, 1),
     );
+    historyStart = value.historyStart ?? undefined;
+  } else {
+    page = await store.list(prefix, cursor, 60);
+    if (!page.keys.length) return { days: [], nextCursor: page.cursor, timeZone };
+    // UTC remains the storage partition. Read neighboring partitions so local
+    // midnight and page boundaries never truncate a day's samples.
+    const keys = [
+      ...new Set([
+        ...page.keys,
+        prefix + dayOffset(dateOf(page.keys[0]), -1) + ".json",
+        prefix + dayOffset(dateOf(page.keys.at(-1)!), 1) + ".json",
+      ]),
+    ];
+    source = new Map<string, Day>();
+    for (let offset = 0; offset < keys.length; offset += 5) {
+      await Promise.all(
+        keys.slice(offset, offset + 5).map(async (key) => {
+          const raw = await store.get(key);
+          if (raw) source.set(dateOf(key), JSON.parse(Buffer.from(raw).toString()));
+        }),
+      );
+    }
+    const firstKey = cursor ? (await store.list(prefix, "", 1)).keys[0] : page.keys[0];
+    const firstDay =
+      source.get(dateOf(firstKey)) ??
+      (JSON.parse(Buffer.from((await store.get(firstKey))!).toString()) as Day);
+    historyStart = Math.min(...Object.values(firstDay.samples).map((sample) => sample.date));
   }
-  const firstKey = cursor ? (await store.list(prefix, "", 1)).keys[0] : page.keys[0];
-  const firstDay =
-    source.get(dateOf(firstKey)) ??
-    (JSON.parse(Buffer.from((await store.get(firstKey))!).toString()) as Day);
-  const historyStart = Math.min(...Object.values(firstDay.samples).map((sample) => sample.date));
   const clock = calendarClock(timeZone);
   const wanted = new Set<string>();
   for (const key of page.keys)
@@ -83,7 +115,11 @@ export async function syncedSummary(
       return value ? [value] : [];
     });
     const value = summarize(
-      nearby.flatMap((d) => Object.values(d.samples)),
+      nearby.flatMap((d) =>
+        Object.entries(d.samples)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([, sample]) => sample),
+      ),
       day,
       undefined,
       timeZone,

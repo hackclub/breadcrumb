@@ -6,6 +6,7 @@ export function redactTelemetryURL<T extends { url: string }>(event: T): T | nul
     url.username = "";
     url.password = "";
     if (/^\/u\/[^/]+\/?$/.test(url.pathname)) url.pathname = "/u/[username]";
+    if (/^\/(?:@|%40)[^/]+\/?$/i.test(url.pathname)) url.pathname = "/@[username]";
     return { ...event, url: url.toString() };
   } catch {
     return null;

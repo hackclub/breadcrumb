@@ -1,6 +1,6 @@
 # Breadcrumb web and sync service
 
-A small Next.js portal: email sign-in, browser approval for the desktop app, and a time dashboard with daily trends, app/activity rankings, detected projects, and hourly patterns. Better Auth owns email verification, browser sessions, OAuth authorization, consent, access tokens, refresh rotation, and revocation. PostgreSQL holds its tables in the isolated `breadcrumb_auth` schema. R2 holds captures, accessibility trees, review jobs, and lightweight daily sync summaries.
+A small Next.js portal: email sign-in, browser approval for the desktop app, and a time dashboard with daily trends, app/activity rankings, detected projects, and hourly patterns. Better Auth owns email verification, browser sessions, OAuth authorization, consent, access tokens, refresh rotation, and revocation. PostgreSQL holds its tables in the isolated `breadcrumb_auth` schema. R2 holds captures, accessibility trees and review jobs. Dashboard activity can use R2, PostgreSQL or ClickHouse.
 
 There is no Hack Club identity or internal service dependency. Use any domain, your own PostgreSQL server, R2 bucket, and Loops account. Vercel is optional; the same application runs with `bun run build` and `bun run start`. The desktop accepts your portal's URL.
 
@@ -66,3 +66,22 @@ Dashboard app totals merge legacy names and bundle/package aliases through the c
 Activity rows open daily, app, and project breakdowns. Labels and metadata rules live in `lib/activities.ts`; explicit corrections and agent labels take precedence. The rules use focused window/app/domain metadata, and keep ambiguous browsing, terminals, and videos broad. No extra raw titles or screenshot downloads are needed for these summaries. The incremental account index upgrades older captures automatically.
 
 Observed time describes sampled coverage, while history span is the first-to-last capture in the selected range. The dashboard shows unsampled gaps separately rather than filling sleep, pauses, or exclusions with invented activity. The desktop overview shows capture age and observed time instead of repeating capture counts.
+
+## Analytics storage
+
+Choose `ANALYTICS_BACKEND=r2`, `postgres`, or `clickhouse`. R2 is the default. PostgreSQL and ClickHouse store the capture activity index used by the dashboard; screenshots, trees and capture bundles stay in R2. Better Auth, profiles and the app catalog continue using PostgreSQL.
+
+For PostgreSQL analytics, set `ANALYTICS_DATABASE_URL` or reuse `DATABASE_URL`. For ClickHouse, set `CLICKHOUSE_URL` to its HTTP(S) endpoint, plus `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` and `CLICKHOUSE_DATABASE` (default `breadcrumb`). Keep these settings server-side.
+
+With the chosen backend configured, prepare its schema and replay existing captures before switching the running app:
+
+```sh
+bun run analytics:migrate
+bun run analytics:backfill
+```
+
+Backfill is idempotent and prints a continuation cursor after each batch. Resume an interrupted run with `bun run analytics:backfill --cursor '…'`. Change `ANALYTICS_INDEX_VERSION` when switching destinations or returning to an earlier backend so incremental account indexing rechecks its history.
+
+All backends use the same time accounting, including overlaps, gaps and local day boundaries. ClickHouse reads deduplicate retries before summaries are calculated, and inserts wait for persistence before an upload is acknowledged. A database outage leaves the capture in R2 and returns an error so the desktop can retry safely.
+
+`bun run test:analytics` checks real PostgreSQL and ClickHouse instances using synthetic data. It requires explicit `ANALYTICS_TEST_POSTGRES_URL` and `ANALYTICS_TEST_CLICKHOUSE_URL` pointing to disposable local databases, with optional `ANALYTICS_TEST_CLICKHOUSE_USER` and `ANALYTICS_TEST_CLICKHOUSE_PASSWORD`. The PostgreSQL test database must be named `breadcrumb_analytics_test`. CI runs the same parity checks.

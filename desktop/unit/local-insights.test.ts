@@ -57,3 +57,18 @@ test("empty history works offline and long gaps stay uncounted", () => {
   }));
   expect(localInsights(rows, "UTC", start + 86430).reduce((n, d) => n + d.seconds, 0)).toBe(90);
 });
+
+test("simultaneous captures choose the same app regardless of input order", () => {
+  const date = Date.parse("2026-11-19T12:00:00Z") / 1000 - REFERENCE;
+  const rows = ["z", "a"].map((id) => ({
+    id,
+    date,
+    app: id === "a" ? "Editor" : "Browser",
+    bundleID: id,
+    windowTitle: "Synthetic",
+  }));
+  expect(localInsights(rows, "UTC", date + 60)).toEqual(
+    localInsights([...rows].reverse(), "UTC", date + 60),
+  );
+  expect(localInsights(rows, "UTC", date + 60)[0].apps?.[0].name).toBe("Editor");
+});

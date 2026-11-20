@@ -8,6 +8,10 @@ test("performance metrics exclude auth parameters, fragments and profile identit
   expect(
     redactTelemetryURL({ url: "https://breadcrumb.example/u/someone?email=private" })?.url,
   ).toBe("https://breadcrumb.example/u/[username]");
+  for (const path of ["/@someone", "/%40someone/"])
+    expect(
+      redactTelemetryURL({ url: `https://breadcrumb.example${path}?email=private` })?.url,
+    ).toBe("https://breadcrumb.example/@[username]");
   expect(redactTelemetryURL({ url: "https://user:secret@breadcrumb.example/profile" })?.url).toBe(
     "https://breadcrumb.example/profile",
   );

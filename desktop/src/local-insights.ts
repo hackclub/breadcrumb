@@ -19,13 +19,16 @@ export function localInsights(
   const dates = new Set<number>();
   const samples: Sample[] = records
     .filter((row) => {
-      if (!Number.isFinite(row.date) || row.date > now || ids.has(row.id) || dates.has(row.date))
-        return false;
+      if (!Number.isFinite(row.date) || row.date > now || ids.has(row.id)) return false;
       ids.add(row.id);
+      return true;
+    })
+    .sort((a, b) => a.date - b.date || a.id.localeCompare(b.id))
+    .filter((row) => {
+      if (dates.has(row.date)) return false;
       dates.add(row.date);
       return true;
     })
-    .sort((a, b) => a.date - b.date)
     .map((row) => ({
       date: row.date,
       interval: row.sampleIntervalSeconds ?? 60,
