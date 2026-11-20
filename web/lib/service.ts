@@ -161,6 +161,7 @@ export class Service {
     public env: NodeJS.ProcessEnv = process.env,
     public access: AuthAccess = createAuthAccess(),
     public analytics: AnalyticsIndex | undefined = analyticsIndex(env),
+    public onSynced?: (participant: string, date: number) => void,
   ) {}
   async account(req: Request, kind: "session" | "upload") {
     const account = await this.access[kind](req);
@@ -239,6 +240,7 @@ export class Service {
       await this.enqueue(previous!, key);
     } else await this.enqueue(entry, key);
     await recordSynced(this.store, account.id, upload.record, syncedAt, this.analytics);
+    this.onSynced?.(account.id, upload.record.date);
     return Response.json({ id: upload.record.id, duplicate }, { status: duplicate ? 200 : 201 });
   }
   async latest(job: string) {

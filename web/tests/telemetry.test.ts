@@ -15,5 +15,8 @@ test("performance metrics exclude auth parameters, fragments and profile identit
   expect(redactTelemetryURL({ url: "https://user:secret@breadcrumb.example/profile" })?.url).toBe(
     "https://breadcrumb.example/profile",
   );
+  expect(
+    redactTelemetryURL({ url: "https://breadcrumb.example/s/private-secret/image" }),
+  ).toBeNull();
   expect(redactTelemetryURL({ url: "not a valid URL" })).toBeNull();
 });

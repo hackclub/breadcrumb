@@ -23,7 +23,6 @@ export default function Portal({
   const [timeZone, setTimeZone] = useState("UTC"),
     [email, setEmail] = useState(""),
     [desktop, setDesktop] = useState(initialDesktop),
-    [approval, setApproval] = useState(Boolean(initialDesktop)),
     [status, setStatus] = useState(""),
     [busy, setBusy] = useState(false),
     [days, setDays] = useState<Day[] | null>(null),
@@ -39,7 +38,6 @@ export default function Portal({
     const client = query.get("client_id");
     if (client && query.has("sig")) {
       setDesktop(client);
-      setApproval(true);
     }
     const error = query.get("error");
     if (error) setStatus("Sign-in did not complete. Please try again.");
@@ -110,15 +108,9 @@ export default function Portal({
     ?.map((day) => day.lastSynced)
     .sort()
     .at(-1);
-  async function decide(allow: boolean) {
-    const result = await authClient.oauth2.consent({ accept: allow });
-    if (result.error) throw Error(result.error.message ?? "Could not complete authorization");
-    setApproval(false);
-    setStatus(
-      allow ? "Opening Breadcrumb. Sync will start in the app." : "Desktop connection declined.",
-    );
-    // Better Auth follows the consent redirect through its client plugin.
-  }
+  useEffect(() => {
+    if (account && desktop) location.replace("/connect" + location.search);
+  }, [account, desktop]);
   const dashboard = (
     <section>
       <TimeDashboard days={days ?? []} loading={!ready || days === null} timeZone={timeZone} />
@@ -139,6 +131,8 @@ export default function Portal({
   return (
     <main className="portal">
       <SiteHeader>
+        <a href="/leaderboard">Leaderboard</a>
+        <a href="/connections">Connections</a>
         {(account || (!ready && initialDashboard)) && (
           <a className="profile-nav" href="/profile">
             Profile
@@ -183,7 +177,7 @@ export default function Portal({
             <h1>Sign in to Breadcrumb</h1>
             <p>
               {desktop
-                ? "Sign in to connect your desktop app."
+                ? "Sign in to connect an app app."
                 : "See your synced history and connect your desktop."}
             </p>
             <form
@@ -217,42 +211,8 @@ export default function Portal({
           </section>
         ) : desktop ? (
           <section className="sign-in">
-            <h1>Connect your desktop</h1>
-            <p className="account-email">{account.email}</p>
-            {approval ? (
-              <>
-                <p>
-                  Allow Breadcrumb on this computer to sync{" "}
-                  <strong>all existing and future captures</strong> to{" "}
-                  <strong>{typeof location !== "undefined" ? location.host : "this server"}</strong>
-                  .
-                </p>
-                <p>
-                  Screenshots, visible text, window context, and accessibility trees will be stored
-                  in your account’s corpus for AI review. You can stop syncing by signing out in the
-                  desktop app.
-                </p>
-                <div className="approval-actions">
-                  <button disabled={busy} onClick={() => action(() => decide(true))}>
-                    Allow & start syncing
-                  </button>
-                  <button
-                    className="quiet"
-                    disabled={busy}
-                    onClick={() => action(() => decide(false))}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                <p className="small-note">
-                  Only approve if you just clicked Sign in in your desktop app.
-                </p>
-              </>
-            ) : (
-              <p className="muted">
-                {status ? "Start again in the desktop app if needed." : "Checking desktop request…"}
-              </p>
-            )}
+            <h1>Opening permissions…</h1>
+            <p>Review the permissions before connecting this app.</p>
           </section>
         ) : (
           dashboard

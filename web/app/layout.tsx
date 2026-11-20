@@ -5,6 +5,7 @@ import "./dashboard.css";
 import { themeScript } from "../lib/theme";
 export const metadata: Metadata = {
   title: "Breadcrumb",
+  other: { "is-agentic-site-type": "app" },
   description: "A little context goes a long way.",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {

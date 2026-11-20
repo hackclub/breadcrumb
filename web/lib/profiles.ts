@@ -1,4 +1,5 @@
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { platformDB } from "./platform-db";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getAuth, allowedEmail } from "./auth";
@@ -411,14 +412,7 @@ export class ProfileAPI {
 let repository: PostgresProfiles | undefined;
 export function getProfileRepository() {
   if (!process.env.DATABASE_URL) throw Error("Profile database is not configured");
-  return (repository ??= new PostgresProfiles(
-    new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 2,
-      idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 5000,
-    }),
-  ));
+  return (repository ??= new PostgresProfiles(platformDB()));
 }
 export const profileSession = (request: Request) =>
   getAuth().api.getSession({ headers: request.headers });

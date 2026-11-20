@@ -1,3 +1,4 @@
+import { authorizationDetails } from "../lib/authorization";
 // Local, synthetic browser/Go-engine integration harness. Never reads a real library.
 // Build the Go engine first; run with `bun web/scripts/desktop-sync-smoke.ts`.
 import { randomBytes, randomUUID } from "node:crypto";
@@ -158,6 +159,7 @@ const server = Bun.serve({
         });
       }
     }
+    if (url.pathname === "/api/authorization") return authorizationDetails(request, auth);
     if (url.pathname.startsWith("/api/auth/")) {
       if (
         url.pathname.endsWith("/oauth2/token") &&

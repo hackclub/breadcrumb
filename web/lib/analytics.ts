@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { createDatabasePool } from "./platform-db";
 import { REFERENCE, type Sample } from "./insights";
 
 export type SampleDay = { samples: Record<string, Sample>; updatedAt: string };
@@ -64,12 +65,7 @@ export class PostgresAnalytics implements AnalyticsIndex {
     destination.username = "";
     this.key = fingerprint("postgres", destination.href + schema);
     this.table = `"${schema}".samples`;
-    this.pool = new Pool({
-      connectionString: url,
-      max: 2,
-      idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 5000,
-    });
+    this.pool = createDatabasePool(url, { max: 2 });
   }
   async migrate() {
     await this.pool.query(`CREATE SCHEMA IF NOT EXISTS "${this.schema}"`);
