@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -44,6 +45,7 @@ type Cursor struct {
 	Context     Context
 }
 type Hour struct {
+	ProjectVerified bool `json:"projectVerified,omitempty"`
 	Tokens
 	Provider string    `json:"provider"`
 	Model    string    `json:"model"`
@@ -62,6 +64,7 @@ type Session struct {
 	Project  string    `json:"project"`
 }
 type ProviderStatus struct {
+	UsageID  string `json:"usageID"`
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Detected bool   `json:"detected"`
@@ -121,7 +124,7 @@ func (s *Store) Configure(id string, enabled bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	valid := false
-	for _, p := range Providers() {
+	for _, p := range s.providers() {
 		valid = valid || id == p.ID()
 	}
 	if !valid {
@@ -135,11 +138,15 @@ func (s *Store) statusLocked() Status {
 	status := s.status
 	status.Providers = []ProviderStatus{}
 	s.db.View(func(tx *bolt.Tx) error {
-		for _, p := range Providers() {
+		for _, p := range s.providers() {
 			enabled := false
 			get(tx.Bucket([]byte("options")), p.ID(), &enabled)
 			info, e := os.Stat(p.Root(s.dir))
-			status.Providers = append(status.Providers, ProviderStatus{p.ID(), p.Name(), e == nil && info.IsDir(), enabled})
+			usageID := strings.TrimPrefix(p.ID(), "plugin:")
+			if usageID == "import" {
+				usageID = ""
+			}
+			status.Providers = append(status.Providers, ProviderStatus{UsageID: usageID, ID: p.ID(), Name: p.Name(), Detected: e == nil && info.IsDir(), Enabled: enabled})
 		}
 		return nil
 	})
@@ -193,7 +200,7 @@ func (s *Store) Scan(budget int) error {
 	if len(s.queue) == 0 && time.Now().After(s.nextDiscovery) {
 		s.nextDiscovery = time.Now().Add(30 * time.Second)
 		st := s.statusLocked()
-		for _, p := range Providers() {
+		for _, p := range s.providers() {
 			enabled := false
 			for _, a := range st.Providers {
 				if a.ID == p.ID() {
@@ -207,6 +214,9 @@ func (s *Store) Scan(budget int) error {
 			err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 				if err != nil {
 					return nil
+				}
+				if d.IsDir() && path != root && p.ID() == "import" {
+					return filepath.SkipDir
 				}
 				if d.Type()&os.ModeSymlink != 0 {
 					return nil
@@ -363,6 +373,7 @@ func (s *Store) record(tx *bolt.Tx, e Event, modern bool) error {
 	hours := tx.Bucket([]byte("hours"))
 	h := Hour{Provider: e.Provider, Model: e.Model, Project: e.Project, Hour: e.Time.UTC().Truncate(time.Hour)}
 	get(hours, hkey, &h)
+	h.ProjectVerified = true
 	h.Tokens = h.Tokens.add(e.Tokens)
 	h.Events++
 	if err := put(hours, hkey, h); err != nil {

@@ -1,7 +1,7 @@
 # Coding-agent usage
 
 Coding-agent usage is optional and disabled by default. Enable Claude Code, Codex,
-or JSONL plugins individually in desktop Settings → Coding agents. Open the local
+or usage plugins individually in desktop Settings → Coding agents. Open the local
 dashboard and select Coding agents for Cost and Tokens, past 24 hours or 7/30/90
 days, daily trends, session counts, model/day breakdowns and cache savings.
 
@@ -10,8 +10,7 @@ parent identifiers and project identity. It discards message text, tool calls,
 responses, instructions and file contents without decoding their string values.
 Usage is stored separately from capture history in a local database. Turning a
 provider off stops further reads; previously collected statistics remain local.
-Capture sync does not upload this database. Token-account usage uploads require a
-separate opt-in in the sync phase; chats must never be uploaded by that feature.
+Capture sync does not upload this database. Token-account usage uploads require a separate connection and opt-in; chats are never uploaded by that feature.
 
 ## Providers and discovery
 
@@ -23,7 +22,11 @@ separate opt-in in the sync phase; chats must never be uploaded by that feature.
   Response IDs are deduplicated across rollouts. Legacy cumulative totals reject
   repeats. Inherited legacy events before a fork's creation time are excluded;
   legacy forks without a creation timestamp are excluded conservatively.
-- JSONL plugins: `agent-imports` beneath Breadcrumb's library directory.
+- JSONL plugins: `agent-imports` beneath Breadcrumb's library directory. Each
+  immediate provider subdirectory registers a separate, initially disabled toggle.
+  The generic importer reads only files directly in `agent-imports`.
+- OpenCode v2: the optional [usage exporter](../plugins/opencode/README.md) streams
+  SQLite metadata into `agent-imports/opencode`; enable its separate plugin toggle.
 
 Home discovery uses the operating system home directory, including Windows user
 profiles. Windows working-directory separators are recognized. Project names use
@@ -37,9 +40,11 @@ roots and missing usage records cannot contribute statistics.
 
 ## Plugin contract, version 1
 
-Write UTF-8 JSONL files ending in `.jsonl` in `agent-imports`. Append one normalized
-event per line, followed by a newline. Files are watched only while JSONL plugins
-is enabled. Use a unique provider ID for each harness; `claude` and `codex` are
+Write UTF-8 JSONL files ending in `.jsonl` in `agent-imports/<provider-id>` for
+an independently enabled plugin, or directly in `agent-imports` for the generic
+importer. Subdirectory names use letters, digits, dots, underscores and hyphens.
+The record's provider must match its directory. Append one normalized
+event per line, followed by a newline. Files are watched only while their own provider toggle is enabled. Use a unique provider ID for each harness; `claude` and `codex` are
 reserved. Repeated `(provider, id)` pairs count only once, even across files.
 
 ```json
@@ -62,8 +67,10 @@ reserved. Repeated `(provider, id)` pairs count only once, even across files.
 Required: `provider`, `id`, `session`, `model`, `time`. Optional: `parent`,
 `project` and all token fields (default zero). No other fields are accepted,
 including nested objects, arrays or chat fields. Strings have bounded lengths.
-Provider, model, session and project identifiers use letters, digits, `.`, `_`,
-`:`, `@`, `+` and `-`; project names must not be paths or usernames. Do not use
+Provider, model and session identifiers use letters, digits, `.`, `_`, `:`, `@`,
+`+` and `-`. Project names may include spaces and Unicode but must be a single
+component without slashes, backslashes, colons or control characters. They must
+not be paths or usernames. Do not use
 account identities for projects. `time` must be RFC 3339 with an offset.
 
 Token values must be nonnegative JSON integers, at most one trillion per event:
@@ -109,3 +116,38 @@ and [GPT-5.1-Codex pricing](https://developers.openai.com/api/docs/models/gpt-5.
 [T3 Code usage documentation](https://github.com/pingdotgg/t3code/blob/main/docs/user/usage.md)
 was consulted for comparison. Its [MIT license](https://github.com/pingdotgg/t3code/blob/main/LICENSE)
 permits reuse; Breadcrumb's reader implementation is independent.
+
+## Optional private uploads
+
+In Settings → Coding agents → Token usage uploads, connect a token-only account
+and approve `agents:sync`. This enables uploads of existing and future hourly
+statistics. It does not enable capture sync, and capture-only consent cannot
+upload agent statistics. Uncheck Upload hourly token counts to pause, or disconnect
+token usage to revoke its separate connection. Previously uploaded statistics
+remain private on the server.
+
+The upload boundary has only provider/model/project names, hourly token buckets,
+event and session-start counts, a revision, and a random library identifier.
+Session IDs, parent IDs, working directories and file cursors never cross it.
+Project names come from a git root or repository remote; unversioned directories
+are left unassigned rather than using a home-directory name.
+
+The portal's private [Coding agents view](/agents) uses the same presentation and
+price table as the local dashboard. Portal sessions count **starts**, avoiding
+sending session identifiers. `GET /api/v1/agents/usage` requires `agents:read`;
+MCP exposes `breadcrumb_get_agent_usage` only with that scope. Agent statistics
+are excluded from public profiles, leaderboards and build-time accounting.
+
+Upload clients POST to `/v1/agents/ingest` using a token scoped to `agents:sync`
+and the `/v1` resource. Every request requires `consent: true`. Each source/hour
+snapshot contains unique provider/model/project rows. Newer revisions replace
+older snapshots, including empty replacements when earlier estimates disappear.
+A stable random source ID avoids collisions across libraries without sending a
+hostname or username. Retries are idempotent and stale revisions cannot overwrite
+newer data. Updates are atomic per hour, not across an entire request.
+
+R2, PostgreSQL and ClickHouse support identical usage semantics. When using SQL
+analytics, run `bun run --cwd web analytics:migrate` before deploying this feature
+to create `agent_hours`; ordinary builds do not migrate analytics databases.
+The standalone parity check is `bun web/scripts/agents-smoke.ts` with disposable
+local database URLs using the existing analytics test environment variables.

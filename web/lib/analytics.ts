@@ -1,3 +1,4 @@
+import type { AgentIndex, AgentSnapshot } from "./agents";
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 import { createDatabasePool } from "./platform-db";
@@ -5,7 +6,7 @@ import { REFERENCE, type Sample } from "./insights";
 
 export type SampleDay = { samples: Record<string, Sample>; updatedAt: string };
 export type IndexedSample = { participant: string; id: string; sample: Sample; receivedAt: string };
-export interface AnalyticsIndex {
+export interface AnalyticsIndex extends AgentIndex {
   readonly key: string;
   write(rows: IndexedSample[]): Promise<void>;
   page(
@@ -69,6 +70,9 @@ export class PostgresAnalytics implements AnalyticsIndex {
   }
   async migrate() {
     await this.pool.query(`CREATE SCHEMA IF NOT EXISTS "${this.schema}"`);
+    await this.pool.query(
+      `CREATE TABLE IF NOT EXISTS "${this.schema}".agent_hours (participant text NOT NULL,source text NOT NULL,hour timestamptz NOT NULL,revision bigint NOT NULL,snapshot jsonb NOT NULL,PRIMARY KEY(participant,source,hour))`,
+    );
     await this.pool.query(`CREATE TABLE IF NOT EXISTS ${this.table} (
       participant text NOT NULL, id text NOT NULL, day text NOT NULL,
       sample_date double precision NOT NULL, sample_interval double precision NOT NULL,
@@ -78,6 +82,20 @@ export class PostgresAnalytics implements AnalyticsIndex {
     await this.pool.query(
       `CREATE INDEX IF NOT EXISTS samples_by_day ON ${this.table} (participant,day,sample_date)`,
     );
+  }
+  async writeAgents(participant: string, snapshots: AgentSnapshot[]) {
+    for (const snapshot of snapshots)
+      await this.pool.query(
+        `INSERT INTO "${this.schema}".agent_hours AS current (participant,source,hour,revision,snapshot) VALUES ($1,$2,$3,$4,$5::jsonb) ON CONFLICT (participant,source,hour) DO UPDATE SET revision=excluded.revision,snapshot=excluded.snapshot WHERE excluded.revision>current.revision`,
+        [participant, snapshot.source, snapshot.hour, snapshot.revision, JSON.stringify(snapshot)],
+      );
+  }
+  async readAgents(participant: string, from: string, to: string) {
+    const rows = await this.pool.query<{ snapshot: AgentSnapshot }>(
+      `SELECT snapshot FROM "${this.schema}".agent_hours WHERE participant=$1 AND hour BETWEEN $2 AND $3 ORDER BY hour`,
+      [participant, from, to],
+    );
+    return rows.rows.map((r) => r.snapshot);
   }
   async write(rows: IndexedSample[]) {
     if (!rows.length) return;
@@ -203,11 +221,44 @@ export class ClickHouseAnalytics implements AnalyticsIndex {
   }
   async migrate() {
     await this.query(`CREATE DATABASE IF NOT EXISTS \`${this.database}\``);
+    await this.query(
+      `CREATE TABLE IF NOT EXISTS \`${this.database}\`.agent_hours (participant String,source String,hour DateTime64(3,'UTC'),revision UInt64,snapshot String) ENGINE=ReplacingMergeTree(revision) PARTITION BY toYYYYMM(hour) ORDER BY(participant,source,hour)`,
+    );
     await this.query(`CREATE TABLE IF NOT EXISTS ${this.table} (
       participant String,id String,day String,sample_date Float64,sample_interval Float64,
       app LowCardinality(String),app_id LowCardinality(String),activity LowCardinality(String),project String,
       received_at DateTime64(3,'UTC')
     ) ENGINE=ReplacingMergeTree PARTITION BY substring(day,1,7) ORDER BY (participant,day,id)`);
+  }
+  async writeAgents(participant: string, snapshots: AgentSnapshot[]) {
+    if (!snapshots.length) return;
+    await this.query(
+      `INSERT INTO \`${this.database}\`.agent_hours FORMAT JSONEachRow`,
+      {},
+      snapshots
+        .map((s) =>
+          JSON.stringify({
+            participant,
+            source: s.source,
+            hour: s.hour,
+            revision: s.revision,
+            snapshot: JSON.stringify(s),
+          }),
+        )
+        .join("\n") + "\n",
+    );
+  }
+  async readAgents(participant: string, from: string, to: string) {
+    return (
+      await this.query<{ snapshot: string }>(
+        `SELECT snapshot FROM \`${this.database}\`.agent_hours FINAL WHERE participant={participant:String} AND hour BETWEEN {from:DateTime64(3)} AND {to:DateTime64(3)} FORMAT JSONEachRow`,
+        {
+          participant,
+          from: from.replace("T", " ").replace("Z", ""),
+          to: to.replace("T", " ").replace("Z", ""),
+        },
+      )
+    ).map((r) => JSON.parse(r.snapshot) as AgentSnapshot);
   }
   async write(rows: IndexedSample[]) {
     if (!rows.length) return;

@@ -1,6 +1,14 @@
-export const dataScopes = ["time:read", "apps:read", "projects:read", "screenshots:read"] as const;
+export const dataScopes = [
+  "time:read",
+  "apps:read",
+  "projects:read",
+  "screenshots:read",
+  "agents:read",
+] as const;
 export type DataScope = (typeof dataScopes)[number];
 export const permissionLabels: Record<string, string> = {
+  "agents:read": "Read your coding-agent token usage and API estimates",
+  "agents:sync": "Upload hourly coding-agent token counts and project names; no chats",
   "screenshots:read": "View your captured screenshots",
   "time:read": "Read estimated time and hourly activity",
   "apps:read": "Read app names and time spent in each app",

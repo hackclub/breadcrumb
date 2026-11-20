@@ -33,6 +33,44 @@ export function openAPI() {
     "429": problem,
     "503": problem,
   });
+  const agentRow = {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "provider",
+      "model",
+      "project",
+      "input",
+      "cacheRead",
+      "cacheWrite",
+      "cacheWrite1h",
+      "output",
+      "reasoning",
+      "events",
+      "sessions",
+    ],
+    properties: {
+      provider: { type: "string", maxLength: 200 },
+      model: { type: "string", maxLength: 200 },
+      project: {
+        type: "string",
+        maxLength: 200,
+        description: "Project name only, never a path or user identity.",
+      },
+      ...Object.fromEntries(
+        [
+          "input",
+          "cacheRead",
+          "cacheWrite",
+          "cacheWrite1h",
+          "output",
+          "reasoning",
+          "events",
+          "sessions",
+        ].map((k) => [k, { type: "integer", minimum: 0, maximum: 1e12 }]),
+      ),
+    },
+  };
   const session = [{ browserSession: [] }];
   return {
     openapi: "3.2.1",
@@ -46,6 +84,55 @@ export function openAPI() {
     externalDocs: { url: base + "/docs" },
     security: [{ oauth: ["time:read"] }],
     paths: {
+      "/api/v1/agents/usage": {
+        get: {
+          operationId: "getAgentUsage",
+          summary: "Read your private coding-agent usage",
+          description:
+            "Hourly token aggregates only. No chats, session IDs or paths. Unknown models remain unpriced. Sessions count starts in each hour. Excluded from public profiles and leaderboards.",
+          security: [{ oauth: ["agents:read"] }, { browserSession: [] }],
+          parameters: [
+            param(
+              "range",
+              { type: "integer", enum: [1, 7, 30, 90], default: 7 },
+              "Past days; 1 means past 24h. Boundaries have hourly precision.",
+            ),
+            param("timeZone", { type: "string", default: "UTC" }, "Viewer IANA time zone."),
+          ],
+          responses: responses({
+            type: "object",
+            properties: {
+              hours: { type: "array", items: { $ref: "#/components/schemas/AgentHour" } },
+              timeZone: { type: "string" },
+              sessionsCount: { const: "started" },
+              estimate: { const: "API estimate" },
+              precision: { const: "hour" },
+            },
+          }),
+        },
+      },
+      "/v1/agents/ingest": {
+        post: {
+          operationId: "ingestAgentUsage",
+          summary: "Upload hourly token usage with separate consent",
+          description:
+            "Requires an agents:sync token for the /v1 resource. Accepts versioned hourly snapshots, up to 24 snapshots and 512 KiB per request. Replaces older revisions for each source and hour; each provider/model/project row is unique within an hour. Unknown fields, chats and paths are rejected.",
+          security: [{ oauth: ["agents:sync"] }],
+          requestBody: body(
+            {
+              consent: { const: true },
+              snapshots: {
+                type: "array",
+                minItems: 1,
+                maxItems: 24,
+                items: { $ref: "#/components/schemas/AgentSnapshot" },
+              },
+            },
+            ["consent", "snapshots"],
+          ),
+          responses: responses({ type: "object", properties: { accepted: { type: "integer" } } }),
+        },
+      },
       "/api/v1/activity": {
         get: {
           operationId: "getActivity",
@@ -280,6 +367,31 @@ export function openAPI() {
         },
       },
       schemas: {
+        AgentRow: agentRow,
+        AgentHour: {
+          ...agentRow,
+          required: [...agentRow.required, "hour"],
+          properties: { ...agentRow.properties, hour: { type: "string", format: "date-time" } },
+        },
+        AgentSnapshot: {
+          type: "object",
+          additionalProperties: false,
+          required: ["source", "hour", "revision", "rows"],
+          properties: {
+            source: {
+              type: "string",
+              pattern: "^[a-f0-9]{32}$",
+              description: "Stable random library ID; never a hostname or account identity.",
+            },
+            hour: { type: "string", format: "date-time", description: "UTC hour boundary." },
+            revision: { type: "integer", minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+            rows: {
+              type: "array",
+              maxItems: 500,
+              items: { $ref: "#/components/schemas/AgentRow" },
+            },
+          },
+        },
         Problem: {
           type: "object",
           required: ["type", "title", "status", "code", "detail", "resolution", "instance"],

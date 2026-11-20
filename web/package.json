@@ -22,7 +22,8 @@
     "leaderboards:backfill": "bun scripts/leaderboards-backfill.ts",
     "test:leaderboards": "bun scripts/leaderboards-smoke.ts",
     "test:integrations": "bun scripts/integrations-smoke.ts",
-    "test:database-load": "bun scripts/database-load.ts"
+    "test:database-load": "bun scripts/database-load.ts",
+    "test:agents:backends": "bun scripts/agents-smoke.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1169.0",

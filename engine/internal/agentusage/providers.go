@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Tokens struct {
@@ -77,26 +79,43 @@ func Providers() []Provider {
 
 var ident = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:@+-]{0,199}$`)
 
-func project(cwd string) string {
-	if filepath.IsAbs(cwd) {
-		for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
-			if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-				cwd = dir
-				break
-			}
-			if filepath.Dir(dir) == dir {
-				break
-			}
+func validProject(name string) bool {
+	if name == "" {
+		return true
+	}
+	if name == "." || name == ".." || utf8.RuneCountInString(name) > 200 || !utf8.ValidString(name) || strings.ContainsAny(name, `/\:`) {
+		return false
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return false
 		}
 	}
-
-	cwd = strings.ReplaceAll(cwd, `\`, "/")
-	s := filepath.Base(strings.TrimRight(cwd, "/"))
-	if s == "." || s == "/" || strings.Contains(s, ":") {
+	return true
+}
+func project(cwd string) string {
+	if !filepath.IsAbs(cwd) {
 		return ""
 	}
-	return s
+	for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return filepath.Base(dir)
+		}
+		if filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	return ""
 }
+func repositoryName(remote string) string {
+	remote = strings.TrimSuffix(strings.TrimRight(remote, "/"), ".git")
+	name := filepath.Base(strings.ReplaceAll(remote, `\`, "/"))
+	if !ident.MatchString(name) {
+		return ""
+	}
+	return name
+}
+
 func number(f fields, k string) int64 {
 	v, e := strconv.ParseInt(f[k], 10, 64)
 	if e != nil || v < 0 || v > 1e12 {
@@ -118,7 +137,7 @@ func usage(f fields, p string, claude bool) Tokens {
 
 var paths = func() map[string]bool {
 	m := map[string]bool{}
-	for _, k := range strings.Fields("type timestamp sessionId cwd requestId message.id message.model payload.type payload.id payload.timestamp payload.cwd payload.forked_from_id payload.parent_thread_id payload.source.subagent payload.history_mode payload.subagent_history_start_ordinal payload.model payload.response_id provider id session parent model time project input cacheRead cacheWrite cacheWrite1h output reasoning") {
+	for _, k := range strings.Fields("type timestamp sessionId cwd requestId message.id message.model payload.type payload.id payload.timestamp payload.cwd payload.forked_from_id payload.parent_thread_id payload.source.subagent payload.history_mode payload.subagent_history_start_ordinal payload.model payload.git.repository_url payload.response_id provider id session parent model time project input cacheRead cacheWrite cacheWrite1h output reasoning") {
 		m[k] = true
 	}
 	for _, prefix := range []string{"message.usage.", "payload.usage.", "payload.info.last_token_usage.", "payload.info.total_token_usage."} {
@@ -175,6 +194,9 @@ func (p builtin) Parse(r io.Reader, c *Context) (*Event, error) {
 			}
 			c.Fork = c.Parent != "" || f["payload.subagent_history_start_ordinal"] != "" || (f["payload.history_mode"] != "" && f["payload.history_mode"] != "none")
 			c.Project = project(f["payload.cwd"])
+			if c.Project == "" {
+				c.Project = repositoryName(f["payload.git.repository_url"])
+			}
 			return nil, nil
 		case "turn_context":
 			c.Model = f["payload.model"]
@@ -215,7 +237,7 @@ func (p builtin) Parse(r io.Reader, c *Context) (*Event, error) {
 			}
 		}
 		e = Event{Provider: f["provider"], ID: f["id"], Session: f["session"], Parent: f["parent"], Model: f["model"], Project: f["project"], Tokens: Tokens{number(f, "input"), number(f, "cacheRead"), number(f, "cacheWrite"), number(f, "cacheWrite1h"), number(f, "output"), number(f, "reasoning")}}
-		if !ident.MatchString(e.Project) && e.Project != "" {
+		if !validProject(e.Project) {
 			return nil, errJSON
 		}
 		e.Time, err = time.Parse(time.RFC3339Nano, f["time"])

@@ -67,7 +67,7 @@ export function authOptions(options: {
       oauthProvider({
         loginPage: "/",
         consentPage: "/connect",
-        scopes: ["email", "offline_access", "captures:sync", ...dataScopes],
+        scopes: ["email", "offline_access", "captures:sync", "agents:sync", ...dataScopes],
         grantTypes: ["authorization_code", "refresh_token"],
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
@@ -77,6 +77,7 @@ export function authOptions(options: {
           "email",
           "offline_access",
           "captures:sync",
+          "agents:sync",
           ...dataScopes,
         ],
         resources: [
@@ -88,7 +89,7 @@ export function authOptions(options: {
           })),
           {
             identifier: resource,
-            allowedScopes: ["email", "offline_access", "captures:sync"],
+            allowedScopes: ["email", "offline_access", "captures:sync", "agents:sync"],
             accessTokenTtl: 300,
             refreshTokenTtl: 90 * 86400,
           },
@@ -107,7 +108,7 @@ export function authOptions(options: {
             : {},
         customTokenResponseFields: ({ user, scopes }) => ({
           ...(scopes.includes("email") ? { email: user?.email } : {}),
-          ...(scopes.includes("captures:sync") && user
+          ...((scopes.includes("captures:sync") || scopes.includes("agents:sync")) && user
             ? { participant: participantID(user.email) }
             : {}),
         }),
@@ -136,6 +137,7 @@ export type Identity = { id: string; email: string };
 export type AuthAccess = {
   session: (req: Request) => Promise<Identity | null>;
   upload: (req: Request) => Promise<Identity | null>;
+  agents?: (req: Request) => Promise<Identity | null>;
 };
 export function createAuthAccess(
   auth: () => BreadcrumbAuth = getAuth,
@@ -181,6 +183,49 @@ export function createAuthAccess(
           !grants.some(
             (grant) =>
               grant.scopes.includes("captures:sync") &&
+              (!grant.resources?.length || grant.resources.includes(audience)),
+          )
+        )
+          return null;
+        return { id: participantID(claims.email), email: claims.email };
+      } catch (error) {
+        if (isAPIError(error) && [401, 403].includes(error.statusCode)) return null;
+        throw error;
+      }
+    },
+    async agents(req) {
+      try {
+        const instance = auth();
+        const claims = await oauthProviderResourceClient(instance)
+          .getActions()
+          .verifyAccessTokenRequest(req, {
+            verifyOptions: {
+              audience: (instance.options.baseURL as string).replace(/\/$/, "") + "/v1",
+            },
+            requiredScopes: ["agents:sync"],
+          });
+        if (
+          typeof claims.email !== "string" ||
+          claims.email_verified !== true ||
+          !allowedEmail(claims.email, env)
+        )
+          return null;
+        if (typeof claims.sub !== "string" || typeof claims.client_id !== "string") return null;
+        const grants = await (
+          await instance.$context
+        ).adapter.findMany<{ scopes: string[]; resources?: string[] }>({
+          model: "oauthConsent",
+          select: ["scopes", "resources"],
+          where: [
+            { field: "userId", value: claims.sub },
+            { field: "clientId", value: claims.client_id },
+          ],
+        });
+        const audience = (instance.options.baseURL as string).replace(/\/$/, "") + "/v1";
+        if (
+          !grants.some(
+            (grant) =>
+              grant.scopes.includes("agents:sync") &&
               (!grant.resources?.length || grant.resources.includes(audience)),
           )
         )

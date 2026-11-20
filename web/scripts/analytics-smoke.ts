@@ -96,6 +96,8 @@ for (const factory of factories) {
     let fail = true;
     const unreliable: AnalyticsIndex = {
       key: index.key,
+      writeAgents: (...args) => index.writeAgents(...args),
+      readAgents: (...args) => index.readAgents(...args),
       write: async (rows) => {
         if (fail) {
           fail = false;

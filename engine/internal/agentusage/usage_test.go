@@ -93,7 +93,7 @@ func TestOptInIncrementalAndPrivacy(t *testing.T) {
 	if strings.Contains(string(raw), "SENTINEL") {
 		t.Fatal("private content stored")
 	}
-	if r.Hours[0].Project != "project" {
+	if r.Hours[0].Project != "" {
 		t.Fatal("windows project")
 	}
 	os.WriteFile(path, []byte(claude("three")), 0600)
@@ -144,7 +144,8 @@ func TestCodexPreferenceReplayAndRestart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	*s = *opened
+	s = opened
+	t.Cleanup(func() { s.Close() })
 	scan(t, s, 150)
 	if sum(result(t, s)) != 60 {
 		t.Fatal("restart counted twice")
@@ -170,5 +171,35 @@ func TestDiscardedContentMemory(t *testing.T) {
 	record = strings.Replace(record, "PROMPT_SENTINEL", strings.Repeat("x", 2<<20), 1)
 	if e, err := p.Parse(strings.NewReader(record), &Context{}); err != nil || e == nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPluginDiscoveryAndSeparateOptIn(t *testing.T) {
+	s, _ := setup(t)
+	dir := filepath.Join(s.dir, "agent-imports", "opencode")
+	os.MkdirAll(dir, 0700)
+	record := fmt.Sprintf(`{"provider":"opencode","id":"one","session":"s","model":"free-model","time":%q,"input":15,"output":2}`+"\n", time.Now().Format(time.RFC3339))
+	os.WriteFile(filepath.Join(dir, "usage.jsonl"), []byte(record), 0600)
+	status := s.Status()
+	found := false
+	for _, p := range status.Providers {
+		if p.ID == "plugin:opencode" {
+			found = p.Detected && !p.Enabled
+		}
+	}
+	if !found {
+		t.Fatal("plugin not discovered off by default")
+	}
+	s.Configure("import", true)
+	scan(t, s, 256)
+	if sum(result(t, s)) != 0 {
+		t.Fatal("generic importer bypassed plugin toggle")
+	}
+	if err := s.Configure("plugin:opencode", true); err != nil {
+		t.Fatal(err)
+	}
+	scan(t, s, 256)
+	if sum(result(t, s)) != 15 {
+		t.Fatal("plugin not imported")
 	}
 }

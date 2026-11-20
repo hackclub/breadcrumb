@@ -8,6 +8,7 @@ import { applyTheme, readTheme, themes, type Theme } from "../lib/theme";
 const accountLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/agents", label: "Coding agents" },
   { href: "/connections", label: "Connections" },
   { href: "/profile", label: "Profile" },
 ];

@@ -269,3 +269,54 @@ test("published API contract references resolve and retain the permission model"
     else process.env.PUBLIC_URL = old;
   }
 });
+
+test("agent read permission is independent of time history and resource-bound", async () => {
+  const f = await oauth("/api/v1", "agents:read");
+  expect((await f.access(f.request(), "/api/v1", ["agents:read"])).scopes).toEqual(["agents:read"]);
+  await expect(f.access(f.request(), "/api/v1", ["time:read"])).rejects.toMatchObject({
+    status: 403,
+  });
+  await expect(f.access(f.request(), "/mcp", ["agents:read"])).rejects.toMatchObject({
+    status: 401,
+  });
+});
+
+test("MCP exposes only the agent usage tool for an agents-only grant", async () => {
+  const previous = process.env.PUBLIC_URL;
+  process.env.PUBLIC_URL = root;
+  try {
+    const f = await oauth("/mcp", "agents:read"),
+      store = new MemoryStore(),
+      serve = createBreadcrumbMCP({
+        store: () => store,
+        authorize: f.access,
+        limit: async () => ({}),
+      });
+    const client = new Client(
+      { name: "usage-test", version: "1.0.0" },
+      { versionNegotiation: { mode: { pin: "2026-07-28" } } },
+    );
+    const transport = new StreamableHTTPClientTransport(new URL(root + "/mcp"), {
+      requestInit: { headers: { Authorization: `Bearer ${f.token}` } },
+      fetch: async (input, init) => serve(new Request(input, init)),
+    });
+    try {
+      await client.connect(transport);
+      expect((await client.listTools()).tools.map((t) => t.name)).toEqual([
+        "breadcrumb_get_agent_usage",
+      ]);
+      const result = await client.callTool({
+        name: "breadcrumb_get_agent_usage",
+        arguments: { range: 7, timeZone: "UTC" },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toHaveProperty("hours");
+      expect(JSON.stringify(result)).not.toContain("sessionId");
+    } finally {
+      await client.close();
+    }
+  } finally {
+    if (previous === undefined) delete process.env.PUBLIC_URL;
+    else process.env.PUBLIC_URL = previous;
+  }
+});
