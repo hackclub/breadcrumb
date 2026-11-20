@@ -20,6 +20,12 @@ test("local dashboard explores history without accounts or API requests", async 
   await page.getByRole("button", { name: "Explore Coding", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("Coding");
   await expect(page.getByRole("dialog")).toContainText("Breadcrumb");
+  const bar = await page
+    .locator(".activity-days button:not(:disabled) .activity-day-space > span")
+    .first()
+    .boundingBox();
+  expect(bar?.width).toBeGreaterThan(0);
+  expect(bar?.height).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Close activity details" }).click();
   await page.getByLabel("Time range").selectOption("all");
   await page.locator(".day-column").last().click();
