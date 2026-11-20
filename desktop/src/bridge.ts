@@ -1,3 +1,4 @@
+import type { AgentStatus, AgentUsage } from "./agent-usage-types";
 import { invoke } from "@tauri-apps/api/core";
 import type { State, Payload } from "./types";
 const native = Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
@@ -19,6 +20,16 @@ export async function onPanelOpen(callback: () => void) {
 export async function hidePanel() {
   if (native) await invoke("hide_panel");
 }
+const demoAgentStatus: AgentStatus = {
+  providers: [
+    { id: "claude", name: "Claude Code", detected: true, enabled: false },
+    { id: "codex", name: "Codex", detected: true, enabled: false },
+    { id: "import", name: "JSONL plugins", detected: false, enabled: false },
+  ],
+  lastScan: new Date().toISOString(),
+  pending: 0,
+  bytes: 0,
+};
 let demoState: State = {
   recording: false,
   status: "Browser preview · synthetic data",
@@ -136,6 +147,60 @@ export async function engine<T = State>(command: string, args: unknown = {}): Pr
       tree: [{ role: "AXWindow", label: "Synthetic window", depth: 0 }],
       screenText: "Synthetic preview only",
     } as Payload as T;
+  }
+  if (command === "agentUsageSettings" || command === "agentUsage") {
+    try {
+      const enabled = JSON.parse(
+        localStorage.getItem("breadcrumb-demo-agent-providers") ?? "[]",
+      ) as string[];
+      for (const p of demoAgentStatus.providers) p.enabled = enabled.includes(p.id);
+    } catch {}
+  }
+  if (command === "agentUsageSettings") {
+    const input = args as { provider?: string; enabled?: boolean };
+    const provider = demoAgentStatus.providers.find((p) => p.id === input?.provider);
+    if (provider) {
+      provider.enabled = Boolean(input.enabled);
+      localStorage.setItem(
+        "breadcrumb-demo-agent-providers",
+        JSON.stringify(demoAgentStatus.providers.filter((p) => p.enabled).map((p) => p.id)),
+      );
+    }
+    return structuredClone(demoAgentStatus) as T;
+  }
+  if (command === "agentUsage") {
+    const input = args as { range: number; timeZone: string };
+    const hours: AgentUsage["hours"] = [];
+    for (let d = 0; d < input.range; d++)
+      for (const [i, p] of demoAgentStatus.providers.entries())
+        if (p.enabled && p.id !== "import")
+          hours.push({
+            provider: p.id,
+            model: i === 0 ? "claude-sonnet-4-6" : "gpt-5.4",
+            project: "Example project",
+            hour: new Date(Date.now() - d * 86400000).toISOString(),
+            input: 20000 + d * 1000,
+            cacheRead: 80000,
+            cacheWrite: i === 0 ? 10000 : 0,
+            cacheWrite1h: 0,
+            output: 4000,
+            reasoning: 0,
+            events: 3,
+          });
+    return {
+      status: structuredClone(demoAgentStatus),
+      hours,
+      sessions: hours.map((h, i) => ({
+        provider: h.provider,
+        id: `synthetic-${i}`,
+        model: h.model,
+        project: h.project,
+        start: h.hour,
+        end: h.hour,
+        events: 3,
+      })),
+      timeZone: input.timeZone,
+    } as T;
   }
   if (command === "correct") {
     const { id, activity } = args as { id: string; activity: string };

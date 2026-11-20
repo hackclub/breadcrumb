@@ -1,3 +1,4 @@
+import { AgentUsageView } from "./agent-usage";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TimeDashboard } from "../../web/app/time-dashboard";
@@ -13,9 +14,10 @@ export async function openLocalDashboard() {
 }
 
 export function LocalDashboard() {
+  const [view, setView] = useState("time");
   const [days, setDays] = useState<InsightDay[] | null>(null);
   const [error, setError] = useState("");
-  const [demo, setDemo] = useState(false);
+  const [demo, setDemo] = useState(!isNative);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   useEffect(() => {
     let worker: Worker;
@@ -91,8 +93,22 @@ export function LocalDashboard() {
         <span>Breadcrumb</span>
         <span>{demo ? "Example history" : "On this device"}</span>
       </div>
+      <nav aria-label="Dashboard view" className="agent-controls">
+        {[
+          ["time", "Time"],
+          ["agents", "Coding agents"],
+        ].map(([id, label]) => (
+          <button key={id} aria-pressed={view === id} onClick={() => setView(id)}>
+            {label}
+          </button>
+        ))}
+      </nav>
       {error && <p role="alert">{error}</p>}
-      <TimeDashboard days={days ?? []} loading={days === null} timeZone={timeZone} local />
+      {view === "agents" ? (
+        <AgentUsageView />
+      ) : (
+        <TimeDashboard days={days ?? []} loading={days === null} timeZone={timeZone} local />
+      )}
     </main>
   );
 }

@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/hackclub/breadcrumb/engine/internal/adapter"
+	"github.com/hackclub/breadcrumb/engine/internal/agentusage"
 	"github.com/hackclub/breadcrumb/engine/internal/library"
 	"math"
 	"os"
@@ -22,6 +23,7 @@ import (
 )
 
 type engine struct {
+	usage               *agentusage.Store
 	needsSetup          bool
 	mu                  sync.Mutex
 	lib                 *library.Library
@@ -228,6 +230,38 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	switch command {
+	case "agentUsage":
+		if e.usage == nil {
+			return nil, errors.New("agent usage unavailable")
+		}
+		var input struct {
+			Range    int    `json:"range"`
+			TimeZone string `json:"timeZone"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		return e.usage.Query(input.Range, input.TimeZone, time.Now())
+	case "agentUsageSettings":
+		if e.usage == nil {
+			return nil, errors.New("agent usage unavailable")
+		}
+		var input struct {
+			Provider string `json:"provider"`
+			Enabled  bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		if e.demo {
+			return nil, errors.New("disabled in demo mode")
+		}
+		if input.Provider != "" {
+			if err := e.usage.Configure(input.Provider, input.Enabled); err != nil {
+				return nil, err
+			}
+		}
+		return e.usage.Status(), nil
 	case "appIcon":
 		var input struct {
 			BundleID string `json:"bundleID"`
@@ -466,6 +500,22 @@ func main() {
 		os.Exit(1)
 	}
 	e := &engine{lib: lib, status: "Paused", demo: *demo, exclusions: []string{}}
+	if !*demo {
+		usage, err := agentusage.Open(lib.Dir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Agent usage unavailable")
+		} else {
+			e.usage = usage
+			defer usage.Close()
+			go func() {
+				ticker := time.NewTicker(250 * time.Millisecond)
+				defer ticker.Stop()
+				for range ticker.C {
+					usage.Scan(agentusage.Budget)
+				}
+			}()
+		}
+	}
 	var previous struct {
 		Recording  bool     `json:"recording"`
 		Exclusions []string `json:"exclusions"`

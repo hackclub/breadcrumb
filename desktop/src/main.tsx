@@ -1,3 +1,4 @@
+import { AgentUsageSettings } from "./agent-usage";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { SyncProgress } from "./sync-progress";
@@ -888,6 +889,7 @@ function SettingsPage({
   );
   return (
     <section className="page settings-page">
+      <AgentUsageSettings />
       <section className="settings-section">
         <h2>Capture</h2>
         {number("retentionHours", "Keep history", [
