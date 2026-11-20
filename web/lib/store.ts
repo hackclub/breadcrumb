@@ -74,7 +74,11 @@ export class R2Store implements Store {
           Bucket: this.bucket,
           Key: this.prefix + key,
           Body: value,
-          ContentType: key.endsWith(".jpg") ? "image/jpeg" : "application/json",
+          ContentType: key.endsWith(".jpg")
+            ? "image/jpeg"
+            : key.endsWith(".webp")
+              ? "image/webp"
+              : "application/json",
           IfNoneMatch: "*",
         }),
       );

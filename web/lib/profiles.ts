@@ -1,10 +1,16 @@
 import { Pool } from "pg";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getAuth, allowedEmail } from "./auth";
 import { appCatalog } from "./app-catalog";
 import type { AppEntry } from "./apps";
 
+export type AvatarMode = "none" | "gravatar" | "upload";
 export type Profile = {
+  avatarMode: AvatarMode;
+  avatarURL: string | null;
+  githubUrl: string;
+  websiteUrl: string;
   username: string;
   displayName: string;
   bio: string;
@@ -14,12 +20,27 @@ export type Profile = {
   createdAt: string;
   updatedAt: string;
 };
-export type PublicProfile = Pick<Profile, "username" | "displayName" | "bio"> & {
+export type PublicProfile = Pick<
+  Profile,
+  "username" | "displayName" | "bio" | "githubUrl" | "websiteUrl"
+> & {
+  avatarURL?: string;
   apps?: AppEntry[];
 };
 type Patch = Partial<
-  Pick<Profile, "username" | "displayName" | "bio" | "visibility" | "shareApps" | "apps">
+  Pick<
+    Profile,
+    | "username"
+    | "displayName"
+    | "bio"
+    | "visibility"
+    | "shareApps"
+    | "apps"
+    | "githubUrl"
+    | "websiteUrl"
+  >
 >;
+type AvatarPatch = { avatarMode?: "none" | "gravatar" };
 type Session = { user: { id: string; email: string; emailVerified: boolean } } | null;
 export class ProfileError extends Error {
   constructor(
@@ -77,6 +98,9 @@ export function profileUsername(value: string) {
 const schema = z
   .object({
     username: z.string().max(100).optional(),
+    avatarMode: z.enum(["none", "gravatar"]).optional(),
+    githubUrl: z.string().trim().max(2048).optional(),
+    websiteUrl: z.string().trim().max(2048).optional(),
     displayName: z.string().trim().max(60).optional(),
     bio: z.string().trim().max(280).optional(),
     visibility: z.enum(["public", "private"]).optional(),
@@ -84,7 +108,38 @@ const schema = z
     apps: z.array(z.string().max(64)).max(30).optional(),
   })
   .strict();
-export function profilePatch(value: unknown, apps: AppEntry[]): Patch {
+export function profileLink(value: string, github = false) {
+  if (!value) return "";
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ProfileError(400, "Enter a valid HTTPS profile link.");
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    [...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+  )
+    throw new ProfileError(400, "Profile links must use HTTPS without embedded credentials.");
+  if (github) {
+    if (
+      url.hostname !== "github.com" ||
+      url.port ||
+      url.search ||
+      url.hash ||
+      !/^\/[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}\/?$/i.test(url.pathname)
+    )
+      throw new ProfileError(
+        400,
+        "Use your GitHub profile URL, such as https://github.com/your-name.",
+      );
+    return "https://github.com/" + url.pathname.split("/")[1];
+  }
+  return url.href;
+}
+export function profilePatch(value: unknown, apps: AppEntry[]): Patch & AvatarPatch {
   const parsed = schema.safeParse(value);
   if (!parsed.success)
     throw new ProfileError(
@@ -92,6 +147,8 @@ export function profilePatch(value: unknown, apps: AppEntry[]): Patch {
       "Check your profile fields. Names allow 60 characters, bios 280, and app lists 30 entries.",
     );
   const patch = parsed.data;
+  if (patch.githubUrl !== undefined) patch.githubUrl = profileLink(patch.githubUrl, true);
+  if (patch.websiteUrl !== undefined) patch.websiteUrl = profileLink(patch.websiteUrl);
   if (patch.username !== undefined) patch.username = profileUsername(patch.username);
   if (patch.apps) {
     const allowed = new Set(apps.map((app) => app.id));
@@ -107,6 +164,11 @@ export function publicProfile(profile: Profile | null, apps: AppEntry[]): Public
     username: profile.username,
     displayName: profile.displayName,
     bio: profile.bio,
+    githubUrl: profile.githubUrl,
+    websiteUrl: profile.websiteUrl,
+    ...(profile.avatarMode !== "none"
+      ? { avatarURL: `/api/profiles/${profile.username}/avatar?v=${Date.parse(profile.updatedAt)}` }
+      : {}),
     ...(profile.shareApps ? { apps: apps.filter((app) => profile.apps.includes(app.id)) } : {}),
   };
 }
@@ -114,15 +176,18 @@ export interface ProfileRepository {
   get(owner: string): Promise<Profile | null>;
   find(username: string): Promise<Profile | null>;
   available(username: string): Promise<boolean>;
-  save(owner: string, patch: Patch): Promise<Profile>;
+  save(owner: string, patch: Patch & AvatarPatch, gravatarHash?: string): Promise<Profile>;
   limit(owner: string): Promise<void>;
 }
 const columns = `username, display_name AS "displayName", bio, visibility, share_apps AS "shareApps", apps,
+  avatar_mode AS "avatarMode", github_url AS "githubUrl", website_url AS "websiteUrl",
   created_at AS "createdAt", updated_at AS "updatedAt"`;
 function profile(row: Profile | undefined) {
   if (!row) return null;
   return {
     ...row,
+    avatarURL:
+      row.avatarMode !== "none" ? `/api/profile/avatar?v=${Date.parse(row.updatedAt)}` : null,
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),
   };
@@ -150,7 +215,7 @@ export class PostgresProfiles implements ProfileRepository {
     );
     return result.rows.length === 0;
   }
-  async save(owner: string, patch: Patch) {
+  async save(owner: string, patch: Patch & AvatarPatch, gravatarHash?: string) {
     const current = await this.get(owner);
     const username = patch.username ?? current?.username;
     if (!username) throw new ProfileError(400, "Choose a username to reserve your profile.");
@@ -162,12 +227,16 @@ export class PostgresProfiles implements ProfileRepository {
       const result = await this.pool.query<Profile>(
         `
         INSERT INTO breadcrumb_profiles.profiles AS p
-          (owner_id,username,display_name,bio,visibility,share_apps,apps)
-        VALUES ($1,$2,COALESCE($3,''),COALESCE($4,''),COALESCE($5,'public'),COALESCE($6,false),COALESCE($7::text[],'{}'::text[]))
+          (owner_id,username,display_name,bio,visibility,share_apps,apps,github_url,website_url,avatar_mode,avatar_hash)
+        VALUES ($1,$2,COALESCE($3,''),COALESCE($4,''),COALESCE($5,'public'),COALESCE($6,false),COALESCE($7::text[],'{}'::text[]),COALESCE($8,''),COALESCE($9,''),COALESCE($10,'none'),$11)
         ON CONFLICT (owner_id) DO UPDATE SET
           display_name=COALESCE($3,p.display_name), bio=COALESCE($4,p.bio),
           visibility=COALESCE($5,p.visibility), share_apps=COALESCE($6,p.share_apps),
-          apps=COALESCE($7::text[],p.apps), updated_at=now()
+          apps=COALESCE($7::text[],p.apps), github_url=COALESCE($8,p.github_url), website_url=COALESCE($9,p.website_url),
+          avatar_mode=COALESCE($10,p.avatar_mode),
+          avatar_key=CASE WHEN $10::text IS NULL THEN p.avatar_key ELSE NULL END,
+          avatar_hash=CASE WHEN $10::text IS NULL THEN p.avatar_hash ELSE $11 END,
+          updated_at=now()
         WHERE p.username=excluded.username RETURNING ${columns}`,
         [
           owner,
@@ -177,6 +246,10 @@ export class PostgresProfiles implements ProfileRepository {
           patch.visibility,
           patch.shareApps,
           patch.apps,
+          patch.githubUrl,
+          patch.websiteUrl,
+          patch.avatarMode,
+          gravatarHash,
         ],
       );
       const saved = profile(result.rows[0]);
@@ -188,6 +261,47 @@ export class PostgresProfiles implements ProfileRepository {
         throw new ProfileError(409, "That username is already reserved. Choose another.");
       throw error;
     }
+  }
+  async avatar(
+    owner: string,
+    byUsername = false,
+  ): Promise<{ mode: AvatarMode; key: string | null; hash: string | null } | null> {
+    const result = await this.pool.query<{
+      mode: AvatarMode;
+      key: string | null;
+      hash: string | null;
+    }>(
+      `SELECT avatar_mode AS mode, avatar_key AS key, avatar_hash AS hash FROM breadcrumb_profiles.profiles
+       WHERE ${byUsername ? "username=$1 AND visibility='public'" : "owner_id=$1"}`,
+      [owner],
+    );
+    return result.rows[0] ?? null;
+  }
+  async uploadAvatar(owner: string, key: string) {
+    const result = await this.pool.query<Profile>(
+      `UPDATE breadcrumb_profiles.profiles SET
+      avatar_mode='upload', avatar_key=$2, avatar_hash=NULL, updated_at=now()
+      WHERE owner_id=$1 RETURNING ${columns}`,
+      [owner, key],
+    );
+    const saved = profile(result.rows[0]);
+    if (!saved) throw new ProfileError(400, "Reserve a username before adding a photo.");
+    return saved;
+  }
+  async avatarGarbage() {
+    const result = await this.pool.query<{ key: string }>(
+      "SELECT key FROM breadcrumb_profiles.avatar_garbage ORDER BY created_at LIMIT 10",
+    );
+    return result.rows.map((row) => row.key);
+  }
+  async queueAvatarGarbage(key: string) {
+    await this.pool.query(
+      "INSERT INTO breadcrumb_profiles.avatar_garbage (key) VALUES ($1) ON CONFLICT DO NOTHING",
+      [key],
+    );
+  }
+  async avatarRemoved(key: string) {
+    await this.pool.query("DELETE FROM breadcrumb_profiles.avatar_garbage WHERE key=$1", [key]);
   }
   async limit(owner: string) {
     const result = await this.pool.query<{ attempts: number }>(
@@ -236,12 +350,13 @@ export class ProfileAPI {
     private session: (request: Request) => Promise<Session>,
     private catalog: () => Promise<AppEntry[]> = appCatalog,
     private env = process.env,
+    private cleanup: () => Promise<void> = async () => {},
   ) {}
   private async owner(request: Request) {
     const session = await this.session(request);
     if (!session?.user.emailVerified || !allowedEmail(session.user.email, this.env))
       throw new ProfileError(401, "Sign in to manage your profile.");
-    return session.user.id;
+    return session.user;
   }
   async handle(request: Request, action: "owner" | "availability" | "public", name?: string) {
     try {
@@ -257,13 +372,17 @@ export class ProfileAPI {
           ? response({ profile: result })
           : response({ error: "Profile not found." }, 404);
       }
-      const owner = await this.owner(request);
+      const user = await this.owner(request);
+      const owner = user.id;
       if (action === "availability") {
         await this.repo.limit(owner);
         const username = profileUsername(new URL(request.url).searchParams.get("username") ?? "");
         return response({ username, available: await this.repo.available(username) });
       }
-      if (request.method === "GET") return response({ profile: await this.repo.get(owner) });
+      if (request.method === "GET") {
+        await this.cleanup().catch(() => {});
+        return response({ profile: await this.repo.get(owner) });
+      }
       const origin = this.env.PUBLIC_URL ?? this.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
       if (request.headers.get("origin") !== new URL(origin).origin)
         throw new ProfileError(403, "Same-origin request required.");
@@ -271,7 +390,13 @@ export class ProfileAPI {
         throw new ProfileError(415, "Send your profile as JSON.");
       await this.repo.limit(owner);
       const patch = profilePatch(await json(request), await this.catalog());
-      return response({ profile: await this.repo.save(owner, patch) });
+      const hash =
+        patch.avatarMode === "gravatar"
+          ? createHash("sha256").update(user.email.trim().toLowerCase()).digest("hex")
+          : undefined;
+      const saved = await this.repo.save(owner, patch, hash);
+      await this.cleanup().catch(() => {});
+      return response({ profile: saved });
     } catch (error) {
       const result =
         error instanceof ProfileError
@@ -283,19 +408,28 @@ export class ProfileAPI {
     }
   }
 }
+let repository: PostgresProfiles | undefined;
+export function getProfileRepository() {
+  if (!process.env.DATABASE_URL) throw Error("Profile database is not configured");
+  return (repository ??= new PostgresProfiles(
+    new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 2,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 5000,
+    }),
+  ));
+}
+export const profileSession = (request: Request) =>
+  getAuth().api.getSession({ headers: request.headers });
 let api: ProfileAPI | undefined;
 export function getProfileAPI() {
-  if (!process.env.DATABASE_URL) throw Error("Profile database is not configured");
   return (api ??= new ProfileAPI(
-    new PostgresProfiles(
-      new Pool({
-        connectionString: process.env.DATABASE_URL,
-        max: 2,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 5000,
-      }),
-    ),
-    (request) => getAuth().api.getSession({ headers: request.headers }),
+    getProfileRepository(),
+    profileSession,
+    appCatalog,
+    process.env,
+    async () => (await import("./profile-avatars")).cleanupAvatarObjects(),
   ));
 }
 export async function profileRoute(
