@@ -6,7 +6,7 @@ import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { oauthProviderResourceClient } from "@better-auth/oauth-provider/resource-client";
 import { createHash } from "node:crypto";
-import { Pool } from "pg";
+import { databasePool } from "./platform-db";
 import { dataScopes } from "./permissions";
 export const participantID = (email: string) =>
   createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
@@ -128,13 +128,7 @@ export function getAuth() {
   instance = createAuth({
     baseURL,
     secret: process.env.BETTER_AUTH_SECRET,
-    database: new Pool({
-      connectionString: process.env.DATABASE_URL,
-      options: "-c search_path=breadcrumb_auth",
-      max: 5,
-      idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 10000,
-    }),
+    database: databasePool("breadcrumb_auth"),
   });
   return instance;
 }
@@ -176,6 +170,7 @@ export function createAuthAccess(
           await instance.$context
         ).adapter.findMany<{ scopes: string[]; resources?: string[] }>({
           model: "oauthConsent",
+          select: ["scopes", "resources"],
           where: [
             { field: "userId", value: claims.sub },
             { field: "clientId", value: claims.client_id },

@@ -1,1 +1,9 @@
-{ "crons": [{ "path": "/api/cron/review", "schedule": "*/15 * * * *" }] }
+{
+  "crons": [
+    {
+      "path": "/api/cron/review",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "fluid": true
+}

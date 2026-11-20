@@ -1,4 +1,5 @@
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { platformDB } from "./platform-db";
 import { z } from "zod";
 import { appSeed, mergeApps } from "./apps";
 import { summarize, type Breakdown, type InsightDay } from "./insights";
@@ -164,19 +165,28 @@ export class PostgresLeaderboards {
         `SELECT 1 FROM breadcrumb_leaderboards.preferences WHERE participant=$1 AND enabled FOR UPDATE`,
         [participant],
       );
-      if (preference.rowCount)
-        for (const day of days) {
-          const apps = mergeApps(day.apps, appSeed).slice(0, 100);
-          await client.query(
-            `INSERT INTO breadcrumb_leaderboards.days AS current (participant,day,seconds,captures,apps,source_updated_at)
-          VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (participant,day) DO UPDATE SET
+      if (preference.rowCount) {
+        const snapshots = days.map((day) => ({
+          day: day.day,
+          seconds: day.seconds,
+          captures: day.captures,
+          apps: mergeApps(day.apps, appSeed).slice(0, 100),
+          sourceUpdatedAt: day.lastSynced,
+        }));
+        await client.query(
+          `INSERT INTO breadcrumb_leaderboards.days AS current (participant,day,seconds,captures,apps,source_updated_at)
+          SELECT $1,r.day,r.seconds,r.captures,r.apps,r."sourceUpdatedAt"
+          FROM jsonb_to_recordset($2::jsonb) AS r(day date,seconds double precision,captures integer,apps jsonb,"sourceUpdatedAt" timestamptz)
+          ON CONFLICT (participant,day) DO UPDATE SET
           seconds=excluded.seconds,captures=excluded.captures,apps=excluded.apps,source_updated_at=excluded.source_updated_at
-          WHERE excluded.source_updated_at > current.source_updated_at OR
+          WHERE (excluded.source_updated_at > current.source_updated_at OR
             (excluded.source_updated_at=current.source_updated_at AND
-              (excluded.captures>current.captures OR (excluded.captures=current.captures AND excluded.seconds>=current.seconds)))`,
-            [participant, day.day, day.seconds, day.captures, JSON.stringify(apps), day.lastSynced],
-          );
-        }
+              (excluded.captures>current.captures OR (excluded.captures=current.captures AND excluded.seconds>=current.seconds))))
+            AND ROW(excluded.seconds,excluded.captures,excluded.apps,excluded.source_updated_at)
+              IS DISTINCT FROM ROW(current.seconds,current.captures,current.apps,current.source_updated_at)`,
+          [participant, JSON.stringify(snapshots)],
+        );
+      }
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");
@@ -287,15 +297,20 @@ export class PostgresLeaderboards {
     }
     const totals =
       range === "all"
-        ? `SELECT participant,total_seconds AS seconds,updated_at FROM breadcrumb_leaderboards.preferences WHERE enabled AND total_seconds>0`
-        : `SELECT d.participant,SUM(d.seconds) AS seconds,MAX(d.source_updated_at) AS updated_at FROM breadcrumb_leaderboards.days d JOIN breadcrumb_leaderboards.preferences p USING(participant) WHERE p.enabled AND d.day >= $1::date AND d.day <= $2::date GROUP BY d.participant HAVING SUM(d.seconds)>0`;
+        ? `SELECT owner_id,participant,total_seconds AS seconds,updated_at,share_app_usage FROM breadcrumb_leaderboards.preferences WHERE enabled AND total_seconds>0`
+        : `SELECT participant,SUM(seconds) AS seconds,MAX(source_updated_at) AS updated_at FROM breadcrumb_leaderboards.days WHERE day >= $1::date AND day <= $2::date GROUP BY participant HAVING SUM(seconds)>0`;
+    const privacyJoin =
+      range === "all"
+        ? `FROM totals t JOIN breadcrumb_profiles.profiles p ON p.owner_id=t.owner_id WHERE p.visibility='public'`
+        : `FROM totals t JOIN breadcrumb_leaderboards.preferences l USING(participant)
+         JOIN breadcrumb_profiles.profiles p ON p.owner_id=l.owner_id WHERE l.enabled AND p.visibility='public'`;
+    const sharing = range === "all" ? "t.share_app_usage" : "l.share_app_usage";
     // LIMIT is applied before app aggregation; no request scans capture contents.
     const query = `WITH totals AS (${totals}), ranked AS (
       SELECT ROW_NUMBER() OVER (ORDER BY t.seconds DESC,p.username) AS rank,
         p.username,p.display_name AS "displayName",p.avatar_mode AS "avatarMode",p.updated_at AS "profileUpdatedAt",
-        t.participant,t.seconds,t.updated_at AS "updatedAt",l.share_app_usage AS "shareApps"
-      FROM totals t JOIN breadcrumb_leaderboards.preferences l USING(participant)
-      JOIN breadcrumb_profiles.profiles p ON p.owner_id=l.owner_id WHERE l.enabled AND p.visibility='public'
+        t.participant,t.seconds,t.updated_at AS "updatedAt",${sharing} AS "shareApps"
+      ${privacyJoin}
     ), page AS (SELECT * FROM ranked WHERE ($3::float8 IS NULL OR seconds<$3 OR (seconds=$3 AND username>$4)) ORDER BY seconds DESC,username LIMIT $5)
     SELECT page.*,CASE WHEN page."shareApps" THEN (
       SELECT jsonb_agg(jsonb_build_object('name',name,'id',id,'seconds',seconds) ORDER BY seconds DESC,name) FROM (
@@ -348,12 +363,5 @@ export class PostgresLeaderboards {
 let instance: PostgresLeaderboards | undefined;
 export function getLeaderboards() {
   if (!process.env.DATABASE_URL) throw Error("DATABASE_URL is required");
-  return (instance ??= new PostgresLeaderboards(
-    new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 2,
-      idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 5000,
-    }),
-  ));
+  return (instance ??= new PostgresLeaderboards(platformDB()));
 }

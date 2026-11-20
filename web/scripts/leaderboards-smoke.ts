@@ -105,11 +105,28 @@ try {
   await repo.savePreferences(ids[0], participants[0], { shareApps: true });
   list = await repo.leaderboard({ range: "all" });
   assert.deepEqual(list.entries[0].apps, [{ name: "Helium", id: "helium", seconds: 2000 }]);
+  const retryBefore = await pool.query(
+    `SELECT d.xmin::text AS day_version,p.xmin::text AS totals_version
+    FROM breadcrumb_leaderboards.days d JOIN breadcrumb_leaderboards.preferences p USING(participant)
+    WHERE participant=$1 AND day='2026-11-20'`,
+    [participants[0]],
+  );
   await repo.write(participants[0], [day("2026-11-20", 200)]);
   assert.equal(
     (await repo.leaderboard({ range: "all" })).entries[0].seconds,
     2000,
     "Retries replace snapshots rather than adding time",
+  );
+  const retryAfter = await pool.query(
+    `SELECT d.xmin::text AS day_version,p.xmin::text AS totals_version
+    FROM breadcrumb_leaderboards.days d JOIN breadcrumb_leaderboards.preferences p USING(participant)
+    WHERE participant=$1 AND day='2026-11-20'`,
+    [participants[0]],
+  );
+  assert.deepEqual(
+    retryAfter.rows,
+    retryBefore.rows,
+    "Identical retries do not rewrite daily or total rows",
   );
   await repo.write(participants[0], [day("2026-11-20", 500, 20, "2026-11-20T17:01:00Z")]);
   await repo.write(participants[0], [day("2026-11-20", 200, 10, "2026-11-20T17:00:00Z")]);

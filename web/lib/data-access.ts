@@ -75,10 +75,22 @@ export function createDataAccess(auth: () => BreadcrumbAuth = getAuth, env = pro
         "Sign in and reconnect this application.",
       );
     const context = await instance.$context;
-    const user = await context.adapter.findOne<{ email: string; emailVerified: boolean }>({
-      model: "user",
-      where: [{ field: "id", value: claims.sub }],
-    });
+    // Both reads stay live for immediate withdrawal; run independent lookups together.
+    const [user, grants] = await Promise.all([
+      context.adapter.findOne<{ email: string; emailVerified: boolean }>({
+        model: "user",
+        where: [{ field: "id", value: claims.sub }],
+        select: ["email", "emailVerified"],
+      }),
+      context.adapter.findMany<OAuthConsent<string[]>>({
+        model: "oauthConsent",
+        where: [
+          { field: "userId", value: claims.sub },
+          { field: "clientId", value: claims.client_id },
+        ],
+        select: ["scopes", "resources"],
+      }),
+    ]);
     if (!user?.emailVerified || !allowedEmail(user.email, env))
       throw new APIProblem(
         401,
@@ -86,14 +98,6 @@ export function createDataAccess(auth: () => BreadcrumbAuth = getAuth, env = pro
         "The account is not available.",
         "Sign in and reconnect this application.",
       );
-    // Check live grants as well as JWT validity so disconnecting takes effect immediately.
-    const grants = await context.adapter.findMany<OAuthConsent<string[]>>({
-      model: "oauthConsent",
-      where: [
-        { field: "userId", value: claims.sub },
-        { field: "clientId", value: claims.client_id },
-      ],
-    });
     const tokenScopes = typeof claims.scope === "string" ? claims.scope.split(" ") : [];
     const scopes = tokenScopes.filter((scope) =>
       grants.some(

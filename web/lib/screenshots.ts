@@ -14,7 +14,9 @@ const hidden = () =>
 export const sharesSchema = `CREATE TABLE IF NOT EXISTS breadcrumb_integrations.shares (
   id text PRIMARY KEY, secret_hash text NOT NULL, owner_id text NOT NULL REFERENCES breadcrumb_auth."user"(id) ON DELETE CASCADE,
   participant text NOT NULL, capture_id text NOT NULL, expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
-); CREATE INDEX IF NOT EXISTS shares_owner ON breadcrumb_integrations.shares(owner_id,created_at DESC);`;
+); CREATE INDEX IF NOT EXISTS shares_owner_listing_v2 ON breadcrumb_integrations.shares(owner_id,created_at DESC) INCLUDE (capture_id,expires_at);
+DROP INDEX IF EXISTS breadcrumb_integrations.shares_owner;
+CREATE INDEX IF NOT EXISTS shares_owner_expiry ON breadcrumb_integrations.shares(owner_id,expires_at);`;
 export class Screenshots {
   constructor(
     private store: Store,
