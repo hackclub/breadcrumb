@@ -94,6 +94,20 @@ try {
     for ($i = 0; $i -lt 150 -and (Test-Path $data); $i++) { Start-Sleep -Milliseconds 200 }
     Assert (-not (Test-Path $data)) 'Explicit Delete app data did not remove the actual Go library'
     $results.Add('Explicit Delete app data removes the actual library')
+
+    # The default program directory also contains the engine's local library.
+    # Exercise that layout separately from the custom path above.
+    $install = $data
+    Run $Installer '/S'
+    Installed
+    $retained = Join-Path $data 'retained-history.json'
+    [IO.File]::WriteAllText($retained, '{"synthetic":true}')
+    Uninstall
+    Assert (Test-Path $retained) 'Default-location uninstall removed local history'
+    Run $Installer '/S'
+    Installed
+    Uninstall -DeleteData
+    $results.Add('Default install location preserves history unless deletion is requested')
     @{ installer = (Split-Path $Installer -Leaf); sha256 = (Get-FileHash $Installer -Algorithm SHA256).Hash; passed = $results } | ConvertTo-Json -Depth 3
 } finally {
     if (Test-Path (Join-Path $install 'uninstall.exe')) {
