@@ -55,7 +55,7 @@ fn excluded(app: &str, exclusions: &[String]) -> bool {
         || exclusions.iter().any(|s| app == s.to_lowercase())
 }
 #[cfg(windows)]
-fn executable_name(window: &xcap::Window) -> Result<String, String> {
+fn executable_path(window: &xcap::Window) -> Result<String, String> {
     #[link(name = "kernel32")]
     extern "system" {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
@@ -84,23 +84,121 @@ fn executable_name(window: &xcap::Window) -> Result<String, String> {
                 std::io::Error::last_os_error()
             ))
         } else {
-            Ok(String::from_utf16_lossy(&path[..length as usize])
-                .rsplit('\\')
-                .next()
-                .unwrap_or_default()
-                .to_owned())
+            Ok(String::from_utf16_lossy(&path[..length as usize]))
         };
     unsafe { CloseHandle(process) };
     result
+}
+#[cfg(windows)]
+fn product_name(path: &str) -> Option<String> {
+    use std::ffi::c_void;
+    #[link(name = "version")]
+    extern "system" {
+        fn GetFileVersionInfoSizeW(path: *const u16, handle: *mut u32) -> u32;
+        fn GetFileVersionInfoW(path: *const u16, handle: u32, size: u32, data: *mut c_void) -> i32;
+        fn VerQueryValueW(
+            data: *const c_void,
+            query: *const u16,
+            value: *mut *mut c_void,
+            length: *mut u32,
+        ) -> i32;
+    }
+    let path: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
+    let mut unused = 0;
+    let size = unsafe { GetFileVersionInfoSizeW(path.as_ptr(), &mut unused) };
+    if size == 0 {
+        return None;
+    }
+    let mut data = vec![0u32; (size as usize).div_ceil(4)];
+    if unsafe { GetFileVersionInfoW(path.as_ptr(), 0, size, data.as_mut_ptr().cast()) } == 0 {
+        return None;
+    }
+    let mut translations = Vec::new();
+    let query: Vec<u16> = "\\VarFileInfo\\Translation\0".encode_utf16().collect();
+    let mut value = std::ptr::null_mut();
+    let mut length = 0;
+    if unsafe {
+        VerQueryValueW(
+            data.as_ptr().cast(),
+            query.as_ptr(),
+            &mut value,
+            &mut length,
+        )
+    } != 0
+        && !value.is_null()
+    {
+        let pairs = unsafe { std::slice::from_raw_parts(value.cast::<u16>(), length as usize / 2) };
+        translations.extend(pairs.chunks_exact(2).map(|pair| (pair[0], pair[1])));
+    }
+    // Some executables have string resources but omit the translation table.
+    translations.extend([(0x0409, 0x04b0), (0x0409, 0x04e4)]);
+    for (language, codepage) in translations {
+        let query: Vec<u16> =
+            format!("\\StringFileInfo\\{language:04x}{codepage:04x}\\ProductName\0")
+                .encode_utf16()
+                .collect();
+        if unsafe {
+            VerQueryValueW(
+                data.as_ptr().cast(),
+                query.as_ptr(),
+                &mut value,
+                &mut length,
+            )
+        } != 0
+            && !value.is_null()
+        {
+            let name = String::from_utf16_lossy(unsafe {
+                std::slice::from_raw_parts(value.cast::<u16>(), length as usize)
+            });
+            let name = name.trim_end_matches('\0').trim();
+            if !name.is_empty() && !name.eq_ignore_ascii_case("Electron") {
+                return Some(name.to_owned());
+            }
+        }
+    }
+    None
+}
+fn app_name(window: &xcap::Window) -> String {
+    let description = window.app_name().unwrap_or_default();
+    #[cfg(windows)]
+    if let Ok(path) = executable_path(window) {
+        let executable = path.rsplit('\\').next().unwrap_or_default();
+        if executable.eq_ignore_ascii_case("steam.exe")
+            || executable.eq_ignore_ascii_case("steamwebhelper.exe")
+        {
+            return "Steam".into();
+        }
+        if executable.eq_ignore_ascii_case("cs2.exe") {
+            return "Counter-Strike 2".into();
+        }
+        // Preserve specific descriptions: ProductName can be an OS/suite name.
+        // Electron and xcap's path fallback do not identify the actual product.
+        if description.is_empty()
+            || description.eq_ignore_ascii_case("Electron")
+            || description.eq_ignore_ascii_case(&path)
+        {
+            if let Some(name) = product_name(&path) {
+                return name;
+            }
+        }
+    }
+    description
 }
 fn window_excluded(window: &xcap::Window, exclusions: &[String]) -> Result<bool, String> {
     if excluded(&window.app_name().unwrap_or_default(), exclusions) {
         return Ok(true);
     }
     // xcap's Windows app_name is FileDescription, not the executable name promised
-    // by settings. Check both aliases, including for nonfocused visible windows.
+    // by settings. Retain original aliases even when the friendly name is normalized.
     #[cfg(windows)]
-    return Ok(excluded(&executable_name(window)?, exclusions));
+    {
+        let path = executable_path(window)?;
+        let executable = path.rsplit('\\').next().unwrap_or_default();
+        return Ok(excluded(executable, exclusions)
+            || (executable.eq_ignore_ascii_case("steamwebhelper.exe")
+                && excluded("steam.exe", exclusions))
+            || excluded(&app_name(window), exclusions));
+    }
     #[cfg(not(windows))]
     Ok(false)
 }
@@ -187,7 +285,7 @@ fn perform(request: &Value) -> Result<Value, String> {
     let Some(focused) = focused else {
         return Ok(json!({"ok":true,"contextKey":"","capabilities":capabilities()}));
     };
-    let app = focused.app_name().unwrap_or_default();
+    let app = app_name(focused);
     let title = focused.title().unwrap_or_default();
     if window_excluded(focused, &exclusions)? {
         return Ok(json!({"ok":true,"contextKey":"","capabilities":capabilities()}));
@@ -252,7 +350,8 @@ fn perform(request: &Value) -> Result<Value, String> {
         {
             continue;
         }
-        visible.push(json!({"windowID":window.id().unwrap_or(0),"app":window.app_name().unwrap_or_default(),"bundleID":window.app_name().unwrap_or_default(),"title":window.title().unwrap_or_default(),"focused":window.id().ok()==Some(id),"visibility":"on-screen-window; occlusion unknown"}));
+        let app = app_name(window);
+        visible.push(json!({"windowID":window.id().unwrap_or(0),"app":app,"bundleID":app,"title":window.title().unwrap_or_default(),"focused":window.id().ok()==Some(id),"visibility":"on-screen-window; occlusion unknown"}));
     }
     Ok(
         json!({"ok":true,"contextKey":key,"capabilities":capabilities(),"record":{"app":app,"bundleID":app,"windowTitle":title,"windowID":id,"treeStatus":tree_status,"captureScope":"display","displayID":monitor.id().unwrap_or(0),"visibleWindows":visible},"payload":{"jpeg":base64(&jpeg),"tree":tree}}),

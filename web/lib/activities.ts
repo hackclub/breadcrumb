@@ -120,7 +120,7 @@ export function classifyActivity(record: Record<string, unknown>) {
     return "Code review";
   if (
     host("github.com", "gitlab.com", "bitbucket.org") ||
-    /githubdesktop|sourcetree|git-fork/.test(bundle)
+    /github\s*desktop|sourcetree|git-fork/.test(bundle)
   )
     return "Version control";
   if (host("mail.google.com", "outlook.live.com") || /apple\.mail|outlook|thunderbird/.test(bundle))
@@ -136,10 +136,15 @@ export function classifyActivity(record: Record<string, unknown>) {
     /slack|slick|discord|signal|telegram/.test(bundle)
   )
     return "Messaging";
-  if (host("youtube.com", "vimeo.com", "twitch.tv")) return "Video";
+  if (host("youtube.com", "vimeo.com", "twitch.tv") || /\bvlc\b/.test(bundle)) return "Video";
   if (host("reddit.com", "x.com", "twitter.com", "instagram.com", "bsky.app")) return "Social";
   if (host("amazon.com", "ebay.com", "etsy.com")) return "Shopping";
-  if (/minecraft|robloxplayer|steam_app/.test(bundle)) return "Gaming";
+  if (
+    /minecraft|robloxplayer|steam_app|counter[- ]strike/.test(bundle) ||
+    /(?:^|[\\/])cs2(?:\.exe)?$/.test(bundle) ||
+    /^(?:com\.valvesoftware\.)?steam(?:\.exe| client webhelper)?$/.test(bundle)
+  )
+    return "Gaming";
   if (["Coding", "Terminal"].includes(old)) {
     if (/\b(debugger|debug console|debug session)\b/.test(title)) return "Debugging";
     if (/\b(pytest|vitest|jest|test results|test runner|go test|cargo test)\b/.test(title))
