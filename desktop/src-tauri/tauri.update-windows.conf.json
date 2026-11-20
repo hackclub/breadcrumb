@@ -1,7 +1,7 @@
 {
   "bundle": {
     "windows": {
-      "webviewInstallMode": { "type": "skip" }
+      "webviewInstallMode": { "type": "skip", "silent": null }
     }
   }
 }
