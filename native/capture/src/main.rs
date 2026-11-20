@@ -54,6 +54,56 @@ fn excluded(app: &str, exclusions: &[String]) -> bool {
     .any(|s| app.contains(s))
         || exclusions.iter().any(|s| app == s.to_lowercase())
 }
+#[cfg(windows)]
+fn executable_name(window: &xcap::Window) -> Result<String, String> {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn QueryFullProcessImageNameW(
+            process: *mut std::ffi::c_void,
+            flags: u32,
+            name: *mut u16,
+            size: *mut u32,
+        ) -> i32;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+    let pid = window.pid().map_err(|e| e.to_string())?;
+    let process = unsafe { OpenProcess(0x1000, 0, pid) }; // PROCESS_QUERY_LIMITED_INFORMATION
+    if process.is_null() {
+        return Err(format!(
+            "Cannot check executable exclusions; capture skipped: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let mut path = [0u16; 32768];
+    let mut length = path.len() as u32;
+    let result =
+        if unsafe { QueryFullProcessImageNameW(process, 0, path.as_mut_ptr(), &mut length) } == 0 {
+            Err(format!(
+                "Cannot check executable exclusions; capture skipped: {}",
+                std::io::Error::last_os_error()
+            ))
+        } else {
+            Ok(String::from_utf16_lossy(&path[..length as usize])
+                .rsplit('\\')
+                .next()
+                .unwrap_or_default()
+                .to_owned())
+        };
+    unsafe { CloseHandle(process) };
+    result
+}
+fn window_excluded(window: &xcap::Window, exclusions: &[String]) -> Result<bool, String> {
+    if excluded(&window.app_name().unwrap_or_default(), exclusions) {
+        return Ok(true);
+    }
+    // xcap's Windows app_name is FileDescription, not the executable name promised
+    // by settings. Check both aliases, including for nonfocused visible windows.
+    #[cfg(windows)]
+    return Ok(excluded(&executable_name(window)?, exclusions));
+    #[cfg(not(windows))]
+    Ok(false)
+}
 fn intersects(a: (i32, i32, u32, u32), b: (i32, i32, u32, u32)) -> bool {
     i64::from(a.0) < i64::from(b.0) + i64::from(b.2)
         && i64::from(a.0) + i64::from(a.2) > i64::from(b.0)
@@ -103,8 +153,8 @@ fn ensure_allowed(
 ) -> Result<(), String> {
     for window in windows {
         if !window.is_minimized().unwrap_or(false)
-            && excluded(&window.app_name().unwrap_or_default(), exclusions)
             && on_display(window, monitor).unwrap_or(true)
+            && window_excluded(window, exclusions)?
         {
             return Err("Capture skipped: an excluded app may be visible on this display".into());
         }
@@ -139,7 +189,7 @@ fn perform(request: &Value) -> Result<Value, String> {
     };
     let app = focused.app_name().unwrap_or_default();
     let title = focused.title().unwrap_or_default();
-    if excluded(&app, &exclusions) {
+    if window_excluded(focused, &exclusions)? {
         return Ok(json!({"ok":true,"contextKey":"","capabilities":capabilities()}));
     }
     let id = focused.id().map_err(|e| e.to_string())?;
@@ -197,11 +247,9 @@ fn perform(request: &Value) -> Result<Value, String> {
             break;
         }
         if window.is_minimized().unwrap_or(false)
-            || excluded(&window.app_name().unwrap_or_default(), &exclusions)
+            || !on_display(window, &monitor).unwrap_or(true)
+            || window_excluded(window, &exclusions)?
         {
-            continue;
-        }
-        if !on_display(window, &monitor).unwrap_or(true) {
             continue;
         }
         visible.push(json!({"windowID":window.id().unwrap_or(0),"app":window.app_name().unwrap_or_default(),"bundleID":window.app_name().unwrap_or_default(),"title":window.title().unwrap_or_default(),"focused":window.id().ok()==Some(id),"visibility":"on-screen-window; occlusion unknown"}));
