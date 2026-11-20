@@ -61,6 +61,31 @@ fn intersects(a: (i32, i32, u32, u32), b: (i32, i32, u32, u32)) -> bool {
         && i64::from(a.1) + i64::from(a.3) > i64::from(b.1)
 }
 fn on_display(window: &xcap::Window, monitor: &xcap::Monitor) -> xcap::XCapResult<bool> {
+    #[cfg(windows)]
+    {
+        #[link(name = "user32")]
+        extern "system" {
+            fn GetClassNameW(window: *mut std::ffi::c_void, name: *mut u16, size: i32) -> i32;
+        }
+        let mut name = [0u16; 256];
+        let length = unsafe {
+            GetClassNameW(
+                window.id()? as usize as *mut _,
+                name.as_mut_ptr(),
+                name.len() as i32,
+            )
+        };
+        let class = String::from_utf16_lossy(&name[..length.max(0) as usize]);
+        // Tao and the single-instance plugin mark their transparent event targets
+        // WS_VISIBLE. They contain no pixels, but would otherwise make Breadcrumb
+        // exclude its own display forever, even with the overview hidden.
+        if matches!(
+            class.as_str(),
+            "Tao Thread Event Target" | "app.rewind.local-sic"
+        ) {
+            return Ok(false);
+        }
+    }
     Ok(intersects(
         (window.x()?, window.y()?, window.width()?, window.height()?),
         (

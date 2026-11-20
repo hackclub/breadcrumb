@@ -15,6 +15,8 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
+#[cfg(windows)]
+use tauri_plugin_autostart::ManagerExt;
 #[derive(Default)]
 struct PopupState {
     dialog_open: AtomicBool,
@@ -125,7 +127,7 @@ fn sidecar(name: &str) -> Result<PathBuf, String> {
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("binaries")
         .join(format!("{name}-{target}{suffix}"));
-    if dev.is_file() {
+    if cfg!(debug_assertions) && dev.is_file() {
         return Ok(dev);
     }
     Err(format!(
@@ -276,17 +278,28 @@ fn startup_error(message: &str) {
 }
 fn main() {
     let result = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            open_after_launch(app.clone());
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !(cfg!(windows) && args.iter().any(|arg| arg == "--autostart")) {
+                open_after_launch(app.clone());
+            }
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            if cfg!(windows) {
+                Some(vec!["--autostart"])
+            } else {
+                None
+            },
         ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             app.manage(PopupState::default());
+            #[cfg(windows)]
+            if app.autolaunch().is_enabled().unwrap_or(false) {
+                // Refresh registrations from versions without the login-only flag.
+                app.autolaunch().enable()?;
+            }
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let binary = sidecar("breadcrumb-engine").map_err(std::io::Error::other)?;
@@ -386,7 +399,10 @@ fn main() {
                 .ok()
                 .and_then(|state| state["needsSetup"].as_bool())
                 .unwrap_or(true);
-            if first_launch || std::env::args().any(|arg| arg == "--show" || arg == "--demo") {
+            if first_launch
+                || std::env::args().any(|arg| arg == "--show" || arg == "--demo")
+                || (cfg!(windows) && !std::env::args().any(|arg| arg == "--autostart"))
+            {
                 open_after_launch(app.handle().clone());
             }
             let handle = app.handle().clone();
