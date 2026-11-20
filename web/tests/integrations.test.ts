@@ -1,3 +1,4 @@
+import { openAPI } from "../lib/openapi";
 import { authorizationDetails } from "../lib/authorization";
 import { test, expect } from "bun:test";
 import { randomBytes, createHash } from "node:crypto";
@@ -241,4 +242,30 @@ test("disconnecting a desktop grant also stops uploads immediately", async () =>
   const grants = await f.auth.api.getOAuthConsents({ headers });
   await f.auth.api.deleteOAuthConsent({ headers, body: { id: grants[0].id } });
   expect(await access.upload(f.request("/v1/ingest"))).toBeNull();
+});
+
+test("published API contract references resolve and retain the permission model", () => {
+  const old = process.env.PUBLIC_URL;
+  process.env.PUBLIC_URL = root;
+  try {
+    const document = openAPI();
+    expect(document.openapi).toBe("3.2.1");
+    const visit = (value: unknown) => {
+      if (Array.isArray(value)) for (const item of value) visit(item);
+      else if (value && typeof value === "object")
+        for (const [key, item] of Object.entries(value)) {
+          if (key === "$ref" && typeof item === "string" && item.startsWith("#/")) {
+            let resolved: unknown = document;
+            for (const part of item.slice(2).split("/"))
+              resolved = (resolved as Record<string, unknown>)[part];
+            expect(resolved).toBeDefined();
+          } else visit(item);
+        }
+    };
+    visit(document);
+    expect(document.paths["/api/v1/shares"].post.security).toEqual([{ browserSession: [] }]);
+  } finally {
+    if (old === undefined) delete process.env.PUBLIC_URL;
+    else process.env.PUBLIC_URL = old;
+  }
 });
