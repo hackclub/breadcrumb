@@ -20,3 +20,7 @@ if (process.env.BREADCRUMB_APPLY_MIGRATIONS === "1") {
   }
 }
 export {};
+// Optional bounded pass for existing shared history; continuation is printed for larger corpora.
+if (process.env.BREADCRUMB_BACKFILL_LEADERBOARDS === "1") {
+  await import("./leaderboards-backfill");
+}
