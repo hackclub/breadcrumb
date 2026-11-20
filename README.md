@@ -16,6 +16,7 @@ Breadcrumb stays in your menu bar or system tray and records the display contain
 - **Keep the whole picture.** Focused and alongside context stay separate. A chat with an AI and a video visible beside it can coexist without counting the same minute twice.
 - **Stay lightweight.** Nearly unchanged screenshots share one image. Uploads reuse acknowledged images, with adjustable concurrency, progress, and an ETA.
 - **Make it yours.** Dark, light, and Catppuccin themes; configurable cadence, retention, storage, OCR, and app exclusions.
+- **Choose what is public.** Reserve a username, keep your profile public or private, and choose which apps to share. Capture history stays off your public profile.
 - **Bring your agents.** Editable Python rules and an agent review protocol make labeling extensible.
 
 ![Activity details showing contributing apps and projects](docs/images/activity-details.png)
@@ -32,11 +33,11 @@ You can run your own portal. Authentication uses Better Auth and PostgreSQL; cap
 
 ## Platforms
 
-| Platform | Capture and context                        | Requirements                                       |
-| -------- | ------------------------------------------ | -------------------------------------------------- |
-| macOS    | ScreenCaptureKit, Accessibility, local OCR | macOS 14+, Intel or Apple Silicon                  |
-| Windows  | Native display capture, UI Automation      | See cross-platform CI for current build validation |
-| Linux    | X11 capture, AT-SPI                        | X11 desktop; Wayland is not yet supported          |
+| Platform | Capture and context                        | Requirements                                             |
+| -------- | ------------------------------------------ | -------------------------------------------------------- |
+| macOS    | ScreenCaptureKit, Accessibility, local OCR | macOS 14+, Intel or Apple Silicon                        |
+| Windows  | Native display capture, UI Automation      | x64; see [Windows setup and validation](docs/windows.md) |
+| Linux    | X11 capture, AT-SPI                        | X11 desktop; Wayland is not yet supported                |
 
 Accessibility is optional on macOS. Windows and Linux do not yet provide local OCR. Public release signing and macOS notarization still need to be configured before broad distribution.
 
