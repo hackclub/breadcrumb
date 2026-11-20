@@ -24,8 +24,21 @@ test("updates refresh native status after wake and install only after confirmati
         transformCallback: () => 1,
         unregisterCallback: () => {},
         invoke: async (command: string, args?: { command?: string }) => {
-          if (command === "engine")
+          if (command === "engine") {
+            if (args?.command === "agentUsageSettings")
+              return { providers: [], lastScan: "", pending: 0, bytes: 0 };
+            if (args?.command === "agentUsageSync")
+              return {
+                enabled: false,
+                connected: false,
+                server: "",
+                lastSynced: "",
+                error: "",
+                signingIn: false,
+                authError: "",
+              };
             return args?.command === "payload" ? { jpeg: "", tree: [] } : state;
+          }
           if (command === "plugin:app|version") return "0.2.0";
           if (command === "update_status") return status;
           if (command === "check_updates") {

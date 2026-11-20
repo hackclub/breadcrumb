@@ -251,7 +251,7 @@ export class ClickHouseAnalytics implements AnalyticsIndex {
   async readAgents(participant: string, from: string, to: string) {
     return (
       await this.query<{ snapshot: string }>(
-        `SELECT snapshot FROM \`${this.database}\`.agent_hours FINAL WHERE participant={participant:String} AND hour BETWEEN {from:DateTime64(3)} AND {to:DateTime64(3)} FORMAT JSONEachRow`,
+        `SELECT snapshot FROM \`${this.database}\`.agent_hours FINAL WHERE participant={participant:String} AND hour BETWEEN {from:DateTime64(3,'UTC')} AND {to:DateTime64(3,'UTC')} FORMAT JSONEachRow`,
         {
           participant,
           from: from.replace("T", " ").replace("Z", ""),
