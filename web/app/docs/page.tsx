@@ -1,16 +1,14 @@
 import { SiteHeader } from "../site-header";
+import { serverSignedIn } from "../server-session";
 import { permissionLabels, dataScopes } from "../../lib/permissions";
 export const metadata = {
   title: "API & MCP · Breadcrumb",
   description: "Connect apps and agents to your Breadcrumb data with scoped permissions.",
 };
-export default function Docs() {
+export default async function Docs() {
   return (
     <main className="portal">
-      <SiteHeader>
-        <a href="/connections">Connections</a>
-        <a href="/leaderboard">Leaderboard</a>
-      </SiteHeader>
+      <SiteHeader signedIn={await serverSignedIn()} />
       <article style={{ maxWidth: 760, margin: "48px auto", lineHeight: 1.8 }}>
         <h1>Your data, connected</h1>
         <p>

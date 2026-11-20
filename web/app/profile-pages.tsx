@@ -29,14 +29,10 @@ async function request(path: string, body?: unknown) {
     );
   return value;
 }
-function Shell({ children }: { children: ReactNode }) {
+function Shell({ children, signedIn }: { children: ReactNode; signedIn: boolean }) {
   return (
     <main className="portal">
-      <SiteHeader>
-        <a className="profile-nav" href="/">
-          Dashboard
-        </a>
-      </SiteHeader>
+      <SiteHeader signedIn={signedIn} />
       {children}
       <footer>
         <a href="https://github.com/hackclub/breadcrumb" target="_blank" rel="noreferrer">
@@ -712,7 +708,7 @@ export function ProfileSettings({
     </form>
   );
   return (
-    <Shell>
+    <Shell signedIn={!unauthorized}>
       <section className="profile-settings">
         {profile ? (
           <div className="public-profile-card">
@@ -775,7 +771,7 @@ export function ProfileSettings({
               <div className="profile-auth-card">
                 <h2>Make it yours</h2>
                 <p>Sign in to reserve a username and choose what appears on your profile.</p>
-                <a className="profile-button" href="/">
+                <a className="profile-button" href="/?next=/profile">
                   Sign in
                 </a>
               </div>
@@ -852,12 +848,14 @@ function ProfileDetails({ profile, actions }: { profile: ProfileView; actions?: 
 export function PublicProfile({
   profile,
   failed = false,
+  signedIn = false,
 }: {
   profile: ProfileView | null;
   failed?: boolean;
+  signedIn?: boolean;
 }) {
   return (
-    <Shell>
+    <Shell signedIn={signedIn}>
       <section className="public-profile-page">
         <div className="public-profile-card">
           {profile ? (

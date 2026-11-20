@@ -22,7 +22,7 @@ export default function Connect() {
   }, []);
   return (
     <main className="portal">
-      <SiteHeader />
+      <SiteHeader nav={false} />
       <section className="auth-page">
         <h1>Connect an app</h1>
         {error ? (

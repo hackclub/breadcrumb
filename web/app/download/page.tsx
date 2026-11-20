@@ -1,12 +1,11 @@
 import { SiteHeader } from "../site-header";
+import { serverSignedIn } from "../server-session";
 
 import { DownloadOptions } from "./download-options";
-export default function DownloadPage() {
+export default async function DownloadPage() {
   return (
     <main className="portal download-page">
-      <SiteHeader>
-        <a href="/">Dashboard</a>
-      </SiteHeader>
+      <SiteHeader signedIn={await serverSignedIn()} />
       <section className="download-content">
         <h1>Breadcrumb for your desktop</h1>
         <p className="muted">

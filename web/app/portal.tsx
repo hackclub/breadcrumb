@@ -13,11 +13,17 @@ async function request(path: string, body?: unknown) {
   if (!response.ok) throw Error(await response.text());
   return response.status === 204 ? null : response.json();
 }
+// Where the magic link lands: a same-site `next` path, or this page (keeps desktop params).
+function returnPath() {
+  const next = new URLSearchParams(location.search).get("next");
+  return next && /^\/(?![/\\])/.test(next) ? next : location.pathname + location.search;
+}
 export default function Portal({
-  initialDashboard = false,
+  signedIn = false,
   initialDesktop = "",
 }: {
-  initialDashboard?: boolean;
+  /** Session verified on the server; the client session takes over once loaded. */
+  signedIn?: boolean;
   initialDesktop?: string;
 }) {
   const [timeZone, setTimeZone] = useState("UTC"),
@@ -31,7 +37,7 @@ export default function Portal({
   const { data: session, isPending } = authClient.useSession();
   const account = session?.user ?? null,
     ready = !isPending;
-  const dashboardVisible = !desktop && (Boolean(account) || (!ready && initialDashboard));
+  const dashboardVisible = !desktop && (Boolean(account) || (!ready && signedIn));
   useEffect(() => {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
     const query = new URLSearchParams(location.search);
@@ -130,30 +136,7 @@ export default function Portal({
   );
   return (
     <main className="portal">
-      <SiteHeader>
-        <a href="/leaderboard">Leaderboard</a>
-        <a href="/connections">Connections</a>
-        {(account || (!ready && initialDashboard)) && (
-          <a className="profile-nav" href="/profile">
-            Profile
-          </a>
-        )}
-        {(account || (!ready && initialDashboard)) && (
-          <button
-            className="quiet"
-            disabled={busy || !ready}
-            onClick={() =>
-              action(async () => {
-                const result = await authClient.signOut();
-                if (result.error) throw Error(result.error.message ?? "Could not sign out");
-                setDays(null);
-              })
-            }
-          >
-            Sign out
-          </button>
-        )}
-      </SiteHeader>
+      <SiteHeader signedIn={ready ? Boolean(account) : signedIn} />
       <div className={dashboardVisible ? "dashboard" : "auth-page"}>
         {!ready ? (
           dashboardVisible ? (
@@ -186,7 +169,7 @@ export default function Portal({
                 void action(async () => {
                   const result = await authClient.signIn.magicLink({
                     email,
-                    callbackURL: location.pathname + location.search,
+                    callbackURL: returnPath(),
                   });
                   if (result.error)
                     throw Error(result.error.message ?? "Could not send sign-in email");
