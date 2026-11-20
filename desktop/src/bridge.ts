@@ -20,6 +20,15 @@ export async function onPanelOpen(callback: () => void) {
 export async function hidePanel() {
   if (native) await invoke("hide_panel");
 }
+const demoAgentUpload = {
+  enabled: false,
+  connected: false,
+  server: "https://breadcrumb.example",
+  lastSynced: "",
+  error: "",
+  signingIn: false,
+  authError: "",
+};
 const demoAgentStatus: AgentStatus = {
   providers: [
     { id: "claude", name: "Claude Code", detected: true, enabled: false },
@@ -147,6 +156,20 @@ export async function engine<T = State>(command: string, args: unknown = {}): Pr
       tree: [{ role: "AXWindow", label: "Synthetic window", depth: 0 }],
       screenText: "Synthetic preview only",
     } as Payload as T;
+  }
+  if (command === "agentUsageSync") {
+    const input = args as { enabled?: boolean; disconnect?: boolean };
+    if (typeof input.enabled === "boolean") demoAgentUpload.enabled = input.enabled;
+    if (input.disconnect) {
+      demoAgentUpload.connected = false;
+      demoAgentUpload.enabled = false;
+    }
+    return structuredClone(demoAgentUpload) as T;
+  }
+  if (command === "beginAgentSignIn") {
+    demoAgentUpload.connected = true;
+    demoAgentUpload.enabled = true;
+    return { url: "https://breadcrumb.example/agents" } as T;
   }
   if (command === "agentUsageSettings" || command === "agentUsage") {
     try {

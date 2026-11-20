@@ -56,6 +56,29 @@ export default async function Docs() {
           needed. Screenshots require their own permission and are never included in ordinary
           activity responses. Accessibility trees and raw screen text are not exposed.
         </p>
+        <h2>Coding-agent usage</h2>
+        <p>
+          Enable local providers in desktop Settings, then separately connect token usage uploads.
+          Capture sync is independent. Uploads contain hourly token counts and project names; chats,
+          tool content, session IDs and absolute paths are never sent. Usage stays private and is
+          excluded from profiles and leaderboards.
+        </p>
+        <p>
+          Read <code>GET /api/v1/agents/usage?range=7&amp;timeZone=UTC</code> with{" "}
+          <code>agents:read</code>, or use MCP tool <code>breadcrumb_get_agent_usage</code>. Ranges
+          are 1 (past 24 hours), 7, 30 and 90 days. Results use hourly UTC buckets; group them into
+          the viewer’s local day. Session counts are starts per hour. Unknown models count toward
+          tokens and remain unpriced. Estimates use the shared standard API price table and are not
+          subscription bills.
+        </p>
+        <p>
+          Upload clients request <code>agents:sync</code> for the <code>/v1</code> resource and POST
+          usage-only snapshots to <code>/v1/agents/ingest</code>. Each request requires{" "}
+          <code>consent: true</code>. Source/hour snapshots replace older revisions, including empty
+          snapshots that remove obsolete rows. A random source ID separates libraries without
+          revealing device names. The <a href="/openapi.json">OpenAPI document</a> describes the
+          strict schema. Chats and extra fields are rejected.
+        </p>
         <h2>REST</h2>
         <p>
           The stable API lives at <code>/api/v1</code>. Read the{" "}

@@ -1,3 +1,6 @@
+import { validateAgentSnapshots, type AgentIndex } from "./agents";
+import { R2AgentIndex } from "./agents-r2";
+import { smallJSON, APIProblem, problem } from "./api-http";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { Store } from "./store";
@@ -423,6 +426,14 @@ export class Service {
       const url = new URL(req.url),
         path = url.pathname,
         method = req.method;
+      if (path === "/v1/agents/ingest" && method === "POST") {
+        const account = await this.access.agents?.(req);
+        if (!account) fail(401, "Token usage authorization required");
+        const snapshots = validateAgentSnapshots(await smallJSON(req, 512 * 1024));
+        const index: AgentIndex = this.analytics ?? new R2AgentIndex(this.store);
+        await index.writeAgents(account!.id, snapshots);
+        return Response.json({ accepted: snapshots.length });
+      }
       if (path === "/healthz" && method === "GET")
         return Response.json({
           ok: true,
@@ -613,6 +624,7 @@ export class Service {
       }
       return new Response("Not found", { status: 404 });
     } catch (e) {
+      if (e instanceof APIProblem) return problem(e, req);
       if (e instanceof HTTPError) return new Response(e.message, { status: e.status });
       if (e instanceof z.ZodError)
         return new Response(

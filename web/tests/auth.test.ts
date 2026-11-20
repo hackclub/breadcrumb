@@ -36,7 +36,11 @@ async function fixture() {
   assert.ok(cookie);
   return { auth, call, cookie, link };
 }
-async function authorize(f: Awaited<ReturnType<typeof fixture>>, allow = true) {
+async function authorize(
+  f: Awaited<ReturnType<typeof fixture>>,
+  allow = true,
+  scope = "captures:sync",
+) {
   const verifier = randomBytes(32).toString("base64url"),
     state = randomBytes(32).toString("hex"),
     redirect = "http://127.0.0.1:49187/callback";
@@ -47,7 +51,7 @@ async function authorize(f: Awaited<ReturnType<typeof fixture>>, allow = true) {
     redirect_uris: [redirect],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
-    scope: "email offline_access captures:sync",
+    scope: "email offline_access " + scope,
     resources: [root + "/v1"],
   });
   assert.equal(registered.status, 201, await registered.clone().text());
@@ -56,7 +60,7 @@ async function authorize(f: Awaited<ReturnType<typeof fixture>>, allow = true) {
     client_id: client.client_id,
     response_type: "code",
     redirect_uri: redirect,
-    scope: "email offline_access captures:sync",
+    scope: "email offline_access " + scope,
     state,
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
     code_challenge_method: "S256",
@@ -174,4 +178,41 @@ test("Better Auth rejects denied and tampered desktop requests", async () => {
     ).status,
     400,
   );
+});
+
+test("token usage consent cannot authorize captures and capture consent cannot authorize usage", async () => {
+  const f = await fixture(),
+    flow = await authorize(f, true, "agents:sync");
+  const response = await flow.exchange();
+  assert.equal(response.status, 200);
+  const token = await response.json();
+  assert.ok(token.participant);
+  const access = createAuthAccess(() => f.auth, {
+    NODE_ENV: "test",
+    ALLOWED_EMAILS: "friend@example.com",
+  });
+  const req = new Request(root + "/v1/agents/ingest", {
+    headers: { Authorization: `Bearer ${token.access_token}` },
+  });
+  assert.equal((await access.agents!(req))?.email, "friend@example.com");
+  assert.equal(await access.upload(req), null);
+  const captureFlow = await authorize(f),
+    capture = await (await captureFlow.exchange()).json();
+  assert.equal(
+    await access.agents!(
+      new Request(root + "/v1/agents/ingest", {
+        headers: { Authorization: `Bearer ${capture.access_token}` },
+      }),
+    ),
+    null,
+  );
+  const consents = await f.auth.api.getOAuthConsents({
+    headers: new Headers({ Cookie: f.cookie }),
+  });
+  for (const grant of consents)
+    await f.auth.api.deleteOAuthConsent({
+      headers: new Headers({ Cookie: f.cookie, Origin: root }),
+      body: { id: grant.id },
+    });
+  assert.equal(await access.agents!(req), null);
 });

@@ -19,6 +19,26 @@
       "target": "Breadcrumb",
       "configuration": "release",
       "preLaunchTask": "swift: Build Release Breadcrumb"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:rewind}",
+      "name": "Debug BreadcrumbCapture",
+      "target": "BreadcrumbCapture",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug BreadcrumbCapture"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:rewind}",
+      "name": "Release BreadcrumbCapture",
+      "target": "BreadcrumbCapture",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release BreadcrumbCapture"
     }
   ]
 }

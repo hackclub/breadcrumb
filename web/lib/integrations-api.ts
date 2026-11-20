@@ -1,3 +1,5 @@
+import { agentIndex } from "./agents-index";
+import { readAgentUsage } from "./agents";
 import { isAPIError } from "better-auth/api";
 import { getAuth, allowedEmail, participantID, type BreadcrumbAuth } from "./auth";
 import { dataAccess, serverURL, type DataPrincipal } from "./data-access";
@@ -47,6 +49,7 @@ export async function integrationsAPI(request: Request, store?: Store) {
       method = request.method;
     const known = [
       "activity",
+      "agents/usage",
       "connections",
       "leaderboard",
       "leaderboard/preferences",
@@ -63,7 +66,11 @@ export async function integrationsAPI(request: Request, store?: Store) {
         "Use /openapi.json to find supported operations.",
       );
     const allowed =
-      path === "activity" || path === "leaderboard" || path === "screenshots" || image
+      path === "agents/usage" ||
+      path === "activity" ||
+      path === "leaderboard" ||
+      path === "screenshots" ||
+      image
         ? ["GET"]
         : path === "connections"
           ? ["GET", "DELETE"]
@@ -97,6 +104,18 @@ export async function integrationsAPI(request: Request, store?: Store) {
       );
     }
     store ??= new R2Store();
+    if (path === "agents/usage") {
+      const principal = await dataAccess(request, "/api/v1", ["agents:read"], true);
+      const headers = await quota(principal);
+      return json(
+        await readAgentUsage(
+          agentIndex(store),
+          principal.participant,
+          Object.fromEntries(url.searchParams),
+        ),
+        headers,
+      );
+    }
     if (path === "activity") {
       const principal = await dataAccess(request, "/api/v1");
       const headers = await quota(principal);

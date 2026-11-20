@@ -89,6 +89,15 @@ func (x *extractor) value(path string, depth int) error {
 		return e
 	}
 	keep := x.paths[path]
+	// Usage leaves are numbers, never strings that happen to occupy a usage key.
+	numeric := strings.HasSuffix(path, "_tokens") || path == "payload.subagent_history_start_ordinal"
+	switch path {
+	case "input", "cacheRead", "cacheWrite", "cacheWrite1h", "output", "reasoning":
+		numeric = true
+	}
+	if keep && numeric && (c < '0' || c > '9') && c != '-' {
+		return errJSON
+	}
 	if x.strict && depth > 0 && !keep {
 		return errJSON
 	}

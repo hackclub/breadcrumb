@@ -1,12 +1,12 @@
+import { AgentUsageView as SharedAgentUsageView } from "../../web/app/agent-usage-view";
 import { useEffect, useState } from "react";
-import { engine } from "./bridge";
-import { calendarClock, REFERENCE } from "../../web/lib/insights";
-import { estimate, processedTokens } from "./agent-pricing";
-import type { AgentStatus, AgentUsage, AgentHour } from "./agent-usage-types";
-const count = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
-const money = (n: number) =>
-  n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-export function AgentUsageSettings() {
+import { engine, isNative } from "./bridge";
+import type { AgentStatus, AgentUsage } from "./agent-usage-types";
+export function AgentUsageSettings({
+  server = "https://breadcrumb.hackclub.com",
+}: {
+  server?: string;
+}) {
   const [status, setStatus] = useState<AgentStatus | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -32,7 +32,7 @@ export function AgentUsageSettings() {
       <h2>Coding agents</h2>
       <p>
         Optional local usage statistics. Enable each provider to read token counts and session
-        metadata. Chats and tool content are discarded. Nothing is uploaded.
+        metadata. Chats and tool content are discarded. Uploading requires a separate opt-in below.
       </p>
       {error && <p role="alert">{error}</p>}
       {status?.providers.map((p) => (
@@ -68,231 +68,128 @@ export function AgentUsageSettings() {
           : "Not yet scanned"}
         {status?.pending ? ` · ${status.pending} files pending` : ""}
       </p>
+      <AgentUploadSettings initialServer={server} />
     </section>
   );
 }
+
+const loadUsage = (range: number, timeZone: string) =>
+  engine<AgentUsage>("agentUsage", { range, timeZone });
 export function AgentUsageView() {
-  const [range, setRange] = useState(7),
-    [metric, setMetric] = useState("cost"),
-    [by, setBy] = useState("model"),
-    [data, setData] = useState<AgentUsage | null>(null),
+  return <SharedAgentUsageView loadUsage={loadUsage} />;
+}
+
+type UploadStatus = {
+  enabled: boolean;
+  connected: boolean;
+  server: string;
+  lastSynced: string;
+  error: string;
+  signingIn: boolean;
+  authError: string;
+};
+function AgentUploadSettings({ initialServer }: { initialServer: string }) {
+  const [state, setState] = useState<UploadStatus | null>(null),
+    [server, setServer] = useState(initialServer || "https://breadcrumb.hackclub.com"),
+    [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   useEffect(() => {
     let live = true;
-    setData(null);
     const load = () =>
-      engine<AgentUsage>("agentUsage", { range, timeZone })
-        .then((d) => {
-          if (live) {
-            setData(d);
-            setError("");
-          }
+      engine<UploadStatus>("agentUsageSync", {})
+        .then((s) => {
+          if (live) setState(s);
         })
         .catch(() => {
-          if (live) setError("Could not load coding-agent usage.");
+          if (live) setError("Could not load token usage connection.");
         });
     void load();
-    const timer = setInterval(load, 15000);
+    const timer = setInterval(load, 3000);
     return () => {
       live = false;
       clearInterval(timer);
     };
-  }, [range, timeZone]);
-  const hours = data?.hours ?? [],
-    tokens = hours.reduce((n, h) => n + processedTokens(h), 0),
-    cost = hours.reduce((n, h) => n + (estimate(h, h.model)?.cost ?? 0), 0),
-    savings = hours.reduce((n, h) => n + (estimate(h, h.model)?.savings ?? 0), 0);
-  const clock = calendarClock(timeZone),
-    day = (h: AgentHour) => clock(Date.parse(h.hour) / 1000 - REFERENCE).day;
-  const agents = Array.from(
-    new Set([
-      ...(data?.status.providers.filter((p) => p.enabled).map((p) => p.id) ?? []),
-      ...hours.map((h) => h.provider),
-    ]),
-  );
-  const days = Array.from(
-    new Set(
-      Array.from(
-        { length: range * 24 + 1 },
-        (_, i) => clock((Date.now() - i * 3600000) / 1000 - REFERENCE).day,
-      ),
-    ),
-  ).sort();
-  const amount = (rows: AgentHour[]) =>
-    rows.reduce(
-      (n, h) => n + (metric === "cost" ? (estimate(h, h.model)?.cost ?? 0) : processedTokens(h)),
-      0,
-    );
-  const format = metric === "cost" ? money : count;
-  const keys = Array.from(new Set(hours.map((h) => (by === "model" ? h.model : day(h))))).sort();
-  const max = Math.max(
-    1,
-    ...days.flatMap((d) =>
-      agents.map((a) => amount(hours.filter((h) => day(h) === d && h.provider === a))),
-    ),
-  );
+  }, []);
+  async function configure(args: unknown) {
+    setBusy(true);
+    setError("");
+    try {
+      setState(await engine<UploadStatus>("agentUsageSync", args));
+    } catch {
+      setError("Could not update token usage uploads.");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
-    <section className="agent-usage" aria-busy={!data && !error}>
-      <div className="insights-toolbar">
-        <div>
-          <h1>Coding agents</h1>
-          <p className="muted">Local token usage · API estimate, not your subscription bill</p>
-        </div>
-      </div>
-      <div className="agent-controls">
-        {["cost", "tokens"].map((m) => (
-          <button key={m} aria-pressed={metric === m} onClick={() => setMetric(m)}>
-            {m === "cost" ? "Cost" : "Tokens"}
-          </button>
-        ))}
-        <label>
-          Range{" "}
-          <select
-            aria-label="Range"
-            value={range}
-            onChange={(e) => setRange(Number(e.target.value))}
-          >
-            {[
-              [1, "Past 24h"],
-              [7, "Past 7 days"],
-              [30, "Past 30 days"],
-              [90, "Past 90 days"],
-            ].map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <p role="status" className="agent-progress">
-        {error ||
-          (!data
-            ? "Loading usage…"
-            : data.status.pending
-              ? `Scanning history · ${count(data.status.bytes)} bytes processed · ${data.status.pending} files pending`
-              : !hours.length
-                ? "No usage yet. Enable providers in Settings to begin."
-                : "Usage reflects available local history.")}
+    <div>
+      <h3>Token usage uploads</h3>
+      <p>
+        Optional, separate from capture sync. Upload existing and future hourly token counts and
+        project names to your private dashboard. Chats, tool content, session IDs and absolute paths
+        are never uploaded.
       </p>
-      <div className="agent-total">{data ? format(metric === "cost" ? cost : tokens) : "—"}</div>
-      <div className="agent-list">
-        {(data ? agents : ["claude", "codex"]).map((a) => {
-          const rows = hours.filter((h) => h.provider === a),
-            value = amount(rows),
-            total = metric === "cost" ? cost : tokens;
-          return (
-            <div className="agent-row" key={data ? a : `loading-${a}`}>
-              <strong>{data?.status.providers.find((p) => p.id === a)?.name ?? a}</strong>
-              <span>
-                {data
-                  ? count(
-                      new Set(data.sessions.filter((s) => s.provider === a).map((s) => s.id)).size,
-                    )
-                  : "—"}{" "}
-                sessions
-              </span>
-              <span>{total ? ((value / total) * 100).toFixed(1) : "0"}%</span>
-              <span>
-                {data ? count(rows.reduce((n, h) => n + processedTokens(h), 0)) : "—"} tokens
-              </span>
-              <span>
-                {data
-                  ? rows.length && rows.every((h) => !estimate(h, h.model))
-                    ? "Unpriced"
-                    : money(rows.reduce((n, h) => n + (estimate(h, h.model)?.cost ?? 0), 0))
-                  : "—"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="agent-chart" role="img" aria-label={`Daily ${metric} by coding agent`}>
-        <svg viewBox="0 0 900 180" preserveAspectRatio="none">
-          {agents.map((a, i) => (
-            <polyline
-              key={a}
-              fill="none"
-              stroke={`var(--agent-${i % 4})`}
-              strokeWidth="2"
-              points={days
-                .map(
-                  (d, j) =>
-                    `${days.length === 1 ? 450 : (j / (days.length - 1)) * 880 + 10},${170 - (amount(hours.filter((h) => day(h) === d && h.provider === a)) / max) * 150}`,
-                )
-                .join(" ")}
+      {error && <p role="alert">{error}</p>}
+      {state?.error && <p role="alert">{state.error}</p>}
+      {state?.authError && <p role="alert">{state.authError}</p>}
+      {state?.connected ? (
+        <>
+          <label className="agent-setting">
+            <input
+              type="checkbox"
+              checked={state.enabled}
+              disabled={busy}
+              onChange={(e) => void configure({ enabled: e.target.checked })}
             />
-          ))}
-        </svg>
-        <div className="agent-controls">
-          {agents.map((a, i) => (
-            <span key={a} style={{ color: `var(--agent-${i % 4})` }}>
-              {a}
-            </span>
-          ))}
-        </div>
-        <p className="muted">
-          {days[0] ?? "Daily usage"} — {days.at(-1) ?? timeZone} · {timeZone}
-        </p>
-      </div>
-      <dl className="agent-totals">
-        {[
-          ["Processed tokens", tokens],
-          ["Cached input", hours.reduce((n, h) => n + h.cacheRead, 0)],
-          ["Uncached input", hours.reduce((n, h) => n + h.input, 0)],
-          ["Cache writes", hours.reduce((n, h) => n + h.cacheWrite, 0)],
-          ["Output", hours.reduce((n, h) => n + h.output, 0)],
-          ["Cache savings", money(savings)],
-        ].map(([label, n]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{data ? (typeof n === "number" ? count(n) : n) : "—"}</dd>
-          </div>
-        ))}
-      </dl>
-      <div className="agent-controls">
-        <h2>Breakdown</h2>
-        <label>
-          Group by{" "}
-          <select aria-label="Group by" value={by} onChange={(e) => setBy(e.target.value)}>
-            <option value="model">Model</option>
-            <option value="day">Day</option>
-          </select>
-        </label>
-      </div>
-      <div className="agent-table">
-        <table>
-          <thead>
-            <tr>
-              <th>{by === "model" ? "Model" : "Day"}</th>
-              <th>Tokens</th>
-              <th>API estimate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => {
-              const rows = hours.filter((h) => (by === "model" ? h.model : day(h)) === k);
-              return (
-                <tr key={k}>
-                  <th>{k}</th>
-                  <td>{count(rows.reduce((n, h) => n + processedTokens(h), 0))}</td>
-                  <td>
-                    {rows.every((h) => !estimate(h, h.model))
-                      ? "Unpriced"
-                      : money(rows.reduce((n, h) => n + (estimate(h, h.model)?.cost ?? 0), 0))}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="small-note">
-        Unknown models count toward tokens and are excluded from cost shares. Estimates use standard
-        API rates; service tiers, long-context surcharges and account discounts may differ. Cache
-        savings compare cache reads with uncached input.
-      </p>
-    </section>
+            Upload hourly token counts
+          </label>
+          <p className="muted">
+            {state.server} · Last upload:{" "}
+            {state.lastSynced ? new Date(state.lastSynced).toLocaleString() : "Not yet uploaded"}
+          </p>
+          <button
+            className="quiet"
+            disabled={busy}
+            onClick={() => void configure({ disconnect: true })}
+          >
+            Disconnect token usage
+          </button>
+        </>
+      ) : (
+        <>
+          <label>
+            Usage server{" "}
+            <input
+              aria-label="Usage server"
+              type="url"
+              value={server}
+              onChange={(e) => setServer(e.target.value)}
+            />
+          </label>
+          <button
+            disabled={busy || state?.signingIn}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                const result = await engine<{ url: string }>("beginAgentSignIn", { server });
+                if (isNative) {
+                  const { openUrl } = await import("@tauri-apps/plugin-opener");
+                  await openUrl(result.url);
+                } else window.open(result.url, "_blank", "noopener");
+              } catch {
+                setError("Could not start token usage sign-in.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {state?.signingIn
+              ? "Approve token usage in your browser"
+              : "Connect and upload token usage"}
+          </button>
+        </>
+      )}
+    </div>
   );
 }

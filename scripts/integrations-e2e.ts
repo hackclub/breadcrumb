@@ -10,6 +10,13 @@ const origin = `http://127.0.0.1:${port}`;
 const server = Bun.spawn(["bun", "run", "--cwd", "web", "start", "--port", String(port)], {
   stdout: "ignore",
   stderr: "inherit",
+  env: {
+    ...process.env,
+    PUBLIC_URL: origin,
+    DATABASE_URL: "postgres://synthetic@127.0.0.1:1/unavailable",
+    AUTH_DATABASE_URL: "postgres://synthetic@127.0.0.1:1/unavailable",
+    BETTER_AUTH_SECRET: "synthetic-connection-ui-secret-only",
+  },
 });
 const browser = await chromium.launch();
 try {
@@ -22,6 +29,17 @@ try {
   await mkdir("test-results/integrations", { recursive: true });
   for (const width of [1280, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
+    // The controls use mocked APIs; the SSR session-store outage hint keeps
+    // this fixture signed in without connecting to a real account or database.
+    await page.context().addCookies([
+      {
+        name: "better-auth.session_token",
+        value: "synthetic-connections-layout",
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: true,
+      },
+    ]);
     const captureId = "00000000-0000-4000-8000-000000000001";
     let revoked = false,
       disconnected = false;

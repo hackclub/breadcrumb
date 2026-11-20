@@ -23,6 +23,10 @@ import (
 )
 
 type engine struct {
+	agentCredentials    credentials
+	agentCancel         context.CancelFunc
+	agentLastSynced     string
+	agentSyncError      string
 	usage               *agentusage.Store
 	needsSetup          bool
 	mu                  sync.Mutex
@@ -61,6 +65,7 @@ type engine struct {
 	demo                bool
 }
 type credentials struct {
+	AgentOnly         bool   `json:"agentOnly,omitempty"`
 	ClientID          string `json:"clientID,omitempty"`
 	RefreshToken      string `json:"refreshToken,omitempty"`
 	Server            string `json:"server"`
@@ -230,6 +235,51 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	switch command {
+	case "beginAgentSignIn":
+		var input struct {
+			Server string `json:"server"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		return e.beginSignInFor(input.Server, true)
+	case "agentUsageSync":
+		var input struct {
+			Enabled    *bool `json:"enabled"`
+			Disconnect bool  `json:"disconnect"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return nil, err
+		}
+		if e.demo {
+			return nil, errors.New("disabled in demo mode")
+		}
+		if input.Enabled != nil {
+			if *input.Enabled && e.agentCredentials.Token == "" {
+				return nil, errors.New("Connect token usage first")
+			}
+			next := e.agentCredentials
+			next.AutoSync = *input.Enabled
+			if err := writePrivate(filepath.Join(e.lib.Dir, "agent-connection.json"), next); err != nil {
+				return nil, err
+			}
+			e.agentCredentials = next
+			if e.agentCancel != nil {
+				e.agentCancel()
+			}
+		}
+		if input.Disconnect {
+			old := e.agentCredentials
+			if err := writePrivate(filepath.Join(e.lib.Dir, "agent-connection.json"), credentials{}); err != nil {
+				return nil, err
+			}
+			e.agentCredentials = credentials{}
+			if e.agentCancel != nil {
+				e.agentCancel()
+			}
+			go revokeOAuth(old)
+		}
+		return e.agentSyncStatus(), nil
 	case "agentUsage":
 		if e.usage == nil {
 			return nil, errors.New("agent usage unavailable")
@@ -515,6 +565,18 @@ func main() {
 				}
 			}()
 		}
+	}
+	if !*demo {
+		if data, err := os.ReadFile(filepath.Join(*dir, "agent-connection.json")); err == nil {
+			json.Unmarshal(data, &e.agentCredentials)
+		}
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				e.syncAgentUsage()
+			}
+		}()
 	}
 	var previous struct {
 		Recording  bool     `json:"recording"`

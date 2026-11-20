@@ -84,5 +84,11 @@ func TestLargeSyntheticUsage(t *testing.T) {
 	if sum(r) != int64(events)*60 {
 		t.Fatalf("lost usage: %d events, input=%d", events, sum(r))
 	}
+	exportStarted := time.Now()
+	snapshots, err := s.Export(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("hourly snapshots=%d export wall=%s", len(snapshots), time.Since(exportStarted))
 	t.Logf("synthetic bytes=%d files=128 events=%d wall=%s throughput=%.1f MiB/s peak Go heap=%.1f MiB ticks=%d", bytes, events, elapsed, float64(bytes)/(1<<20)/elapsed.Seconds(), float64(peak)/(1<<20), ticks)
 }

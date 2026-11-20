@@ -93,7 +93,7 @@ func TestOptInIncrementalAndPrivacy(t *testing.T) {
 	if strings.Contains(string(raw), "SENTINEL") {
 		t.Fatal("private content stored")
 	}
-	if r.Hours[0].Project != "project" {
+	if r.Hours[0].Project != "" {
 		t.Fatal("windows project")
 	}
 	os.WriteFile(path, []byte(claude("three")), 0600)
@@ -144,7 +144,8 @@ func TestCodexPreferenceReplayAndRestart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	*s = *opened
+	s = opened
+	t.Cleanup(func() { s.Close() })
 	scan(t, s, 150)
 	if sum(result(t, s)) != 60 {
 		t.Fatal("restart counted twice")
@@ -170,5 +171,89 @@ func TestDiscardedContentMemory(t *testing.T) {
 	record = strings.Replace(record, "PROMPT_SENTINEL", strings.Repeat("x", 2<<20), 1)
 	if e, err := p.Parse(strings.NewReader(record), &Context{}); err != nil || e == nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPluginDiscoveryAndSeparateOptIn(t *testing.T) {
+	s, _ := setup(t)
+	dir := filepath.Join(s.dir, "agent-imports", "opencode")
+	os.MkdirAll(dir, 0700)
+	record := fmt.Sprintf(`{"provider":"opencode","id":"one","session":"s","model":"free-model","time":%q,"input":15,"output":2}`+"\n", time.Now().Format(time.RFC3339))
+	os.WriteFile(filepath.Join(dir, "usage.jsonl"), []byte(record), 0600)
+	status := s.Status()
+	found := false
+	for _, p := range status.Providers {
+		if p.ID == "plugin:opencode" {
+			found = p.Detected && !p.Enabled
+		}
+	}
+	if !found {
+		t.Fatal("plugin not discovered off by default")
+	}
+	s.Configure("import", true)
+	scan(t, s, 256)
+	if sum(result(t, s)) != 0 {
+		t.Fatal("generic importer bypassed plugin toggle")
+	}
+	if err := s.Configure("plugin:opencode", true); err != nil {
+		t.Fatal(err)
+	}
+	scan(t, s, 256)
+	if sum(result(t, s)) != 15 {
+		t.Fatal("plugin not imported")
+	}
+}
+
+func TestNativeReadersDiscardImportNamedContent(t *testing.T) {
+	content := strings.Repeat("PROMPT_SENTINEL", 10000)
+	line := strings.TrimSpace(claude("privacy"))
+	line = strings.TrimSuffix(line, "}") + fmt.Sprintf(`,"input":%q,"output":%q,"payload":{"usage":{"input_tokens":"TOOL_SENTINEL"}}}`, content, content)
+	event, err := Providers()[0].Parse(strings.NewReader(line), &Context{})
+	if err != nil || event == nil || event.Input != 10 {
+		t.Fatalf("discarded content affected usage: %v", err)
+	}
+	extracted, err := extract(strings.NewReader(line), providerPaths["claude"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range extracted {
+		if strings.Contains(value, "SENTINEL") {
+			t.Fatalf("content decoded at %s", key)
+		}
+	}
+	codex := fmt.Sprintf(`{"type":"token_usage_record","timestamp":%q,"input":%q,"output":%q,"message":{"usage":{"input_tokens":"TOOL_SENTINEL"}},"payload":{"response_id":"r","usage":{"input_tokens":100,"output_tokens":10}}}`, time.Now().Format(time.RFC3339), content, content)
+	event, err = Providers()[1].Parse(strings.NewReader(codex), &Context{Session: "s", Model: "model"})
+	if err != nil || event == nil || event.Input != 100 {
+		t.Fatalf("Codex content affected usage: %v", err)
+	}
+	for _, provider := range []string{"claude", "codex"} {
+		if _, err := extract(strings.NewReader(`{"message":{"usage":{"input_tokens":"PROMPT_SENTINEL"}},"payload":{"usage":{"input_tokens":"RESPONSE_SENTINEL"}}}`), providerPaths[provider]); err == nil {
+			t.Fatal("string-valued usage was decoded")
+		}
+	}
+}
+
+func TestLegacyForkCountsFreshUsageAfterCounterReset(t *testing.T) {
+	p := Providers()[1]
+	started := time.Now().UTC().Add(-10 * time.Minute)
+	meta := fmt.Sprintf(`{"type":"session_meta","payload":{"id":"child","forked_from_id":"parent","timestamp":%q}}`, started.Format(time.RFC3339))
+	c := Context{Model: "gpt-5.4"}
+	if _, err := p.Parse(strings.NewReader(meta), &c); err != nil {
+		t.Fatal(err)
+	}
+	record := func(at time.Time, total int) string {
+		return fmt.Sprintf(`{"type":"event_msg","timestamp":%q,"payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":%d},"last_token_usage":{"input_tokens":15,"cached_input_tokens":5,"output_tokens":5}}}}`, at.Format(time.RFC3339), total)
+	}
+	inherited := record(started.Add(-time.Minute), 1000)
+	if event, err := p.Parse(strings.NewReader(inherited), &c); err != nil || event != nil {
+		t.Fatal("inherited usage counted")
+	}
+	fresh := record(started.Add(time.Minute), 20)
+	event, err := p.Parse(strings.NewReader(fresh), &c)
+	if err != nil || event == nil || event.Input != 10 {
+		t.Fatal("fresh fork usage lost after reset")
+	}
+	if event, err := p.Parse(strings.NewReader(fresh), &c); err != nil || event != nil {
+		t.Fatal("fresh usage counted twice")
 	}
 }

@@ -889,7 +889,7 @@ function SettingsPage({
   );
   return (
     <section className="page settings-page">
-      <AgentUsageSettings />
+      <AgentUsageSettings server={state.server} />
       <section className="settings-section">
         <h2>Capture</h2>
         {number("retentionHours", "Keep history", [

@@ -1,3 +1,5 @@
+import { agentIndex } from "./agents-index";
+import { agentUsageQuery, readAgentUsage } from "./agents";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { dataAccess, serverURL, type DataPrincipal } from "./data-access";
@@ -25,6 +27,17 @@ export function mcpServer(principal: DataPrincipal, store: Store) {
     content: [{ type: "text" as const, text: JSON.stringify(value) }],
     structuredContent: value as Record<string, unknown>,
   });
+  if (allowed("agents:read"))
+    server.registerTool(
+      "breadcrumb_get_agent_usage",
+      {
+        description:
+          "Read your private hourly coding-agent token counts and API estimates. No chats or session paths are included.",
+        inputSchema: agentUsageQuery,
+        annotations,
+      },
+      async (args) => result(await readAgentUsage(agentIndex(store), principal.participant, args)),
+    );
   const tools = [
     {
       name: "breadcrumb_get_activity",

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Tokens struct {
@@ -38,14 +40,15 @@ type Event struct {
 	Project  string    `json:"project"`
 }
 type Context struct {
-	Session string    `json:"session"`
-	Parent  string    `json:"parent,omitempty"`
-	Model   string    `json:"model"`
-	Project string    `json:"project"`
-	Total   int64     `json:"total"`
-	Modern  bool      `json:"modern"`
-	Started time.Time `json:"started"`
-	Fork    bool      `json:"fork"`
+	OwnUsageStarted bool      `json:"ownUsageStarted"`
+	Session         string    `json:"session"`
+	Parent          string    `json:"parent,omitempty"`
+	Model           string    `json:"model"`
+	Project         string    `json:"project"`
+	Total           int64     `json:"total"`
+	Modern          bool      `json:"modern"`
+	Started         time.Time `json:"started"`
+	Fork            bool      `json:"fork"`
 }
 
 // Provider implementations must extract only allowlisted metadata and numbers.
@@ -77,26 +80,43 @@ func Providers() []Provider {
 
 var ident = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:@+-]{0,199}$`)
 
-func project(cwd string) string {
-	if filepath.IsAbs(cwd) {
-		for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
-			if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-				cwd = dir
-				break
-			}
-			if filepath.Dir(dir) == dir {
-				break
-			}
+func validProject(name string) bool {
+	if name == "" {
+		return true
+	}
+	if name == "." || name == ".." || utf8.RuneCountInString(name) > 200 || !utf8.ValidString(name) || strings.ContainsAny(name, `/\:`) {
+		return false
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return false
 		}
 	}
-
-	cwd = strings.ReplaceAll(cwd, `\`, "/")
-	s := filepath.Base(strings.TrimRight(cwd, "/"))
-	if s == "." || s == "/" || strings.Contains(s, ":") {
+	return true
+}
+func project(cwd string) string {
+	if !filepath.IsAbs(cwd) {
 		return ""
 	}
-	return s
+	for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return filepath.Base(dir)
+		}
+		if filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	return ""
 }
+func repositoryName(remote string) string {
+	remote = strings.TrimSuffix(strings.TrimRight(remote, "/"), ".git")
+	name := filepath.Base(strings.ReplaceAll(remote, `\`, "/"))
+	if !ident.MatchString(name) {
+		return ""
+	}
+	return name
+}
+
 func number(f fields, k string) int64 {
 	v, e := strconv.ParseInt(f[k], 10, 64)
 	if e != nil || v < 0 || v > 1e12 {
@@ -116,27 +136,27 @@ func usage(f fields, p string, claude bool) Tokens {
 	return t
 }
 
-var paths = func() map[string]bool {
+func usagePaths(metadata string, prefixes ...string) map[string]bool {
 	m := map[string]bool{}
-	for _, k := range strings.Fields("type timestamp sessionId cwd requestId message.id message.model payload.type payload.id payload.timestamp payload.cwd payload.forked_from_id payload.parent_thread_id payload.source.subagent payload.history_mode payload.subagent_history_start_ordinal payload.model payload.response_id provider id session parent model time project input cacheRead cacheWrite cacheWrite1h output reasoning") {
+	for _, k := range strings.Fields(metadata) {
 		m[k] = true
 	}
-	for _, prefix := range []string{"message.usage.", "payload.usage.", "payload.info.last_token_usage.", "payload.info.total_token_usage."} {
+	for _, prefix := range prefixes {
 		for _, k := range strings.Fields("input_tokens cached_input_tokens cache_write_input_tokens cache_read_input_tokens cache_creation_input_tokens cache_creation.ephemeral_5m_input_tokens cache_creation.ephemeral_1h_input_tokens output_tokens reasoning_output_tokens total_tokens") {
 			m[prefix+k] = true
 		}
 	}
 	return m
-}()
+}
+
+var providerPaths = map[string]map[string]bool{
+	"claude": usagePaths("type timestamp sessionId cwd requestId message.id message.model", "message.usage."),
+	"codex":  usagePaths("type timestamp payload.type payload.id payload.timestamp payload.cwd payload.forked_from_id payload.parent_thread_id payload.history_mode payload.subagent_history_start_ordinal payload.model payload.git.repository_url payload.response_id", "payload.usage.", "payload.info.last_token_usage.", "payload.info.total_token_usage."),
+	"import": usagePaths("provider id session parent model time project input cacheRead cacheWrite cacheWrite1h output reasoning"),
+}
 
 func (p builtin) Parse(r io.Reader, c *Context) (*Event, error) {
-	allowed := paths
-	if p.id == "import" {
-		allowed = map[string]bool{}
-		for _, k := range strings.Fields("provider id session parent model time project input cacheRead cacheWrite cacheWrite1h output reasoning") {
-			allowed[k] = true
-		}
-	}
+	allowed := providerPaths[p.id]
 	f, err := extract(r, allowed, p.id == "import")
 	if err != nil {
 		return nil, err
@@ -175,6 +195,9 @@ func (p builtin) Parse(r io.Reader, c *Context) (*Event, error) {
 			}
 			c.Fork = c.Parent != "" || f["payload.subagent_history_start_ordinal"] != "" || (f["payload.history_mode"] != "" && f["payload.history_mode"] != "none")
 			c.Project = project(f["payload.cwd"])
+			if c.Project == "" {
+				c.Project = repositoryName(f["payload.git.repository_url"])
+			}
 			return nil, nil
 		case "turn_context":
 			c.Model = f["payload.model"]
@@ -191,13 +214,21 @@ func (p builtin) Parse(r io.Reader, c *Context) (*Event, error) {
 				return nil, nil
 			}
 			total := number(f, "payload.info.total_token_usage.total_tokens")
+			if c.Fork {
+				if c.Started.IsZero() || e.Time.Before(c.Started) {
+					return nil, nil
+				}
+				// The child's own cumulative counter can restart below inherited totals.
+				// Its first fresh last_token_usage still represents new work.
+				if !c.OwnUsageStarted {
+					c.Total = 0
+					c.OwnUsageStarted = true
+				}
+			}
 			if total <= c.Total {
 				return nil, nil
 			}
 			c.Total = total
-			if c.Fork && (c.Started.IsZero() || e.Time.Before(c.Started)) {
-				return nil, nil
-			}
 			e.ID = c.Session + ":" + strconv.FormatInt(total, 10)
 			e.Tokens = usage(f, "payload.info.last_token_usage.", false)
 		default:
@@ -215,7 +246,7 @@ func (p builtin) Parse(r io.Reader, c *Context) (*Event, error) {
 			}
 		}
 		e = Event{Provider: f["provider"], ID: f["id"], Session: f["session"], Parent: f["parent"], Model: f["model"], Project: f["project"], Tokens: Tokens{number(f, "input"), number(f, "cacheRead"), number(f, "cacheWrite"), number(f, "cacheWrite1h"), number(f, "output"), number(f, "reasoning")}}
-		if !ident.MatchString(e.Project) && e.Project != "" {
+		if !validProject(e.Project) {
 			return nil, errJSON
 		}
 		e.Time, err = time.Parse(time.RFC3339Nano, f["time"])

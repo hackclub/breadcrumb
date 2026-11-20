@@ -55,7 +55,7 @@ export function sameOrigin(request: Request, origin: string) {
       "Open this page on your Breadcrumb server and retry.",
     );
 }
-export async function smallJSON(request: Request) {
+export async function smallJSON(request: Request, maxBytes = 8192) {
   if (!request.headers.get("content-type")?.startsWith("application/json"))
     throw new APIProblem(
       415,
@@ -78,12 +78,12 @@ export async function smallJSON(request: Request) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > 8192) {
+      if (size > maxBytes) {
         await reader.cancel();
         throw new APIProblem(
           413,
           "payload_too_large",
-          "Request exceeds 8 KiB.",
+          "Request exceeds the size limit.",
           "Send a smaller request.",
         );
       }
