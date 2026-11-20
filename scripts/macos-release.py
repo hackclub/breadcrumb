@@ -22,6 +22,9 @@ name = "Apple-Silicon" if arch == "aarch64" else "Intel"
 version = json.loads((root / "desktop/src-tauri/tauri.conf.json").read_text())["version"]
 output = root / "build/macos-release" / arch
 output.mkdir(parents=True, exist_ok=True)
+# A failed rebuild must not retain a previous success marker.
+(output / "release.json").unlink(missing_ok=True)
+(output / "SHA256SUMS.txt").unlink(missing_ok=True)
 env = dict(os.environ, MACOSX_DEPLOYMENT_TARGET="14.0")
 identity = env.get("APPLE_SIGNING_IDENTITY")
 if not identity and (root / ".breadcrumb-signing-identity").exists():
