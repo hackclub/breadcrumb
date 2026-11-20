@@ -203,3 +203,32 @@ func TestPluginDiscoveryAndSeparateOptIn(t *testing.T) {
 		t.Fatal("plugin not imported")
 	}
 }
+
+func TestNativeReadersDiscardImportNamedContent(t *testing.T) {
+	content := strings.Repeat("PROMPT_SENTINEL", 10000)
+	line := strings.TrimSpace(claude("privacy"))
+	line = strings.TrimSuffix(line, "}") + fmt.Sprintf(`,"input":%q,"output":%q,"payload":{"usage":{"input_tokens":"TOOL_SENTINEL"}}}`, content, content)
+	event, err := Providers()[0].Parse(strings.NewReader(line), &Context{})
+	if err != nil || event == nil || event.Input != 10 {
+		t.Fatalf("discarded content affected usage: %v", err)
+	}
+	extracted, err := extract(strings.NewReader(line), providerPaths["claude"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range extracted {
+		if strings.Contains(value, "SENTINEL") {
+			t.Fatalf("content decoded at %s", key)
+		}
+	}
+	codex := fmt.Sprintf(`{"type":"token_usage_record","timestamp":%q,"input":%q,"output":%q,"message":{"usage":{"input_tokens":"TOOL_SENTINEL"}},"payload":{"response_id":"r","usage":{"input_tokens":100,"output_tokens":10}}}`, time.Now().Format(time.RFC3339), content, content)
+	event, err = Providers()[1].Parse(strings.NewReader(codex), &Context{Session: "s", Model: "model"})
+	if err != nil || event == nil || event.Input != 100 {
+		t.Fatalf("Codex content affected usage: %v", err)
+	}
+	for _, provider := range []string{"claude", "codex"} {
+		if _, err := extract(strings.NewReader(`{"message":{"usage":{"input_tokens":"PROMPT_SENTINEL"}},"payload":{"usage":{"input_tokens":"RESPONSE_SENTINEL"}}}`), providerPaths[provider]); err == nil {
+			t.Fatal("string-valued usage was decoded")
+		}
+	}
+}

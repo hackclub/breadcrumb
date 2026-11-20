@@ -91,6 +91,8 @@ class ExportTests(unittest.TestCase):
             self.assertIsNone(plugin.normalized({"model.id": "model", "time.completed": self.now, "tokens.input": value}, "m", "s", str(self.root), ""))
         with self.assertRaises(ValueError):
             plugin.UsageJSON(io.BytesIO(b'{"tokens":{"input":1,"input":2}}')).read()
+        with self.assertRaises(ValueError):
+            plugin.UsageJSON(io.BytesIO(b'{"tokens":{"input":"PROMPT_SENTINEL"}}')).read()
 
 
 if __name__ == "__main__":

@@ -135,27 +135,27 @@ func usage(f fields, p string, claude bool) Tokens {
 	return t
 }
 
-var paths = func() map[string]bool {
+func usagePaths(metadata string, prefixes ...string) map[string]bool {
 	m := map[string]bool{}
-	for _, k := range strings.Fields("type timestamp sessionId cwd requestId message.id message.model payload.type payload.id payload.timestamp payload.cwd payload.forked_from_id payload.parent_thread_id payload.source.subagent payload.history_mode payload.subagent_history_start_ordinal payload.model payload.git.repository_url payload.response_id provider id session parent model time project input cacheRead cacheWrite cacheWrite1h output reasoning") {
+	for _, k := range strings.Fields(metadata) {
 		m[k] = true
 	}
-	for _, prefix := range []string{"message.usage.", "payload.usage.", "payload.info.last_token_usage.", "payload.info.total_token_usage."} {
+	for _, prefix := range prefixes {
 		for _, k := range strings.Fields("input_tokens cached_input_tokens cache_write_input_tokens cache_read_input_tokens cache_creation_input_tokens cache_creation.ephemeral_5m_input_tokens cache_creation.ephemeral_1h_input_tokens output_tokens reasoning_output_tokens total_tokens") {
 			m[prefix+k] = true
 		}
 	}
 	return m
-}()
+}
+
+var providerPaths = map[string]map[string]bool{
+	"claude": usagePaths("type timestamp sessionId cwd requestId message.id message.model", "message.usage."),
+	"codex":  usagePaths("type timestamp payload.type payload.id payload.timestamp payload.cwd payload.forked_from_id payload.parent_thread_id payload.history_mode payload.subagent_history_start_ordinal payload.model payload.git.repository_url payload.response_id", "payload.usage.", "payload.info.last_token_usage.", "payload.info.total_token_usage."),
+	"import": usagePaths("provider id session parent model time project input cacheRead cacheWrite cacheWrite1h output reasoning"),
+}
 
 func (p builtin) Parse(r io.Reader, c *Context) (*Event, error) {
-	allowed := paths
-	if p.id == "import" {
-		allowed = map[string]bool{}
-		for _, k := range strings.Fields("provider id session parent model time project input cacheRead cacheWrite cacheWrite1h output reasoning") {
-			allowed[k] = true
-		}
-	}
+	allowed := providerPaths[p.id]
 	f, err := extract(r, allowed, p.id == "import")
 	if err != nil {
 		return nil, err

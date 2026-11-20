@@ -72,6 +72,8 @@ class UsageJSON:
         if depth > 64:
             raise ValueError("Usage record too deep")
         c, keep = self.next(), path in FIELDS
+        if keep and path != "model.id" and c not in range(48, 58) and c != 45:
+            raise ValueError("Usage counters and completion time must be numbers")
         if keep and path in self.values:
             raise ValueError("Duplicate usage metadata")
         if c == 34:
