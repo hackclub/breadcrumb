@@ -1,12 +1,15 @@
 ; Keep local history on normal uninstall and on every upgrade. Only the explicit
 ; "Delete app data" choice (or /DELETEAPPDATA) removes the Go engine's library.
-!macro NSIS_HOOK_POSTUNINSTALL
+!macro NSIS_HOOK_PREUNINSTALL
   ClearErrors
   ${GetOptions} $CMDLINE "/DELETEAPPDATA" $0
   ${IfNot} ${Errors}
     StrCpy $DeleteAppDataCheckboxState 1
   ${EndIf}
   ClearErrors
+!macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
   ${If} $DeleteAppDataCheckboxState = 1
   ${AndIf} $UpdateMode <> 1
     SetShellVarContext current
