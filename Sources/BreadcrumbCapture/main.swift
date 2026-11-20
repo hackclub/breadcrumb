@@ -28,7 +28,13 @@ private struct Request: Decodable {
     }
     @MainActor private static func capabilities() -> [String: Any] {
         ["screenshot": true, "accessibility": AXIsProcessTrusted(), "ocr": true, "windowContext": true,
-         "exclusions": "native-filter", "backend": "ScreenCaptureKit", "permission": CGPreflightScreenCaptureAccess() ? "granted" : "required"]
+         "exclusions": "native-filter", "backend": "ScreenCaptureKit", "permission": CGPreflightScreenCaptureAccess() ? "granted" : "required",
+         "idle": true]
+    }
+    /// Seconds since the last keyboard, mouse, or trackpad input. Needs no extra permission
+    /// and reveals only elapsed time, never which keys or events occurred.
+    private static func idleSeconds() -> Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
     }
     @MainActor private static func context(_ target: CaptureTarget) -> String {
         let app = AXUIElementCreateApplication(target.pid)
@@ -65,6 +71,7 @@ private struct Request: Decodable {
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") { NSWorkspace.shared.open(url) }
             return result
         }
+        result["idleSeconds"] = idleSeconds()
         guard let target = CaptureService.eligibleTarget(exclusions: exclusions), !SessionSafety.locked else {
             result["contextKey"] = ""; return result
         }

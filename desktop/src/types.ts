@@ -8,6 +8,7 @@ export type Settings = {
   recognizeText: boolean;
   jpegQuality: number;
   maximumWidth: number;
+  idleMinutes: number;
 };
 export type Capture = {
   id: string;
@@ -55,6 +56,8 @@ export type State = {
     exclusions: string;
     backend: string;
     permission: string;
+    /** Whether the backend reports time since the last input. */
+    idle?: boolean;
   };
   exclusions: string[];
   directory: string;

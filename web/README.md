@@ -65,7 +65,7 @@ Dashboard app totals merge legacy names and bundle/package aliases through the c
 
 Activity rows open daily, app, and project breakdowns. Labels and metadata rules live in `lib/activities.ts`; explicit corrections and agent labels take precedence. The rules use focused window/app/domain metadata, and keep ambiguous browsing, terminals, and videos broad. No extra raw titles or screenshot downloads are needed for these summaries. The incremental account index upgrades older captures automatically.
 
-Observed time describes sampled coverage, while history span is the first-to-last capture in the selected range. The dashboard shows unsampled gaps separately rather than filling sleep, pauses, or exclusions with invented activity. The desktop overview shows capture age and observed time instead of repeating capture counts.
+Build time adds up the activities listed in `buildActivities` in `lib/activities.ts`: coding, debugging, testing, review, research, AI collaboration, design, writing, planning, and similar making. Messaging, video, social, and unclassified time are left out. A streak counts consecutive local days with at least 15 minutes of build time, and an unfinished today doesn't break it. The weekly recap compares the last seven days with the seven before. These are motivation aids computed from the same time accounting, not proof of effort. Observed time describes sampled coverage, while history span is the first-to-last capture in the selected range. The dashboard shows unsampled gaps separately rather than filling sleep, pauses, or exclusions with invented activity. The desktop overview shows capture age and observed time instead of repeating capture counts.
 
 ## Analytics storage
 

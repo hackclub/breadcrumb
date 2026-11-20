@@ -904,6 +904,18 @@ function SettingsPage({
           [120, "2 minutes"],
           [300, "5 minutes"],
         ])}
+        {number("idleMinutes", "Pause when away for", [
+          [2, "2 minutes"],
+          [5, "5 minutes"],
+          [10, "10 minutes"],
+          [15, "15 minutes"],
+          [30, "30 minutes"],
+        ])}
+        <p className="muted">
+          {state.capabilities.idle === false
+            ? "This capture backend can’t tell when you’re away, so time keeps counting while a window is open."
+            : "Capture pauses after this long without keyboard, mouse, or trackpad input. Only the elapsed time is read."}
+        </p>
         {number("storageGiB", "History storage", [
           [2, "2 GiB"],
           [5, "5 GiB"],
@@ -975,10 +987,10 @@ function SettingsPage({
             </p>
           )}
           {number("maximumWidth", "Screenshot size", [
-            [0, "Native resolution"],
+            [1280, "1280 px (recommended)"],
             [1920, "1920 px"],
             [2560, "2560 px"],
-            [3840, "3840 px"],
+            [0, "Native resolution"],
           ])}
           {number("jpegQuality", "Screenshot quality", [
             [0.45, "Smaller files"],

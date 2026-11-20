@@ -41,6 +41,27 @@ const aliases: Record<string, string> = {
   "Social page": "Social",
   "Browser settings": "Settings",
 };
+/**
+ * Activities that count toward build time: making, checking, or researching something.
+ * Communication, entertainment, and context too vague to classify are left out. This is
+ * a plain, editable list, not a productivity score.
+ */
+export const buildActivities: ReadonlySet<string> = new Set([
+  "Coding",
+  "Debugging",
+  "Testing",
+  "Code review",
+  "Version control",
+  "Deployment & operations",
+  "Research & docs",
+  "AI collaboration",
+  "Writing",
+  "Design",
+  "Planning",
+  "Data & spreadsheets",
+  "Learning",
+  "Terminal",
+]);
 export const activityName = (name = "Unclassified") =>
   Object.hasOwn(aliases, name) ? aliases[name] : name || "Unclassified";
 export const activityDescription = (name: string) =>

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/hackclub/breadcrumb/engine/internal/adapter"
 	"github.com/hackclub/breadcrumb/engine/internal/library"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -120,6 +121,12 @@ func (e *engine) state() map[string]any {
 	rows := e.lib.Index.Observations
 	return map[string]any{"recording": e.recording, "status": e.status, "settings": e.lib.Settings, "observations": rows, "clips": e.lib.Index.Clips, "sessions": library.Sessions(rows), "historyBytes": history, "savedBytes": saved, "capabilities": e.capabilities, "exclusions": e.exclusions, "server": e.credentials.Server, "connected": e.credentials.Token != "", "directory": e.lib.Dir, "demo": e.demo, "sync": e.syncState()}
 }
+
+// away reports whether input has been idle past the configured threshold. Unknown idle
+// time (an older or unsupported adapter) keeps recording, as before.
+func away(idle *float64, settings library.Settings) bool {
+	return idle != nil && *idle >= float64(settings.IdleMinutes*60)
+}
 func (e *engine) tick() {
 	e.mu.Lock()
 	if !e.recording || e.demo || e.capture == nil {
@@ -141,6 +148,10 @@ func (e *engine) tick() {
 		return
 	}
 	now := time.Now()
+	if away(probe.IdleSeconds, settings) {
+		e.status = "Paused while you’re away"
+		return
+	}
 	if probe.ContextKey == "" {
 		e.status = "Waiting for an eligible foreground app"
 		return
@@ -182,6 +193,9 @@ func (e *engine) tick() {
 	r["id"] = uuid()
 	r["date"] = library.Timestamp(time.Now())
 	r["sampleIntervalSeconds"] = settings.IntervalSeconds
+	if response.IdleSeconds != nil {
+		r["idleSeconds"] = math.Round(*response.IdleSeconds)
+	}
 	if changed {
 		r["captureReason"] = "contextChanged"
 	} else {

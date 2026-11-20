@@ -12,6 +12,7 @@
 Breadcrumb stays in your menu bar or system tray and records the display containing your focused window. Your history and full time dashboard work offline, without an account. Connect to a portal when you want them available across devices.
 
 - **See where time went.** Explore daily and hourly patterns, apps, activities, and project context.
+- **Keep momentum.** Build time separates making from messaging and video, with a daily streak, a weekly recap, and how much of it was spent in AI conversations. Capture pauses when you step away.
 - **Go deeper.** Open an activity to see its daily breakdown, contributing apps, and projects. Categories include coding, debugging, testing, code review, research, AI collaboration, design, and writing.
 - **Keep the whole picture.** Focused and alongside context stay separate. A chat with an AI and a video visible beside it can coexist without counting the same minute twice.
 - **Stay lightweight.** Nearly unchanged screenshots share one image. Uploads reuse acknowledged images, with adjustable concurrency, progress, and an ETA.

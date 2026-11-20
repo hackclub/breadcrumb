@@ -19,16 +19,19 @@ type Capabilities struct {
 	Exclusions    string `json:"exclusions"`
 	Backend       string `json:"backend"`
 	Permission    string `json:"permission"`
+	Idle          bool   `json:"idle"`
 }
 type Response struct {
-	Icon                string          `json:"icon,omitempty"`
-	RecordingPreference *bool           `json:"recordingPreference"`
-	OK                  bool            `json:"ok"`
-	Error               string          `json:"error"`
-	ContextKey          string          `json:"contextKey"`
-	Record              library.Record  `json:"record"`
-	Payload             library.Payload `json:"payload"`
-	Capabilities        Capabilities    `json:"capabilities"`
+	Icon                string `json:"icon,omitempty"`
+	RecordingPreference *bool  `json:"recordingPreference"`
+	OK                  bool   `json:"ok"`
+	Error               string `json:"error"`
+	ContextKey          string `json:"contextKey"`
+	// IdleSeconds is the time since the last user input; nil when the platform cannot report it.
+	IdleSeconds  *float64        `json:"idleSeconds"`
+	Record       library.Record  `json:"record"`
+	Payload      library.Payload `json:"payload"`
+	Capabilities Capabilities    `json:"capabilities"`
 }
 type Adapter interface {
 	Request(command string, settings library.Settings, exclusions []string) (Response, error)

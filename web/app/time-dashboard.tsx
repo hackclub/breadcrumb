@@ -11,6 +11,7 @@ import { appSeed, findApp, mergeApps, type AppEntry } from "../lib/apps";
 import { AppIcon } from "./app-icon";
 import { activityName, activityDescription } from "../lib/activities";
 import { ActivityIcon } from "./activity-icon";
+import { buildTime, streak, weekly, STREAK_SECONDS } from "../lib/momentum";
 
 const timeRanges = [
   { value: "7", label: "Last 7 days" },
@@ -397,6 +398,15 @@ export function TimeDashboard({
   );
   const span = Number.isFinite(first) && Number.isFinite(last) ? Math.max(0, last - first) : null;
   const apps = combined(filtered, "apps", catalog);
+  const build = filtered.reduce(
+    (sum, day) => {
+      const time = buildTime(day);
+      return { build: sum.build + time.build, ai: sum.ai + time.ai };
+    },
+    { build: 0, ai: 0 },
+  );
+  const streaks = streak(days, today),
+    week = weekly(days, today);
   const chartDays: InsightDay[] = [];
   const start = range === "all" ? end - 89 * 86400000 : cutoff;
   const lookup = new Map(period.map((day) => [day.day, day]));
@@ -451,6 +461,48 @@ export function TimeDashboard({
       </div>
       <div className="insight-stats">
         <div>
+          <span title="Coding, testing, research, AI collaboration, design, writing, and other making. Excludes messaging, video, social, and unclassified time.">
+            Build time
+          </span>
+          <strong>
+            {pending ? <Skeleton className="skeleton-metric" /> : duration(build.build)}
+          </strong>
+          <small>
+            {pending ? (
+              <Skeleton className="skeleton-caption" />
+            ) : build.build ? (
+              `${Math.round((build.ai / build.build) * 100)}% in AI conversations`
+            ) : (
+              "Nothing built yet"
+            )}
+          </small>
+        </div>
+        <div>
+          <span title={`Days in a row with at least ${STREAK_SECONDS / 60} minutes of build time`}>
+            Streak
+          </span>
+          <strong>
+            {pending ? (
+              <Skeleton className="skeleton-metric" />
+            ) : (
+              `${streaks.current} ${streaks.current === 1 ? "day" : "days"}`
+            )}
+          </strong>
+          <small>
+            {pending ? (
+              <Skeleton className="skeleton-caption" />
+            ) : streaks.current && !streaks.today ? (
+              `Build ${STREAK_SECONDS / 60} min today to keep it`
+            ) : streaks.best > streaks.current ? (
+              `Best: ${streaks.best} days`
+            ) : streaks.current ? (
+              "Your best yet"
+            ) : (
+              `${STREAK_SECONDS / 60} min of building starts one`
+            )}
+          </small>
+        </div>
+        <div>
           <span>Observed time</span>
           <strong>{pending ? <Skeleton className="skeleton-metric" /> : duration(total)}</strong>
           <small>
@@ -490,6 +542,39 @@ export function TimeDashboard({
           </small>
         </div>
       </div>
+      <section className="week-recap" aria-label="This week">
+        <h2>This week</h2>
+        <dl>
+          {[
+            ["Days building", `${week.days} of 7`],
+            [
+              "vs. week before",
+              !week.previous
+                ? "—"
+                : Math.abs(week.change) < 60
+                  ? "Same"
+                  : `${week.change > 0 ? "+" : "−"}${duration(Math.abs(week.change))}`,
+            ],
+            [
+              "Best day",
+              week.best
+                ? new Date(week.best.day + "T12:00:00Z").toLocaleDateString(undefined, {
+                    weekday: "long",
+                    timeZone: "UTC",
+                  })
+                : "—",
+            ],
+            ["Top project", week.project?.name ?? "—"],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd title={pending ? undefined : value}>
+                {pending ? <Skeleton className="skeleton-caption" /> : value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
       <section className="insight-panel daily-panel" aria-label="Daily activity">
         <div className="panel-heading">
           <h2>Daily rhythm</h2>
