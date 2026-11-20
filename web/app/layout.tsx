@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+import { PerformanceInsights } from "./performance-insights";
 import "./style.css";
 import { themeScript } from "../lib/theme";
 export const metadata: Metadata = {
@@ -14,7 +14,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
-        <SpeedInsights />
+        <PerformanceInsights />
       </body>
     </html>
   );
