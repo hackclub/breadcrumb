@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   duration,
   calendarClock,
@@ -11,6 +11,113 @@ import { appSeed, findApp, mergeApps, type AppEntry } from "../lib/apps";
 import { AppIcon } from "./app-icon";
 import { activityName, activityDescription } from "../lib/activities";
 import { ActivityIcon } from "./activity-icon";
+
+const timeRanges = [
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+  { value: "all", label: "All time" },
+];
+function TimeRange({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    root.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [open]);
+  return (
+    <div
+      className="time-range"
+      ref={root}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setOpen(false);
+          trigger.current?.focus();
+        }
+        if (!open || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const items = [
+          ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+        ];
+        const index = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next =
+          event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? items.length - 1
+              : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
+      }}
+    >
+      <button
+        ref={trigger}
+        className="time-range-trigger"
+        aria-label="Time range"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+        onKeyDown={(event) => {
+          if (!open && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(true);
+          }
+        }}
+      >
+        {timeRanges.find((item) => item.value === value)?.label}
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+          <path
+            d="m4 6 4 4 4-4"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="time-range-menu" id={id} role="menu" aria-label="Time range">
+          {timeRanges.map((item) => (
+            <button
+              key={item.value}
+              role="menuitemradio"
+              aria-checked={value === item.value}
+              tabIndex={-1}
+              onClick={() => {
+                onChange(item.value);
+                setOpen(false);
+                trigger.current?.focus();
+              }}
+            >
+              <span>{item.label}</span>
+              <span aria-hidden="true">{value === item.value ? "✓" : ""}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function combined(
   days: Pick<InsightDay, "seconds" | "apps" | "activities" | "projects">[],
@@ -332,20 +439,15 @@ export function TimeDashboard({
           <h1>Where your time went</h1>
           <p className="muted">A little perspective on your days.</p>
         </div>
-        <select
-          aria-label="Time range"
+        <TimeRange
           value={range}
           disabled={pending}
-          onChange={(event) => {
-            setRange(event.target.value);
+          onChange={(value) => {
+            setRange(value);
             setSelected(null);
             setHourSelection(null);
           }}
-        >
-          <option value="7">Last 7 days</option>
-          <option value="30">Last 30 days</option>
-          <option value="all">All time</option>
-        </select>
+        />
       </div>
       <div className="insight-stats">
         <div>
@@ -531,28 +633,24 @@ export function TimeDashboard({
                   {readable(day.day)}
                 </button>
                 {Array.from({ length: 24 }, (_, hour) => {
-                  const seconds = day.hours?.[hour] ?? 0;
+                  const seconds = day.hourly?.[hour]?.seconds ?? day.hours?.[hour] ?? 0;
                   return (
                     <button
                       key={hour}
-                      className="hour-cell"
+                      className={`hour-cell${pending ? " skeleton" : ""}`}
+                      style={
+                        pending
+                          ? undefined
+                          : {
+                              background: `color-mix(in srgb, var(--accent) ${seconds ? 15 + 85 * Math.min(1, seconds / 3600) : 0}%, var(--track))`,
+                            }
+                      }
                       disabled={pending}
                       aria-label={`${readable(day.day)}, ${String(hour).padStart(2, "0")}:00 ${zoneLabel}: ${duration(seconds)}`}
                       aria-pressed={hourSelection?.day === day.day && hourSelection.hour === hour}
                       title={`${readable(day.day)} · ${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00 ${zoneLabel} · ${duration(seconds)}`}
                       onClick={() => setHourSelection({ day: day.day, hour })}
-                    >
-                      <span
-                        className={pending ? "skeleton" : undefined}
-                        style={{
-                          opacity: pending
-                            ? 1
-                            : seconds
-                              ? 0.15 + 0.85 * Math.min(1, seconds / 3600)
-                              : 0,
-                        }}
-                      />
-                    </button>
+                    ></button>
                   );
                 })}
                 <span className="hour-day-total">
