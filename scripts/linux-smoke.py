@@ -43,6 +43,7 @@ try:
     assert capture['record']['captureScope'] == 'display'
     assert capture['record']['visibleWindows']
     assert 'treeStatus' in capture['record']
+    assert capture['capabilities']['idle'] and 0 <= capture['idleSeconds'] < 3600, 'X11 idle time unavailable'
     print('Native X11 display capture, window context, and filtered tree status passed.')
     fixture = subprocess.Popen(['/usr/bin/python3', str(root/'scripts/linux-tree-fixture.py')],
         env={**os.environ, 'NO_AT_BRIDGE':'0', 'GTK_MODULES':'gail:atk-bridge'})

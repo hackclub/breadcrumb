@@ -1,11 +1,12 @@
 use image::codecs::jpeg::JpegEncoder;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+mod idle;
 mod tree;
 
 fn capabilities() -> Value {
     let supported = session_error().is_none();
-    json!({"screenshot":supported,"accessibility":supported && cfg!(any(windows,target_os="linux")),"ocr":false,"windowContext":supported,"exclusions":if supported {"skip-when-visible"} else {"unsupported-session"},"backend":if cfg!(windows){"Windows native capture + UI Automation"}else{"X11 capture + AT-SPI"},"permission":if supported {"managed-by-desktop"} else {"unsupported-session"}})
+    json!({"screenshot":supported,"accessibility":supported && cfg!(any(windows,target_os="linux")),"ocr":false,"windowContext":supported,"exclusions":if supported {"skip-when-visible"} else {"unsupported-session"},"backend":if cfg!(windows){"Windows native capture + UI Automation"}else{"X11 capture + AT-SPI"},"permission":if supported {"managed-by-desktop"} else {"unsupported-session"},"idle":supported && idle::seconds().is_some()})
 }
 fn session_error() -> Option<&'static str> {
     #[cfg(windows)]
@@ -385,9 +386,18 @@ fn main() {
     for line in stdin.lock().lines() {
         let response = match line {
             Ok(line) => match serde_json::from_str::<Value>(&line) {
-                Ok(request) => perform(&request).unwrap_or_else(
-                    |error| json!({"ok":false,"error":error,"capabilities":capabilities()}),
-                ),
+                Ok(request) => {
+                    let mut response = perform(&request).unwrap_or_else(
+                        |error| json!({"ok":false,"error":error,"capabilities":capabilities()}),
+                    );
+                    // The engine pauses capture while the user is away.
+                    if response["ok"] == true && response.get("contextKey").is_some() {
+                        if let Some(idle) = idle::seconds() {
+                            response["idleSeconds"] = json!(idle);
+                        }
+                    }
+                    response
+                }
                 Err(_) => json!({"ok":false,"error":"Invalid capture request"}),
             },
             Err(_) => break,

@@ -27,11 +27,14 @@ type Settings struct {
 	RecognizeText        bool    `json:"recognizeText"`
 	JPEGQuality          float64 `json:"jpegQuality"`
 	MaximumWidth         int     `json:"maximumWidth"`
+	// IdleMinutes pauses capture once the computer has had no keyboard, mouse, or
+	// touch input for this long. Older settings files keep the default.
+	IdleMinutes int `json:"idleMinutes"`
 }
 
-func Defaults() Settings { return Settings{0, 20, 4, 60, true, 10, true, .65, 0} }
+func Defaults() Settings { return Settings{0, 20, 4, 60, true, 10, true, .65, 1280, 5} }
 func (s Settings) Validate() error {
-	if s.RetentionHours < 0 || s.RetentionHours > 8760 || s.StorageGiB < 1 || s.StorageGiB > 1000 || s.SavedStorageGiB < 1 || s.SavedStorageGiB > 1000 || s.IntervalSeconds < 15 || s.IntervalSeconds > 3600 || s.MinimumEventInterval < 5 || s.MinimumEventInterval > 300 || s.JPEGQuality < .3 || s.JPEGQuality > .95 || s.MaximumWidth < 0 || (s.MaximumWidth > 0 && s.MaximumWidth < 1280) || s.MaximumWidth > 7680 {
+	if s.RetentionHours < 0 || s.RetentionHours > 8760 || s.StorageGiB < 1 || s.StorageGiB > 1000 || s.SavedStorageGiB < 1 || s.SavedStorageGiB > 1000 || s.IntervalSeconds < 15 || s.IntervalSeconds > 3600 || s.MinimumEventInterval < 5 || s.MinimumEventInterval > 300 || s.JPEGQuality < .3 || s.JPEGQuality > .95 || s.MaximumWidth < 0 || (s.MaximumWidth > 0 && s.MaximumWidth < 1280) || s.MaximumWidth > 7680 || s.IdleMinutes < 1 || s.IdleMinutes > 60 {
 		return errors.New("invalid logging settings")
 	}
 	return nil

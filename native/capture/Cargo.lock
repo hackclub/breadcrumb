@@ -305,6 +305,7 @@ version = "0.2.0"
 dependencies = [
  "atspi",
  "image",
+ "libc",
  "serde_json",
  "tokio",
  "uiautomation",

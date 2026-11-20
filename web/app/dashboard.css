@@ -62,7 +62,7 @@
 
 .insight-stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0 0 30px;
 }
 .insight-stats > div {
@@ -76,6 +76,52 @@
 .insight-stats > div:first-child {
   padding-left: 0;
   border: 0;
+}
+@media (max-width: 900px) {
+  .insight-stats {
+    grid-template-columns: 1fr 1fr;
+    row-gap: 20px;
+  }
+  .insight-stats > div:nth-child(odd) {
+    padding-left: 0;
+    border: 0;
+  }
+}
+.week-recap {
+  margin: 0 0 30px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.week-recap h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.week-recap dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin: 0;
+}
+.week-recap dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.week-recap dd {
+  height: 24px;
+  margin: 2px 0 0;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 620px) {
+  .week-recap dl {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 .insight-stats span,
 .insight-stats small {
@@ -304,10 +350,6 @@
     width: 110px;
     font-size: 11px;
     padding: 6px;
-  }
-  .insight-stats {
-    grid-template-columns: 1fr 1fr;
-    row-gap: 20px;
   }
   .insight-stats > div {
     padding: 0 12px;
