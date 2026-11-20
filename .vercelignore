@@ -11,7 +11,7 @@ build
 PROJECTS.md
 engine/breadcrumb-engine
 engine/breadcrumb-engine.exe
-desktop/
+/desktop/
 engine/
 native/
 Sources/
