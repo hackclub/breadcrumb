@@ -1,0 +1,298 @@
+import { useEffect, useState } from "react";
+import { engine } from "./bridge";
+import { calendarClock, REFERENCE } from "../../web/lib/insights";
+import { estimate, processedTokens } from "./agent-pricing";
+import type { AgentStatus, AgentUsage, AgentHour } from "./agent-usage-types";
+const count = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: number) =>
+  n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+export function AgentUsageSettings() {
+  const [status, setStatus] = useState<AgentStatus | null>(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      engine<AgentStatus>("agentUsageSettings", {})
+        .then((s) => {
+          if (live) setStatus(s);
+        })
+        .catch(() => {
+          if (live) setError("Could not load coding-agent settings.");
+        });
+    void load();
+    const timer = setInterval(load, 15000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, []);
+  return (
+    <section className="settings-section">
+      <h2>Coding agents</h2>
+      <p>
+        Optional local usage statistics. Enable each provider to read token counts and session
+        metadata. Chats and tool content are discarded. Nothing is uploaded.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      {status?.providers.map((p) => (
+        <label key={p.id} className="agent-setting">
+          <input
+            type="checkbox"
+            checked={p.enabled}
+            disabled={busy}
+            onChange={async (e) => {
+              setBusy(true);
+              setError("");
+              try {
+                setStatus(
+                  await engine<AgentStatus>("agentUsageSettings", {
+                    provider: p.id,
+                    enabled: e.target.checked,
+                  }),
+                );
+              } catch {
+                setError("Could not save coding-agent settings.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+          {p.name} <span className="muted">{p.detected ? "Detected" : "Not found"}</span>
+        </label>
+      ))}
+      <p className="muted">
+        Last scan:{" "}
+        {status?.lastScan && !status.lastScan.startsWith("0001")
+          ? new Date(status.lastScan).toLocaleString()
+          : "Not yet scanned"}
+        {status?.pending ? ` · ${status.pending} files pending` : ""}
+      </p>
+    </section>
+  );
+}
+export function AgentUsageView() {
+  const [range, setRange] = useState(7),
+    [metric, setMetric] = useState("cost"),
+    [by, setBy] = useState("model"),
+    [data, setData] = useState<AgentUsage | null>(null),
+    [error, setError] = useState("");
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  useEffect(() => {
+    let live = true;
+    setData(null);
+    const load = () =>
+      engine<AgentUsage>("agentUsage", { range, timeZone })
+        .then((d) => {
+          if (live) {
+            setData(d);
+            setError("");
+          }
+        })
+        .catch(() => {
+          if (live) setError("Could not load coding-agent usage.");
+        });
+    void load();
+    const timer = setInterval(load, 15000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [range, timeZone]);
+  const hours = data?.hours ?? [],
+    tokens = hours.reduce((n, h) => n + processedTokens(h), 0),
+    cost = hours.reduce((n, h) => n + (estimate(h, h.model)?.cost ?? 0), 0),
+    savings = hours.reduce((n, h) => n + (estimate(h, h.model)?.savings ?? 0), 0);
+  const clock = calendarClock(timeZone),
+    day = (h: AgentHour) => clock(Date.parse(h.hour) / 1000 - REFERENCE).day;
+  const agents = Array.from(
+    new Set([
+      ...(data?.status.providers.filter((p) => p.enabled).map((p) => p.id) ?? []),
+      ...hours.map((h) => h.provider),
+    ]),
+  );
+  const days = Array.from(
+    new Set(
+      Array.from(
+        { length: range * 24 + 1 },
+        (_, i) => clock((Date.now() - i * 3600000) / 1000 - REFERENCE).day,
+      ),
+    ),
+  ).sort();
+  const amount = (rows: AgentHour[]) =>
+    rows.reduce(
+      (n, h) => n + (metric === "cost" ? (estimate(h, h.model)?.cost ?? 0) : processedTokens(h)),
+      0,
+    );
+  const format = metric === "cost" ? money : count;
+  const keys = Array.from(new Set(hours.map((h) => (by === "model" ? h.model : day(h))))).sort();
+  const max = Math.max(
+    1,
+    ...days.flatMap((d) =>
+      agents.map((a) => amount(hours.filter((h) => day(h) === d && h.provider === a))),
+    ),
+  );
+  return (
+    <section className="agent-usage" aria-busy={!data && !error}>
+      <div className="insights-toolbar">
+        <div>
+          <h1>Coding agents</h1>
+          <p className="muted">Local token usage · API estimate, not your subscription bill</p>
+        </div>
+      </div>
+      <div className="agent-controls">
+        {["cost", "tokens"].map((m) => (
+          <button key={m} aria-pressed={metric === m} onClick={() => setMetric(m)}>
+            {m === "cost" ? "Cost" : "Tokens"}
+          </button>
+        ))}
+        <label>
+          Range{" "}
+          <select
+            aria-label="Range"
+            value={range}
+            onChange={(e) => setRange(Number(e.target.value))}
+          >
+            {[
+              [1, "Past 24h"],
+              [7, "Past 7 days"],
+              [30, "Past 30 days"],
+              [90, "Past 90 days"],
+            ].map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p role="status" className="agent-progress">
+        {error ||
+          (!data
+            ? "Loading usage…"
+            : data.status.pending
+              ? `Scanning history · ${count(data.status.bytes)} bytes processed · ${data.status.pending} files pending`
+              : !hours.length
+                ? "No usage yet. Enable providers in Settings to begin."
+                : "Usage reflects available local history.")}
+      </p>
+      <div className="agent-total">{data ? format(metric === "cost" ? cost : tokens) : "—"}</div>
+      <div className="agent-list">
+        {(data ? agents : ["claude", "codex"]).map((a) => {
+          const rows = hours.filter((h) => h.provider === a),
+            value = amount(rows),
+            total = metric === "cost" ? cost : tokens;
+          return (
+            <div className="agent-row" key={data ? a : `loading-${a}`}>
+              <strong>{data?.status.providers.find((p) => p.id === a)?.name ?? a}</strong>
+              <span>
+                {data
+                  ? count(
+                      new Set(data.sessions.filter((s) => s.provider === a).map((s) => s.id)).size,
+                    )
+                  : "—"}{" "}
+                sessions
+              </span>
+              <span>{total ? ((value / total) * 100).toFixed(1) : "0"}%</span>
+              <span>
+                {data ? count(rows.reduce((n, h) => n + processedTokens(h), 0)) : "—"} tokens
+              </span>
+              <span>
+                {data
+                  ? rows.length && rows.every((h) => !estimate(h, h.model))
+                    ? "Unpriced"
+                    : money(rows.reduce((n, h) => n + (estimate(h, h.model)?.cost ?? 0), 0))
+                  : "—"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="agent-chart" role="img" aria-label={`Daily ${metric} by coding agent`}>
+        <svg viewBox="0 0 900 180" preserveAspectRatio="none">
+          {agents.map((a, i) => (
+            <polyline
+              key={a}
+              fill="none"
+              stroke={`var(--agent-${i % 4})`}
+              strokeWidth="2"
+              points={days
+                .map(
+                  (d, j) =>
+                    `${days.length === 1 ? 450 : (j / (days.length - 1)) * 880 + 10},${170 - (amount(hours.filter((h) => day(h) === d && h.provider === a)) / max) * 150}`,
+                )
+                .join(" ")}
+            />
+          ))}
+        </svg>
+        <div className="agent-controls">
+          {agents.map((a, i) => (
+            <span key={a} style={{ color: `var(--agent-${i % 4})` }}>
+              {a}
+            </span>
+          ))}
+        </div>
+        <p className="muted">
+          {days[0] ?? "Daily usage"} — {days.at(-1) ?? timeZone} · {timeZone}
+        </p>
+      </div>
+      <dl className="agent-totals">
+        {[
+          ["Processed tokens", tokens],
+          ["Cached input", hours.reduce((n, h) => n + h.cacheRead, 0)],
+          ["Uncached input", hours.reduce((n, h) => n + h.input, 0)],
+          ["Cache writes", hours.reduce((n, h) => n + h.cacheWrite, 0)],
+          ["Output", hours.reduce((n, h) => n + h.output, 0)],
+          ["Cache savings", money(savings)],
+        ].map(([label, n]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{data ? (typeof n === "number" ? count(n) : n) : "—"}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="agent-controls">
+        <h2>Breakdown</h2>
+        <label>
+          Group by{" "}
+          <select aria-label="Group by" value={by} onChange={(e) => setBy(e.target.value)}>
+            <option value="model">Model</option>
+            <option value="day">Day</option>
+          </select>
+        </label>
+      </div>
+      <div className="agent-table">
+        <table>
+          <thead>
+            <tr>
+              <th>{by === "model" ? "Model" : "Day"}</th>
+              <th>Tokens</th>
+              <th>API estimate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {keys.map((k) => {
+              const rows = hours.filter((h) => (by === "model" ? h.model : day(h)) === k);
+              return (
+                <tr key={k}>
+                  <th>{k}</th>
+                  <td>{count(rows.reduce((n, h) => n + processedTokens(h), 0))}</td>
+                  <td>
+                    {rows.every((h) => !estimate(h, h.model))
+                      ? "Unpriced"
+                      : money(rows.reduce((n, h) => n + (estimate(h, h.model)?.cost ?? 0), 0))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="small-note">
+        Unknown models count toward tokens and are excluded from cost shares. Estimates use standard
+        API rates; service tiers, long-context surcharges and account discounts may differ. Cache
+        savings compare cache reads with uncached input.
+      </p>
+    </section>
+  );
+}

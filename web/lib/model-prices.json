@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "currency": "USD",
+  "unit": "million tokens",
+  "models": {
+    "claude-sonnet-4-6": {
+      "input": 3,
+      "cacheRead": 0.3,
+      "cacheWrite": 3.75,
+      "cacheWrite1h": 6,
+      "output": 15,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-sonnet-4-5": {
+      "input": 3,
+      "cacheRead": 0.3,
+      "cacheWrite": 3.75,
+      "cacheWrite1h": 6,
+      "output": 15,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-sonnet-4-5-20250929": {
+      "input": 3,
+      "cacheRead": 0.3,
+      "cacheWrite": 3.75,
+      "cacheWrite1h": 6,
+      "output": 15,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-opus-4-6": {
+      "input": 5,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25,
+      "cacheWrite1h": 10,
+      "output": 25,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-opus-4-5": {
+      "input": 5,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25,
+      "cacheWrite1h": 10,
+      "output": 25,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-opus-4-5-20251101": {
+      "input": 5,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25,
+      "cacheWrite1h": 10,
+      "output": 25,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-opus-4-7": {
+      "input": 5,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25,
+      "cacheWrite1h": 10,
+      "output": 25,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-opus-4-8": {
+      "input": 5,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25,
+      "cacheWrite1h": 10,
+      "output": 25,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-haiku-4-5": {
+      "input": 1,
+      "cacheRead": 0.1,
+      "cacheWrite": 1.25,
+      "cacheWrite1h": 2,
+      "output": 5,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-haiku-4-5-20251001": {
+      "input": 1,
+      "cacheRead": 0.1,
+      "cacheWrite": 1.25,
+      "cacheWrite1h": 2,
+      "output": 5,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-sonnet-5-5": {
+      "input": 2,
+      "cacheRead": 0.1,
+      "cacheWrite": 2.5,
+      "cacheWrite1h": 4,
+      "output": 10,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "claude-opus-5-5": {
+      "input": 4,
+      "cacheRead": 0.2,
+      "cacheWrite": 5,
+      "cacheWrite1h": 8,
+      "output": 20,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "effectiveDate": "2026-11-20"
+    },
+    "gpt-5.4": {
+      "input": 2.5,
+      "cacheRead": 0.25,
+      "cacheWrite": 2.5,
+      "cacheWrite1h": 2.5,
+      "output": 15,
+      "source": "https://developers.openai.com/api/docs/models/gpt-5.4",
+      "effectiveDate": "2026-11-20"
+    },
+    "gpt-5.1-codex": {
+      "input": 1.25,
+      "cacheRead": 0.125,
+      "cacheWrite": 1.25,
+      "cacheWrite1h": 1.25,
+      "output": 10,
+      "source": "https://developers.openai.com/api/docs/models/gpt-5.1-codex",
+      "effectiveDate": "2026-11-20"
+    }
+  }
+}
