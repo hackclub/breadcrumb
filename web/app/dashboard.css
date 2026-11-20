@@ -764,3 +764,24 @@ button.rank-row:focus-visible .rank-name::after {
     gap: 4px;
   }
 }
+
+.coverage-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.coverage-strip > div > span {
+  display: block;
+  height: 36px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.coverage-strip strong {
+  display: block;
+  height: 26px;
+  line-height: 26px;
+  font-size: 17px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
