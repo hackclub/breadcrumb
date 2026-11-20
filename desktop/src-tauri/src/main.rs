@@ -294,160 +294,169 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            app.manage(PopupState::default());
-            #[cfg(windows)]
-            if app.autolaunch().is_enabled().unwrap_or(false) {
-                // Refresh registrations from versions without the login-only flag.
-                app.autolaunch().enable()?;
-            }
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            let binary = sidecar("breadcrumb-engine").map_err(std::io::Error::other)?;
-            let capture = sidecar("breadcrumb-capture").map_err(std::io::Error::other)?;
-            let mut command = Command::new(binary);
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                command.creation_flags(0x08000000); // CREATE_NO_WINDOW for the console sidecar.
-            }
-            command
-                .arg("--capture-helper")
-                .arg(capture)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::inherit());
-            let demo = std::env::args().any(|a| a == "--demo");
-            if demo {
-                let dir =
-                    std::env::temp_dir().join(format!("breadcrumb-demo-{}", std::process::id()));
-                command.arg("--demo").arg("--data-dir").arg(dir);
-            }
-            let mut child = command.spawn()?;
-            let input = child.stdin.take().ok_or("Engine stdin unavailable")?;
-            let output = BufReader::new(child.stdout.take().ok_or("Engine stdout unavailable")?);
-            app.manage(Engine(Mutex::new(EngineIO {
-                child,
-                input,
-                output,
-                sequence: 0,
-            })));
-            let show = MenuItem::with_id(app, "show", "Open Breadcrumb", true, None::<&str>)?;
-            let toggle = MenuItem::with_id(
-                app,
-                "toggle",
-                "Pause / resume recording",
-                true,
-                None::<&str>,
-            )?;
-            let quit = MenuItem::with_id(app, "quit", "Quit Breadcrumb", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &toggle, &quit])?;
-            let tray = TrayIconBuilder::with_id("recording-status")
-                .icon(status_icon(false))
-                .icon_as_template(true)
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        rect,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        // A click on the tray first blurs the panel. Do not reopen it
-                        // on the same mouse-up after focus-loss already dismissed it.
-                        let just_blurred = app
-                            .state::<PopupState>()
-                            .last_blur
-                            .lock()
-                            .ok()
-                            .and_then(|at| *at)
-                            .is_some_and(|at| at.elapsed() < Duration::from_millis(200));
-                        if just_blurred {
-                            return;
-                        }
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false)
-                                && window.is_focused().unwrap_or(false)
-                            {
-                                let _ = window.hide();
-                            } else {
-                                open_panel(app, Some(rect));
-                            }
-                        }
-                    }
-                })
-                .tooltip("Breadcrumb")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        open_panel(app, None);
-                    }
-                    "toggle" => {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn_blocking(move || {
-                            let _ = app.state::<Engine>().request("toggle", json!({}));
-                        });
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                });
-            tray.build(app)?;
-            let first_launch = app
-                .state::<Engine>()
-                .request("status", json!({}))
-                .ok()
-                .and_then(|state| state["needsSetup"].as_bool())
-                .unwrap_or(true);
-            if first_launch
-                || std::env::args().any(|arg| arg == "--show" || arg == "--demo")
-                || (cfg!(windows) && !std::env::args().any(|arg| arg == "--autostart"))
-            {
-                open_after_launch(app.handle().clone());
-            }
-            let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                let mut previous = None;
-                let mut last_auth = 0i64;
-                loop {
-                    let state = handle.state::<Engine>().request("status", json!({}));
-                    if let Ok(state) = state {
-                        let completed = state["authCompleted"].as_i64().unwrap_or(0);
-                        if completed > last_auth {
-                            last_auth = completed;
-                            let auth_handle = handle.clone();
-                            let _ =
-                                handle.run_on_main_thread(move || open_panel(&auth_handle, None));
-                        }
-                        let recording = state["recording"].as_bool().unwrap_or(false);
-                        if let Some(tray) = handle.tray_by_id("recording-status") {
-                            if previous != Some(recording) {
-                                let _ = tray.set_icon_with_as_template(
-                                    Some(status_icon(recording)),
-                                    !recording,
-                                );
-                                previous = Some(recording);
-                            }
-                            let _ = tray.set_tooltip(Some(format!(
-                                "Breadcrumb · {}",
-                                state["status"].as_str().unwrap_or("Paused")
-                            )));
-                        }
-                    }
-                    std::thread::sleep(std::time::Duration::from_secs(3));
+            let result: Result<(), Box<dyn std::error::Error>> = (|| {
+                app.manage(PopupState::default());
+                #[cfg(windows)]
+                if app.autolaunch().is_enabled().unwrap_or(false) {
+                    // Refresh registrations from versions without the login-only flag.
+                    app.autolaunch().enable()?;
                 }
-            });
-            if std::env::args().any(|a| a == "--smoke-test") {
-                let state = app
+                #[cfg(target_os = "macos")]
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                let binary = sidecar("breadcrumb-engine").map_err(std::io::Error::other)?;
+                let capture = sidecar("breadcrumb-capture").map_err(std::io::Error::other)?;
+                let mut command = Command::new(binary);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    command.creation_flags(0x08000000); // CREATE_NO_WINDOW for the console sidecar.
+                }
+                command
+                    .arg("--capture-helper")
+                    .arg(capture)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::inherit());
+                let demo = std::env::args().any(|a| a == "--demo");
+                if demo {
+                    let dir = std::env::temp_dir()
+                        .join(format!("breadcrumb-demo-{}", std::process::id()));
+                    command.arg("--demo").arg("--data-dir").arg(dir);
+                }
+                let mut child = command.spawn()?;
+                let input = child.stdin.take().ok_or("Engine stdin unavailable")?;
+                let output =
+                    BufReader::new(child.stdout.take().ok_or("Engine stdout unavailable")?);
+                app.manage(Engine(Mutex::new(EngineIO {
+                    child,
+                    input,
+                    output,
+                    sequence: 0,
+                })));
+                let show = MenuItem::with_id(app, "show", "Open Breadcrumb", true, None::<&str>)?;
+                let toggle = MenuItem::with_id(
+                    app,
+                    "toggle",
+                    "Pause / resume recording",
+                    true,
+                    None::<&str>,
+                )?;
+                let quit = MenuItem::with_id(app, "quit", "Quit Breadcrumb", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&show, &toggle, &quit])?;
+                let tray = TrayIconBuilder::with_id("recording-status")
+                    .icon(status_icon(false))
+                    .icon_as_template(true)
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            rect,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            // A click on the tray first blurs the panel. Do not reopen it
+                            // on the same mouse-up after focus-loss already dismissed it.
+                            let just_blurred = app
+                                .state::<PopupState>()
+                                .last_blur
+                                .lock()
+                                .ok()
+                                .and_then(|at| *at)
+                                .is_some_and(|at| at.elapsed() < Duration::from_millis(200));
+                            if just_blurred {
+                                return;
+                            }
+                            if let Some(window) = app.get_webview_window("main") {
+                                if window.is_visible().unwrap_or(false)
+                                    && window.is_focused().unwrap_or(false)
+                                {
+                                    let _ = window.hide();
+                                } else {
+                                    open_panel(app, Some(rect));
+                                }
+                            }
+                        }
+                    })
+                    .tooltip("Breadcrumb")
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "show" => {
+                            open_panel(app, None);
+                        }
+                        "toggle" => {
+                            let app = app.clone();
+                            tauri::async_runtime::spawn_blocking(move || {
+                                let _ = app.state::<Engine>().request("toggle", json!({}));
+                            });
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    });
+                tray.build(app)?;
+                let first_launch = app
                     .state::<Engine>()
-                    .request("state", json!({}))
-                    .map_err(std::io::Error::other)?;
-                if let Ok(path) = std::env::var("BREADCRUMB_SMOKE_OUTPUT") {
-                    std::fs::write(path, serde_json::to_vec(&state)?)?;
+                    .request("status", json!({}))
+                    .ok()
+                    .and_then(|state| state["needsSetup"].as_bool())
+                    .unwrap_or(true);
+                if first_launch
+                    || std::env::args().any(|arg| arg == "--show" || arg == "--demo")
+                    || (cfg!(windows) && !std::env::args().any(|arg| arg == "--autostart"))
+                {
+                    open_after_launch(app.handle().clone());
                 }
-                app.handle().exit(0);
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let mut previous = None;
+                    let mut last_auth = 0i64;
+                    loop {
+                        let state = handle.state::<Engine>().request("status", json!({}));
+                        if let Ok(state) = state {
+                            let completed = state["authCompleted"].as_i64().unwrap_or(0);
+                            if completed > last_auth {
+                                last_auth = completed;
+                                let auth_handle = handle.clone();
+                                let _ = handle
+                                    .run_on_main_thread(move || open_panel(&auth_handle, None));
+                            }
+                            let recording = state["recording"].as_bool().unwrap_or(false);
+                            if let Some(tray) = handle.tray_by_id("recording-status") {
+                                if previous != Some(recording) {
+                                    let _ = tray.set_icon_with_as_template(
+                                        Some(status_icon(recording)),
+                                        !recording,
+                                    );
+                                    previous = Some(recording);
+                                }
+                                let _ = tray.set_tooltip(Some(format!(
+                                    "Breadcrumb · {}",
+                                    state["status"].as_str().unwrap_or("Paused")
+                                )));
+                            }
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(3));
+                    }
+                });
+                if std::env::args().any(|a| a == "--smoke-test") {
+                    let state = app
+                        .state::<Engine>()
+                        .request("state", json!({}))
+                        .map_err(std::io::Error::other)?;
+                    if let Ok(path) = std::env::var("BREADCRUMB_SMOKE_OUTPUT") {
+                        std::fs::write(path, serde_json::to_vec(&state)?)?;
+                    }
+                    app.handle().exit(0);
+                }
+                Ok(())
+            })();
+            // Tauri panics on setup-hook errors instead of returning them from run.
+            #[cfg(windows)]
+            if let Err(error) = &result {
+                startup_error(&error.to_string());
             }
-            Ok(())
+            result
         })
         .on_window_event(|window, event| {
             if std::env::var_os("BREADCRUMB_UI_TRACE").is_some() {
