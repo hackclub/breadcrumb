@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PerformanceInsights } from "./performance-insights";
 import "./style.css";
 import { themeScript } from "../lib/theme";
 export const metadata: Metadata = {
@@ -11,7 +12,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <PerformanceInsights />
+      </body>
     </html>
   );
 }
