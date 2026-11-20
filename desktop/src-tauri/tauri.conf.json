@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Breadcrumb",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "app.rewind.local",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -59,5 +59,18 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA4MzQ3M0Y5NEMyRDdFODcKUldTSGZpMU0rWE0wQ0xNLzlabFJkVm5nOHFtQ2tYeEU4MUZQWmwzeXhjMFBmR1NtQzRLSVBsVE4K",
+      "endpoints": [
+        "https://breadcrumb.hackclub.com/api/desktop/updates/{{target}}/{{arch}}",
+        "https://github.com/hackclub/breadcrumb/releases/download/windows-preview/latest.json"
+      ],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

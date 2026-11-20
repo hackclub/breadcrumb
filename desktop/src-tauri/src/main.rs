@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod updates;
 use serde_json::{json, Value};
 use std::{
     io::{BufRead, BufReader, Write},
@@ -293,6 +294,7 @@ fn main() {
         ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let result: Result<(), Box<dyn std::error::Error>> = (|| {
                 app.manage(PopupState::default());
@@ -449,6 +451,7 @@ fn main() {
                     }
                     app.handle().exit(0);
                 }
+                updates::start(app.handle().clone(), !demo);
                 Ok(())
             })();
             // Tauri panics on setup-hook errors instead of returning them from run.
@@ -497,7 +500,14 @@ fn main() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![engine, hide_panel, panel_dialog])
+        .invoke_handler(tauri::generate_handler![
+            engine,
+            hide_panel,
+            panel_dialog,
+            updates::update_status,
+            updates::check_updates,
+            updates::install_update
+        ])
         .run(tauri::generate_context!());
     if let Err(error) = result {
         #[cfg(windows)]

@@ -14,7 +14,7 @@ Recording works without an account. To sync, open **Settings → Account**, ente
 
 ## Capture access
 
-Standard Windows desktop capture has no separate macOS-style permission grant. Breadcrumb runs as your normal user; protected windows and administrator-only applications may provide less context. Lock screens, secure desktops and background service sessions cannot be recorded. Resume in your signed-in desktop to recover.
+Standard Windows desktop capture has no separate macOS-style permission grant. Breadcrumb runs as your normal user; protected windows and administrator-only applications may cause samples to be skipped when their executable identity cannot be checked. Lock screens, secure desktops and background service sessions cannot be recorded. Resume in your signed-in desktop to recover.
 
 Capture includes the display containing the focused window. Accessibility context is filtered, but screenshots can contain private information. Password managers and Breadcrumb itself are excluded by default. When an excluded app may be visible on the display, the sample is skipped rather than pretending its pixels were removed.
 
@@ -23,6 +23,8 @@ Capture includes the display containing the focused window. Accessibility contex
 Run the installer again to repair missing app files. Updates retain your settings, recording preference and local history. Missing helpers or an unusable WebView2 runtime produce a native repair message; they do not silently use development binaries.
 
 Uninstall through Windows Settings or the supplied uninstaller. Normal uninstall retains your history at `%LOCALAPPDATA%\Breadcrumb` and removes login startup registration. **Delete app data** permanently removes that local library and its connection settings. It does not withdraw captures already synced to a portal. The shared WebView2 runtime remains available to other applications.
+
+For later releases, **Settings → Updates** checks for a signed update and offers installation with a restart. See [desktop updates](updates.md).
 
 ## Preview status
 

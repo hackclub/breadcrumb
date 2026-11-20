@@ -19,11 +19,13 @@ import { AppIcon } from "./app-icon";
 import { estimateTimeline, estimatedTime, sessionContext } from "./activity";
 import { SlidingPanels } from "./sliding-panels";
 import { ThemePicker } from "./theme-picker";
+import { useUpdates, UpdatesSection, type AppUpdates } from "./updates";
 import { applyTheme, readTheme } from "../../web/lib/theme";
 import "./style.css";
 const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 applyTheme(readTheme());
 function App() {
+  const updates = useUpdates();
   const [state, setState] = useState<State | null>(null),
     [tab, setTab] = useState("history"),
     [compact, setCompact] = useState(true),
@@ -217,7 +219,8 @@ function App() {
             <button
               className={!compact && tab === "settings" ? "icon-button selected" : "icon-button"}
               aria-label="Settings"
-              title="Settings"
+              title={updates.version ? "Settings — update available" : "Settings"}
+              data-update-available={updates.version ? true : undefined}
               onClick={() => expand("settings")}
             >
               <Icon name="settings" />
@@ -776,6 +779,7 @@ function App() {
           )}
           {!compact && tab === "settings" && (
             <SettingsPage
+              updates={updates}
               state={state}
               busy={busy}
               apply={(value) => action(() => engine("settings", value), "Logging settings saved.")}
@@ -819,12 +823,14 @@ function PageTitle({ title, text }: { title: string; text: string }) {
   );
 }
 function SettingsPage({
+  updates,
   state,
   busy,
   apply,
   action,
   refresh,
 }: {
+  updates: AppUpdates;
   state: State;
   busy: boolean;
   apply: (s: Settings) => Promise<void>;
@@ -1145,6 +1151,7 @@ function SettingsPage({
           accessibility trees. You can sign out to stop syncing.
         </p>
       </section>
+      <UpdatesSection updates={updates} />
       <section className="settings-section">
         <h2>Storage</h2>
         <div className="setting-row">

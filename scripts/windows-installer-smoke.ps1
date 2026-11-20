@@ -1,7 +1,11 @@
 # Disposable Windows CI only. Refuses to touch an existing Breadcrumb install/library.
-param([Parameter(Mandatory = $true)][string]$Installer)
+param(
+    [Parameter(Mandatory = $true)][string]$Installer,
+    [string]$UpdateInstaller
+)
 $ErrorActionPreference = 'Stop'
 $Installer = (Resolve-Path $Installer).Path
+if ($UpdateInstaller) { $UpdateInstaller = (Resolve-Path $UpdateInstaller).Path }
 $data = Join-Path $env:LOCALAPPDATA 'Breadcrumb'
 if (Test-Path $data) { throw 'Existing Breadcrumb data or installation found; use a disposable Windows account.' }
 $existing = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
@@ -70,7 +74,7 @@ try {
         [IO.File]::WriteAllText($path, $fixtures[$file])
         $hashes[$file] = (Get-FileHash $path -Algorithm SHA256).Hash
     }
-    Run $Installer "/S /D=$install"
+    Run $(if ($UpdateInstaller) { $UpdateInstaller } else { $Installer }) "/S /D=$install"
     Installed
     foreach ($file in $fixtures.Keys) {
         Assert ((Get-FileHash (Join-Path $data $file) -Algorithm SHA256).Hash -eq $hashes[$file]) "Repair changed $file"

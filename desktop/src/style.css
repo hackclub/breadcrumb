@@ -230,6 +230,20 @@ p {
   color: var(--ink);
   background: var(--hover);
 }
+.icon-button[data-update-available]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.update-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .back-button {
   margin-left: -6px;
   margin-right: -4px;
