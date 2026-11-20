@@ -100,7 +100,14 @@ try {
             },
           }
         : {},
-      hours: Array(24).fill(750),
+      hours: Array.from({ length: 24 }, (_, hour) => (hour === 0 ? 0 : hour === 23 ? 1500 : 750)),
+      hourly: Array.from({ length: 24 }, (_, hour) => ({
+        seconds: hour === 0 ? 0 : hour === 23 ? 1500 : 750,
+        captures: 2,
+        apps: [{ name: "Helium", id: "net.imput.helium", seconds: 750 }],
+        activities: [{ name: "Browsing", seconds: 750 }],
+        projects: [{ name: "Project one", seconds: 750 }],
+      })),
     });
     await page.route("**/api/auth/get-session", async (route) => {
       await new Promise((r) => setTimeout(r, 900));
@@ -171,6 +178,32 @@ try {
       return icon?.complete && icon.naturalWidth > 0;
     });
     await expect(page.getByLabel("History coverage")).toContainText("50%");
+    const iconBox = await page.locator(".stat-app .catalog-app-icon").boundingBox();
+    expect(iconBox?.width).toBe(24);
+    expect(iconBox?.height).toBe(24);
+    const range = page.getByRole("button", { name: "Time range", exact: true });
+    const chart = page.locator(".daily-chart");
+    const chartBox = await chart.boundingBox();
+    await range.click();
+    await expect(page.getByRole("menuitemradio", { name: "Last 7 days" })).toBeFocused();
+    await page.screenshot({ path: `test-results/dashboard/range-menu-${width}.png` });
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(range).toHaveText("Last 30 days");
+    expect(await chart.boundingBox()).toEqual(chartBox);
+    await range.click();
+    await page.keyboard.press("Escape");
+    await expect(range).toBeFocused();
+    await expect(page.getByRole("menu", { name: "Time range" })).toHaveCount(0);
+    await range.click();
+    await page.getByRole("heading", { name: "Where your time went" }).click();
+    await expect(page.getByRole("menu", { name: "Time range" })).toHaveCount(0);
+    await range.click();
+    await page.getByRole("menuitemradio", { name: "Last 7 days" }).click();
+    await chart.hover();
+    await page.mouse.wheel(0, 100);
+    expect(await chart.evaluate((element) => element.scrollTop)).toBe(0);
+
     const after = await positions();
     const shifts = await page.evaluate(() => (window as any).__shifts);
     const cls = shifts.reduce((s: any, e: any) => s + e.value, 0);
@@ -203,6 +236,24 @@ try {
     await page.getByRole("button", { name: new RegExp(`Explore Browsing on ${today}`) }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Clear day ×" })).toBeVisible();
+    const cells = page.locator(".hour-cell");
+    await expect(cells).toHaveCount(24);
+    const paint = await cells.nth(1).evaluate((element) => ({
+      actual: getComputedStyle(element).backgroundColor,
+      height: element.getBoundingClientRect().height,
+    }));
+    expect(paint.actual).not.toBe(
+      await cells.first().evaluate((element) => getComputedStyle(element).backgroundColor),
+    );
+    expect(paint.height).toBe(22);
+    await cells.nth(1).click();
+    await expect(page.locator(".hour-detail-total")).toContainText("13 min estimated");
+    await expect(page.locator(".hour-rankings").getByText("Helium", { exact: true })).toBeVisible();
+    await page.screenshot({
+      path: `test-results/dashboard/selected-hour-${width}.png`,
+      fullPage: true,
+    });
+
     await context.close();
   }
 } finally {

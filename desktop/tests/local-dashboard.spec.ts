@@ -31,7 +31,8 @@ test("local dashboard explores history without accounts or API requests", async 
   expect(bar?.width).toBeGreaterThan(0);
   expect(bar?.height).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Close activity details" }).click();
-  await page.getByLabel("Time range").selectOption("all");
+  await page.getByRole("button", { name: "Time range", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "All time", exact: true }).click();
   await page.locator(".day-column").last().click();
   await expect(page.getByRole("button", { name: "Clear day ×" })).toBeVisible();
   await page.locator(".hour-cell").filter({ visible: true }).first().click();

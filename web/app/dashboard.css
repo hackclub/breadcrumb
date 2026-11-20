@@ -9,7 +9,16 @@
   font-size: 13px;
   margin: 0;
 }
-.insights-toolbar select {
+.time-range {
+  position: relative;
+  flex-shrink: 0;
+}
+.time-range-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 136px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
@@ -17,6 +26,40 @@
   padding: 8px 10px;
   font-size: 12px;
 }
+.time-range-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  width: 164px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px #0003;
+}
+.time-range-menu button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font-size: 12px;
+}
+.time-range-menu button:hover,
+.time-range-menu button:focus-visible {
+  background: var(--raised);
+}
+.time-range-trigger:focus-visible,
+.time-range-menu button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .insight-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -49,7 +92,7 @@
 .insight-stats strong.stat-app {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-size: 25px;
   line-height: 1.84;
   white-space: nowrap;
@@ -58,9 +101,10 @@
 }
 .stat-app .catalog-app-icon,
 .stat-app .app-monogram {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  margin: 0;
 }
 .stat-app .stat-app-name {
   min-width: 0;
@@ -103,7 +147,9 @@
   display: grid;
   gap: 6px;
   height: 174px;
+  grid-template-rows: minmax(0, 1fr);
   overflow-x: auto;
+  overflow-y: hidden;
 }
 .day-column {
   display: flex;
@@ -121,6 +167,7 @@
 }
 .day-bar-space {
   height: 150px;
+  flex: 0 0 150px;
   display: flex;
   align-items: flex-end;
   border-bottom: 1px solid var(--line);
@@ -142,6 +189,7 @@
 }
 .day-tick {
   font-size: 10px;
+  line-height: 18px;
   padding-top: 6px;
   white-space: nowrap;
 }
@@ -244,12 +292,6 @@
   margin-bottom: 0;
   font-size: 10px;
 }
-.hour-cell > span {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-}
 @media (max-width: 620px) {
   .insights-toolbar {
     align-items: flex-start;
@@ -258,8 +300,8 @@
   .insights-toolbar h1 {
     font-size: 22px;
   }
-  .insights-toolbar select {
-    max-width: 110px;
+  .time-range-trigger {
+    width: 110px;
     font-size: 11px;
     padding: 6px;
   }
