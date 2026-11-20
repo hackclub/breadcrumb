@@ -1,6 +1,30 @@
 import { test, expect } from "bun:test";
 import { classifyActivity } from "../lib/activities";
 
+test("real Windows app identities map to visible activity, including older capture aliases", () => {
+  for (const [bundleID, activity] of [
+    ["GitHub Desktop", "Version control"],
+    ["GitHubDesktop.exe", "Version control"],
+    ["VLC media player", "Video"],
+    ["Steam", "Gaming"],
+    ["Steam Client WebHelper", "Gaming"],
+    ["Counter-Strike 2", "Gaming"],
+    [
+      "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\bin\\win64\\cs2.exe",
+      "Gaming",
+    ],
+  ]) {
+    expect(classifyActivity({ bundleID })).toBe(activity);
+  }
+  // Discussing an app in a browser does not mean it is running in focus.
+  expect(classifyActivity({ bundleID: "Helium", windowTitle: "Steam and Counter-Strike 2" })).toBe(
+    "Unclassified",
+  );
+  expect(classifyActivity({ bundleID: "VLC media player", correction: "Learning" })).toBe(
+    "Learning",
+  );
+});
+
 test("specific metadata refines generic labels while explicit corrections and agent labels win", () => {
   const record = {
     context: { domain: "github.com" },
