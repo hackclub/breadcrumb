@@ -21,7 +21,10 @@ import { SlidingPanels } from "./sliding-panels";
 import { ThemePicker } from "./theme-picker";
 import { useUpdates, UpdatesSection, type AppUpdates } from "./updates";
 import { applyTheme, readTheme } from "../../web/lib/theme";
+import { LocalDashboard, openLocalDashboard } from "./local-dashboard";
 import "./style.css";
+import "../../web/app/dashboard.css";
+import "./local-dashboard.css";
 const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 applyTheme(readTheme());
 function App() {
@@ -353,20 +356,32 @@ function App() {
                   <Icon name="save" />
                   Save last hour
                 </button>
-                <button className="history-link" aria-label="Open history" onClick={() => expand()}>
-                  <span>
-                    <Icon name="history" />
-                    History
-                  </span>
-                  <span className="history-count">
-                    <span
-                      title={`${state.observations.length.toLocaleString()} captures; estimated from capture spacing, with gaps excluded.`}
-                    >
-                      {estimatedTime(estimates.seconds)} observed
+                <div className="overview-links">
+                  <button
+                    className="history-link"
+                    aria-label="Open history"
+                    onClick={() => expand()}
+                  >
+                    <span>
+                      <Icon name="history" />
+                      History
                     </span>
-                    <Icon name="chevron" size={14} />
-                  </span>
-                </button>
+                    <span className="history-count">
+                      <span
+                        title={`${state.observations.length.toLocaleString()} captures; estimated from capture spacing, with gaps excluded.`}
+                      >
+                        {estimatedTime(estimates.seconds)} observed
+                      </span>
+                      <Icon name="chevron" size={14} />
+                    </span>
+                  </button>
+                  <button
+                    className="quiet dashboard-link"
+                    onClick={() => void openLocalDashboard()}
+                  >
+                    Dashboard <Icon name="external" size={12} />
+                  </button>
+                </div>
               </div>
             </section>
           )}
@@ -729,6 +744,9 @@ function App() {
           )}
           {!compact && tab === "activity" && (
             <section className="page">
+              <button className="outline" onClick={() => void openLocalDashboard()}>
+                Open local dashboard
+              </button>
               <div className="activity-overview">
                 <div>
                   <strong>{estimatedTime(activitySummary.seconds)}</strong>
@@ -1190,6 +1208,10 @@ function SettingsPage({
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    {new URLSearchParams(location.search).get("view") === "dashboard" ? (
+      <LocalDashboard />
+    ) : (
+      <App />
+    )}
   </React.StrictMode>,
 );

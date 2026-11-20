@@ -13,6 +13,12 @@ export function SiteHeader({ children }: { children?: ReactNode }) {
         Breadcrumb
       </a>
       <div className="header-actions">
+        <a href="/download" className="download-nav" aria-label="Download Breadcrumb">
+          <span className="download-nav-label">Download</span>
+          <span className="download-nav-icon" aria-hidden="true">
+            ↓
+          </span>
+        </a>
         <select
           aria-label="Theme"
           value={theme}

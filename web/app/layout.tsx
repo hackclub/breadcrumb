@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PerformanceInsights } from "./performance-insights";
 import "./style.css";
+import "./dashboard.css";
 import { themeScript } from "../lib/theme";
 export const metadata: Metadata = {
   title: "Breadcrumb",

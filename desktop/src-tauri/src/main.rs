@@ -277,10 +277,33 @@ fn startup_error(message: &str) {
         MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), 0x10);
     }
 }
+#[tauri::command]
+async fn open_dashboard(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("dashboard") {
+        window.show().map_err(|e| e.to_string())?;
+        return window.set_focus().map_err(|e| e.to_string());
+    }
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "dashboard",
+        tauri::WebviewUrl::App("index.html?view=dashboard".into()),
+    )
+    .title("Breadcrumb")
+    .inner_size(1080.0, 760.0)
+    .min_inner_size(360.0, 480.0)
+    .build()
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
 fn main() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            if !(cfg!(windows) && args.iter().any(|arg| arg == "--autostart")) {
+            if args.iter().any(|arg| arg == "--dashboard") {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = open_dashboard(app).await;
+                });
+            } else if !(cfg!(windows) && args.iter().any(|arg| arg == "--autostart")) {
                 open_after_launch(app.clone());
             }
         }))
@@ -452,6 +475,12 @@ fn main() {
                     app.handle().exit(0);
                 }
                 updates::start(app.handle().clone(), !demo);
+                if std::env::args().any(|arg| arg == "--dashboard") {
+                    let handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = open_dashboard(handle).await;
+                    });
+                }
                 Ok(())
             })();
             // Tauri panics on setup-hook errors instead of returning them from run.
@@ -462,6 +491,9 @@ fn main() {
             result
         })
         .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
             if std::env::var_os("BREADCRUMB_UI_TRACE").is_some() {
                 if let tauri::WindowEvent::Focused(focused) = event {
                     eprintln!("focus event={focused} visible={:?}", window.is_visible());
@@ -504,6 +536,7 @@ fn main() {
             engine,
             hide_panel,
             panel_dialog,
+            open_dashboard,
             updates::update_status,
             updates::check_updates,
             updates::install_update

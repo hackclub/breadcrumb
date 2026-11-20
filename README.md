@@ -3,13 +3,13 @@
 <h1 align="center">Breadcrumb</h1>
 <p align="center">A little context goes a long way.</p>
 <p align="center">A passive desktop history that helps you understand where your time went.</p>
-<p align="center"><a href="https://breadcrumb.hackclub.com">Web portal</a> · <a href="docs/development.md">Development</a> · <a href="web/README.md">Self-hosting</a> · <a href="LICENSE">AGPLv3</a></p>
+<p align="center"><a href="https://breadcrumb.hackclub.com/download">Download</a> · <a href="https://breadcrumb.hackclub.com">Web portal</a> · <a href="docs/development.md">Development</a> · <a href="web/README.md">Self-hosting</a> · <a href="LICENSE">AGPLv3</a></p>
 
 ![Breadcrumb time dashboard with real capture history](docs/images/dashboard.png)
 
 ## Your day, in context
 
-Breadcrumb stays in your menu bar or system tray and records the display containing your focused window. Your history works offline. Connect to a portal when you want your captures and time dashboard available across devices.
+Breadcrumb stays in your menu bar or system tray and records the display containing your focused window. Your history and full time dashboard work offline, without an account. Connect to a portal when you want them available across devices.
 
 - **See where time went.** Explore daily and hourly patterns, apps, activities, and project context.
 - **Go deeper.** Open an activity to see its daily breakdown, contributing apps, and projects. Categories include coding, debugging, testing, code review, research, AI collaboration, design, and writing.
@@ -40,7 +40,7 @@ You can run your own portal. Authentication uses Better Auth and PostgreSQL; cap
 | Windows  | Native display capture, UI Automation      | x64; see [Windows setup and validation](docs/windows.md) |
 | Linux    | X11 capture, AT-SPI                        | X11 desktop; Wayland is not yet supported                |
 
-Accessibility is optional on macOS. Windows and Linux do not yet provide local OCR. Public release signing and macOS notarization still need to be configured before broad distribution.
+Accessibility is optional on macOS. Windows and Linux do not yet provide local OCR. See [macOS installation and packaging](docs/macos.md) for Mac downloads and signing. Windows publisher signing remains separate from verified update signatures.
 
 ## Run locally
 
