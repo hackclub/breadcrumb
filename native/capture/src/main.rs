@@ -168,6 +168,9 @@ fn app_name(window: &xcap::Window) -> String {
         {
             return "Steam".into();
         }
+        if executable.eq_ignore_ascii_case("cs2.exe") {
+            return "Counter-Strike 2".into();
+        }
         // Preserve specific descriptions: ProductName can be an OS/suite name.
         // Electron and xcap's path fallback do not identify the actual product.
         if description.is_empty()
