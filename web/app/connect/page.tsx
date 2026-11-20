@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { permissionLabels } from "../../lib/permissions";
 import { SiteHeader } from "../site-header";
 import { Consent } from "./consent";
-type Details = { name: string; destination: string; scopes: string[] };
+type Details = { name: string; destination: string; identityHost?: string; scopes: string[] };
 export default function Connect() {
   const [details, setDetails] = useState<Details | null>(null),
     [error, setError] = useState("");
@@ -42,6 +42,9 @@ export default function Connect() {
               App name supplied by the client. Approval returns to {details.destination}. Only
               approve connections you initiated.
             </p>
+            {details.identityHost && (
+              <p className="small-note">Client metadata from {details.identityHost}</p>
+            )}
             <ul>
               {details.scopes.map((scope) => (
                 <li key={scope}>{permissionLabels[scope] ?? scope}</li>

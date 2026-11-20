@@ -31,7 +31,10 @@ export async function authorizationDetails(request: Request, auth: BreadcrumbAut
     const destination = new URL(verified.get("redirect_uri")!);
     return apiJSON({
       name: client.client_name || "Application",
-      destination: destination.host || destination.protocol,
+      destination: destination.host || destination.href,
+      identityHost: verified.get("client_id")?.startsWith("https://")
+        ? new URL(verified.get("client_id")!).host
+        : undefined,
       scopes: (verified.get("scope") ?? "").split(" ").filter(Boolean),
     });
   } catch (error) {
