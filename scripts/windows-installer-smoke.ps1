@@ -4,6 +4,9 @@ $ErrorActionPreference = 'Stop'
 $Installer = (Resolve-Path $Installer).Path
 $data = Join-Path $env:LOCALAPPDATA 'Breadcrumb'
 if (Test-Path $data) { throw 'Existing Breadcrumb data or installation found; use a disposable Windows account.' }
+$existing = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName -eq 'Breadcrumb' }
+if ($existing) { throw 'Existing Breadcrumb registration found; use a disposable Windows account.' }
 $root = Join-Path ([IO.Path]::GetTempPath()) ('breadcrumb-installer-' + [guid]::NewGuid())
 $install = Join-Path $root 'Path with spaces\Breadcrumb'
 New-Item $root -ItemType Directory | Out-Null
@@ -31,14 +34,22 @@ function Uninstall([switch]$DeleteData) {
     $arguments = '/S'
     if ($DeleteData) { $arguments += ' /DELETEAPPDATA' }
     Run (Join-Path $install 'uninstall.exe') $arguments
-    # NSIS can relaunch its uninstaller from a temporary directory.
+    # The launcher can exit before its temporary uninstaller. Wait for all
+    # observable cleanup, not just the first deleted file.
+    $clean = $false
     for ($i = 0; $i -lt 150; $i++) {
-        if (-not (Test-Path (Join-Path $install 'breadcrumb-desktop.exe'))) { break }
+        $files = 'breadcrumb-desktop.exe', 'breadcrumb-engine.exe', 'breadcrumb-capture.exe' |
+            Where-Object { Test-Path (Join-Path $install $_) }
+        $key = Get-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue
+        $startup = if ($null -ne $key) { $key.GetValue('Breadcrumb', $null) } else { $null }
+        if (-not $files -and $null -eq $startup -and (-not $DeleteData -or -not (Test-Path $data))) {
+            $clean = $true
+            break
+        }
         Start-Sleep -Milliseconds 200
     }
-    Assert (-not (Test-Path (Join-Path $install 'breadcrumb-desktop.exe'))) 'Uninstall left the application behind'
-    $key = Get-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue
-    Assert (($null -eq $key) -or ($null -eq $key.GetValue('Breadcrumb', $null))) 'Uninstall retained autostart'
+    Assert $clean 'Uninstall did not finish removing its files, autostart or requested data'
+
 }
 
 try {
