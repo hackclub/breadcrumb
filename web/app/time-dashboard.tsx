@@ -161,7 +161,9 @@ function ActivityExplorer({
       ref={dialog}
       className="activity-dialog"
       aria-labelledby="activity-title"
-      onClose={onClose}
+      onClose={() => {
+        if (dialog.current && !dialog.current.open) onClose();
+      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           const r = event.currentTarget.getBoundingClientRect();
@@ -234,10 +236,12 @@ export function TimeDashboard({
   days,
   loading = false,
   timeZone = "UTC",
+  local = false,
 }: {
   days: InsightDay[];
   loading?: boolean;
   timeZone?: string;
+  local?: boolean;
 }) {
   const [activity, setActivity] = useState<string | null>(null);
   const [range, setRange] = useState("7"),
@@ -249,6 +253,7 @@ export function TimeDashboard({
   const today = calendarClock(timeZone)(Date.now() / 1000 - REFERENCE).day;
   const zoneLabel = timeZone === "UTC" ? "UTC" : "Local time";
   useEffect(() => {
+    if (local) return;
     const controller = new AbortController();
     let mounted = true;
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -267,8 +272,8 @@ export function TimeDashboard({
       clearTimeout(timeout);
       controller.abort();
     };
-  }, []);
-  const pending = loading || !catalogReady;
+  }, [local]);
+  const pending = loading || (!local && !catalogReady);
   const end = Date.parse(today);
   const cutoff = range === "all" ? -Infinity : end - (Number(range) - 1) * 86400000;
   const period = days
@@ -378,7 +383,7 @@ export function TimeDashboard({
           </small>
         </div>
         <div>
-          <span>Captures synced</span>
+          <span>{local ? "Local captures" : "Captures synced"}</span>
           <strong>
             {pending ? <Skeleton className="skeleton-metric" /> : captures.toLocaleString()}
           </strong>
@@ -455,10 +460,11 @@ export function TimeDashboard({
         </div>
         {!pending && !captures && (
           <div className="empty-chart">
-            <h3>Connect your desktop</h3>
+            <h3>{local ? "Your history starts here" : "Connect your desktop"}</h3>
             <p>
-              In Breadcrumb, open Settings → Account. Enter this portal’s URL and sign in to start
-              syncing.
+              {local
+                ? "Start recording in Breadcrumb. Your activity will appear here without signing in or uploading anything."
+                : "In Breadcrumb, open Settings → Account. Enter this portal’s URL and sign in to start syncing."}
             </p>
           </div>
         )}

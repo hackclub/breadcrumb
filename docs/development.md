@@ -10,7 +10,7 @@ python3 scripts/desktop-prepare.py
 bun run --cwd desktop tauri dev
 ```
 
-`bun run --cwd desktop dev` opens the UI with synthetic browser-preview data. It never records or uploads. Build a native app with `bash scripts/desktop-build.sh`. On macOS, builds use the signing identity pinned in ignored `.breadcrumb-signing-identity`; set `APPLE_SIGNING_IDENTITY` explicitly on another machine. Release signing and notarization must be configured before public distribution. Native builds support macOS, Windows, and Linux; see CI for platform build results.
+`bun run --cwd desktop dev` opens the UI with synthetic browser-preview data. It never records or uploads. Build a native app with `bash scripts/desktop-build.sh`. On macOS, builds use the signing identity pinned in ignored `.breadcrumb-signing-identity`; set `APPLE_SIGNING_IDENTITY` explicitly on another machine. See [macOS packaging](macos.md) for signed downloads and notarization. Native builds support macOS, Windows, and Linux; see CI for platform build results.
 
 ```sh
 bun run lint

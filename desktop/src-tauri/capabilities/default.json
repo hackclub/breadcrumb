@@ -1,7 +1,7 @@
 {
   "identifier": "main",
   "description": "Local desktop controls; capture and storage stay behind the engine command",
-  "windows": ["main"],
+  "windows": ["main", "dashboard"],
   "permissions": [
     "core:default",
     "autostart:default",
