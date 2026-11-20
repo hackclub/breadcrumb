@@ -4,19 +4,21 @@ Interactive setup tests run through the Amp Windows runner on Windows 11 Pro 25H
 
 ## Test coverage
 
-| Scenario                                                           | Result                                                                     |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Per-user setup wizard, shortcuts and sidecars                      | Passed                                                                     |
-| Full-display capture and focused-window metadata                   | Passed; 2560 × 1600 fixture display                                        |
-| Editable/password accessibility values                             | Omitted from the captured tree                                             |
-| Default password-manager and custom app exclusions                 | Capture skipped; recovered after excluded window closed                    |
-| Start, pause, resume and unchanged-image reuse                     | Passed; separate observations reused one JPEG                              |
-| Escape, close, click outside and duplicate launch                  | Passed; one engine remained                                                |
-| Visible console windows during normal capture                      | None observed by a 10 ms polling monitor                                   |
-| Same-version repair, newer-version upgrade and downgrade rejection | Passed                                                                     |
-| Normal uninstall                                                   | App/helpers stopped; synthetic history and settings retained byte-for-byte |
+| Scenario                                                              | Result                                                                     |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Per-user setup wizard, shortcuts and sidecars                         | Passed                                                                     |
+| Full-display capture and focused-window metadata                      | Passed; 2560 × 1600 fixture display                                        |
+| Editable/password accessibility values                                | Omitted from the captured tree                                             |
+| Display-name, executable-name and default password-manager exclusions | Capture skipped; recovered after excluded window closed                    |
+| Start, pause, resume and unchanged-image reuse                        | Passed; separate observations reused one JPEG                              |
+| Escape, close, click outside and duplicate launch                     | Passed; one engine remained                                                |
+| Visible console windows during normal capture                         | None observed by a 10 ms polling monitor                                   |
+| Same-version repair, newer-version upgrade and downgrade rejection    | Passed                                                                     |
+| Normal uninstall                                                      | App/helpers stopped; synthetic history and settings retained byte-for-byte |
 
-The tests found and fixed invisible event windows blocking capture, release binaries falling back to checkout helpers, explicit launches staying hidden, and the silent data-deletion flag being ignored. The reusable [installer lifecycle check](../scripts/windows-installer-smoke.ps1) also runs on disposable GitHub Windows runners.
+Executable-name tests used a fixture whose file description differed from its basename. Both focused and visible background windows were blocked, including case-insensitive matches; an unreadable executable identity rejected the sample. Removing the fixture restored capture.
+
+The tests found and fixed executable-name exclusions being ignored, invisible event windows blocking capture, release binaries falling back to checkout helpers, explicit launches staying hidden, and the silent data-deletion flag being ignored. The reusable [installer lifecycle check](../scripts/windows-installer-smoke.ps1) also runs on disposable GitHub Windows runners.
 
 ## Limits
 

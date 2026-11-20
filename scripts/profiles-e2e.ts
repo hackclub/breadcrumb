@@ -1,9 +1,14 @@
-// Synthetic UI coverage. Backend tests separately enforce ownership, claims and privacy.
-import { chromium, expect } from "@playwright/test";
+// Owner UI fixtures plus real PostgreSQL-backed public SSR. Never reads or edits a real account.
+import { chromium, expect, type Browser } from "@playwright/test";
 import { createServer, type AddressInfo } from "node:net";
 import { mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { appSeed } from "../web/lib/apps";
 import type { Profile } from "../web/lib/profiles";
+import { profileUIFixture } from "../web/scripts/support/profile-ui-fixture";
+const connection = process.env.PROFILE_TEST_DATABASE_URL;
+if (!connection) throw Error("PROFILE_TEST_DATABASE_URL is required for public profile SSR tests");
+const fixture = await profileUIFixture(connection);
 const socket = createServer();
 await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
 const port = (socket.address() as AddressInfo).port;
@@ -12,9 +17,24 @@ const base = `http://127.0.0.1:${port}`;
 const server = Bun.spawn(["bun", "run", "--cwd", "web", "start", "--port", String(port)], {
   stdout: "ignore",
   stderr: "inherit",
+  env: {
+    ...process.env,
+    DATABASE_URL: connection,
+    PUBLIC_URL: base,
+    R2_ACCESS_KEY_ID: "",
+    R2_SECRET_ACCESS_KEY: "",
+    AWS_ACCESS_KEY_ID: "",
+    AWS_SECRET_ACCESS_KEY: "",
+    LOOPS_API_KEY: "",
+  },
 });
-const browser = await chromium.launch();
+let browser: Browser | undefined;
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG8kAAAAASUVORK5CYII=",
+  "base64",
+);
 try {
+  browser = await chromium.launch();
   await mkdir("test-results/profiles", { recursive: true });
   for (let i = 0; i < 150; i++) {
     try {
@@ -44,12 +64,30 @@ try {
       (window as any).__profileShifts = [];
       new PerformanceObserver((list) => {
         for (const entry of list.getEntries() as any)
-          if (!entry.hadRecentInput) (window as any).__profileShifts.push(entry.value);
+          if (!entry.hadRecentInput)
+            (window as any).__profileShifts.push({
+              value: entry.value,
+              sources: entry.sources?.map((source: any) => ({
+                node: source.node?.outerHTML?.slice(0, 260),
+                from: source.previousRect,
+                to: source.currentRect,
+              })),
+            });
       }).observe({ type: "layout-shift", buffered: true });
     });
-    let owner: Profile | null = null;
-    let claims = 0;
+    const ownerId = "profile_ui_" + randomUUID(),
+      suffix = randomUUID().slice(0, 8),
+      username = `maker_${width}_${suffix}`;
+    let owner: Profile | null = null,
+      claims = 0,
+      uploads = 0,
+      avatarRequests = 0,
+      brokenAvatar = false;
     const patches: any[] = [];
+    const save = async (value: Profile) => {
+      owner = value;
+      await fixture.save(ownerId, value);
+    };
     await page.route("**/api/apps", async (route) => {
       await Bun.sleep(500);
       await route.fulfill({ json: { apps: appSeed } });
@@ -69,63 +107,124 @@ try {
         });
         return;
       }
-      owner = { ...patch, createdAt: "2026-11-19T00:00:00Z", updatedAt: "2026-11-19T00:00:00Z" };
-      await route.fulfill({ json: { profile: owner } });
+      const now = new Date().toISOString();
+      const profile: Profile = {
+        avatarMode: "none",
+        avatarURL: null,
+        githubUrl: "",
+        websiteUrl: "",
+        ...owner,
+        ...patch,
+        createdAt: owner?.createdAt ?? now,
+        updatedAt: now,
+      };
+      profile.avatarURL =
+        profile.avatarMode === "none" ? null : `/api/profile/avatar?v=${Date.parse(now)}`;
+      await save(profile);
+      await route.fulfill({ json: { profile } });
     });
     await page.route("**/api/profile/availability?*", async (route) => {
-      const username = new URL(route.request().url()).searchParams.get("username");
-      if (username === "admin") {
+      const name = new URL(route.request().url()).searchParams.get("username");
+      if (name === "admin") {
         await route.fulfill({ status: 400, json: { error: "That username is reserved." } });
         return;
       }
-      await route.fulfill({ json: { username, available: username !== "taken_name" } });
+      await route.fulfill({ json: { username: name, available: name !== "taken_name" } });
     });
-    await page.route("**/api/profiles/*", async (route) => {
-      await Bun.sleep(500);
-      if (!owner || owner.visibility !== "public") {
-        await route.fulfill({ status: 404, json: { error: "Profile not found" } });
+    await page.route(/\/api\/profile\/avatar(?:\?.*)?$/, async (route) => {
+      const method = route.request().method();
+      if (method === "GET") {
+        avatarRequests++;
+        await Bun.sleep(700);
+        await route.fulfill({
+          status: brokenAvatar ? 404 : 200,
+          contentType: "image/png",
+          body: brokenAvatar ? Buffer.alloc(0) : png,
+        });
         return;
       }
+      if (method === "POST") {
+        uploads++;
+        expect(route.request().headers()["content-type"]).toContain("multipart/form-data");
+        await Bun.sleep(650);
+        if (uploads === 1) {
+          await route.fulfill({
+            status: 422,
+            json: { error: "This image could not be processed." },
+          });
+          return;
+        }
+        const now = new Date().toISOString();
+        await save({
+          ...owner!,
+          avatarMode: "upload",
+          avatarURL: `/api/profile/avatar?v=${Date.parse(now)}`,
+          updatedAt: now,
+        });
+      } else
+        await save({
+          ...owner!,
+          avatarMode: "none",
+          avatarURL: null,
+          updatedAt: new Date().toISOString(),
+        });
+      await route.fulfill({ json: { profile: owner } });
+    });
+    await page.route(/\/api\/profiles\/[^/]+\/avatar(?:\?.*)?$/, async (route) => {
+      avatarRequests++;
+      await Bun.sleep(700);
       await route.fulfill({
-        json: {
-          profile: {
-            username: owner.username,
-            displayName: owner.displayName,
-            bio: owner.bio,
-            ...(owner.shareApps
-              ? { apps: appSeed.filter((app) => owner!.apps.includes(app.id)) }
-              : {}),
-          },
-        },
+        status: brokenAvatar ? 404 : 200,
+        contentType: "image/png",
+        body: brokenAvatar ? Buffer.alloc(0) : png,
       });
     });
+    const cls = () =>
+      page.evaluate(() =>
+        ((window as any).__profileShifts as { value: number }[]).reduce(
+          (n, entry) => n + entry.value,
+          0,
+        ),
+      );
+    const checkCLS = async (phase: string) => {
+      const value = await cls();
+      if (value)
+        console.error(
+          JSON.stringify({
+            width,
+            phase,
+            value,
+            shifts: await page.evaluate(() => (window as any).__profileShifts),
+          }),
+        );
+      expect(value).toBe(0);
+    };
+    const ready = () => expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "false");
+    const saveProfile = async () => {
+      await page.getByRole("button", { name: "Save profile" }).click();
+      await expect(page.locator(".profile-feedback")).toHaveText("Profile saved.");
+    };
+    const uploadInput = () => page.getByLabel("Upload profile picture", { exact: true });
+    const photo = { name: "photo.png", mimeType: "image/png", buffer: png };
     await page.goto(base + "/profile");
     await expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "true");
     const before = await page.locator(".profile-app-options").boundingBox();
-    await expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "false");
-    expect(
-      await page.evaluate(() =>
-        ((window as any).__profileShifts as number[]).reduce((n, value) => n + value, 0),
-      ),
-    ).toBe(0);
-    const after = await page.locator(".profile-app-options").boundingBox();
-    expect(before).toEqual(after);
-    expect(
-      await page.evaluate(() =>
-        ((window as any).__profileShifts as number[]).reduce((n, value) => n + value, 0),
-      ),
-    ).toBe(0);
-    await expect(page.getByRole("switch", { name: /Public profile/ })).toBeChecked();
-    await expect(page.getByRole("switch", { name: /Share my selected apps/ })).not.toBeChecked();
+    await ready();
+    expect(before).toEqual(await page.locator(".profile-app-options").boundingBox());
+    await checkCLS("checkpoint1");
+    await expect(page.getByLabel("Profile picture source")).toBeDisabled();
+    expect(avatarRequests).toBe(0);
     await page.getByLabel("Username", { exact: true }).fill("admin");
     await expect(page.locator("#username-status")).toHaveText("That username is reserved.");
     await expect(page.getByRole("button", { name: "Reserve username" })).toBeDisabled();
     await page.getByLabel("Username", { exact: true }).fill("taken_name");
     await expect(page.locator("#username-status")).toContainText("already reserved");
-    await page.getByLabel("Username", { exact: true }).fill("builder_one");
+    await page.getByLabel("Username", { exact: true }).fill("builder_" + suffix);
     await expect(page.locator("#username-status")).toContainText("Available");
     await page.getByLabel(/Display name/).fill("A fellow builder");
     await page.getByLabel(/A little about you/).fill("Making things and exploring new tools.");
+    await page.getByLabel("GitHub", { exact: true }).fill("https://github.com/fellow-builder");
+    await page.getByLabel("Personal website", { exact: true }).fill("https://builder.example/");
     await page.getByRole("switch", { name: /Public profile/ }).uncheck();
     await page.getByRole("switch", { name: /Share my selected apps/ }).check();
     for (const app of appSeed.slice(0, 2))
@@ -133,59 +232,135 @@ try {
     await page.getByRole("button", { name: "Reserve username" }).click();
     await expect(page.locator(".profile-feedback[role=alert]")).toContainText("just reserved");
     await expect(page.getByLabel(/Display name/)).toHaveValue("A fellow builder");
-    await page.getByLabel("Username", { exact: true }).fill("builder_two");
+    await page.getByLabel("Username", { exact: true }).fill(username);
     await expect(page.locator("#username-status")).toContainText("Available");
     await page.getByRole("button", { name: "Reserve username" }).click();
     await expect(page.locator(".profile-feedback")).toHaveText("Your username is reserved.");
     await expect(page.getByLabel("Username", { exact: true })).toHaveAttribute("readonly", "");
     expect(patches.at(-1)).toMatchObject({
-      username: "builder_two",
+      username,
       visibility: "private",
       shareApps: true,
+      avatarMode: "none",
       apps: appSeed.slice(0, 2).map((app) => app.id),
     });
-    expect(Object.keys(patches.at(-1)).sort()).toEqual([
-      "apps",
-      "bio",
-      "displayName",
-      "shareApps",
-      "username",
-      "visibility",
-    ]);
-    await page.screenshot({ path: `test-results/profiles/settings-${width}.png`, fullPage: true });
+    expect(avatarRequests).toBe(0);
+    await page.getByLabel("Profile picture source").selectOption("gravatar");
+    expect(avatarRequests).toBe(0); // Gravatar is not looked up until explicitly saved.
+    await saveProfile();
+    await expect(page.locator(".profile-avatar img")).toBeVisible();
+    await page.waitForFunction(
+      () => document.querySelector<HTMLImageElement>(".profile-avatar img")?.naturalWidth,
+    );
+    expect(avatarRequests).toBeGreaterThan(0);
     await page.getByRole("link", { name: /View your profile/ }).click();
     await expect(page.getByRole("heading", { name: "Profile not found" })).toBeVisible();
     await expect(page.getByText("A fellow builder", { exact: true })).toHaveCount(0);
+    expect((await context.request.get(`${base}/api/profiles/${username}/avatar`)).status()).toBe(
+      404,
+    );
     await page.goto(base + "/profile");
-    await expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "false");
+    await ready();
+    await checkCLS("checkpoint2");
+    await page.getByLabel("Profile picture source").selectOption("upload");
+    await uploadInput().setInputFiles({
+      name: "huge.png",
+      mimeType: "image/png",
+      buffer: Buffer.alloc(2 * 1024 * 1024 + 1),
+    });
+    await expect(page.locator(".profile-avatar-feedback[role=alert]")).toContainText("2 MiB");
+    expect(uploads).toBe(0);
+    await page.getByLabel(/A little about you/).fill("Unsaved thoughts survive a picture upload.");
+    await uploadInput().setInputFiles(photo);
+    await expect(page.getByRole("progressbar", { name: "Updating profile picture" })).toBeVisible();
+    await expect(page.locator(".profile-avatar-feedback[role=alert]")).toContainText(
+      "could not be processed",
+    );
+    await expect(page.getByLabel(/A little about you/)).toHaveValue(
+      "Unsaved thoughts survive a picture upload.",
+    );
+    await uploadInput().setInputFiles(photo);
+    await expect(page.locator(".profile-avatar-feedback")).toContainText("Picture uploaded");
+    await expect(page.getByLabel(/A little about you/)).toHaveValue(
+      "Unsaved thoughts survive a picture upload.",
+    );
+    await saveProfile();
+    expect(patches.at(-1)).not.toHaveProperty("avatarMode");
+    await page.getByRole("button", { name: "Remove picture", exact: true }).click();
+    await expect(page.locator(".profile-avatar-feedback")).toHaveText("Profile picture removed.");
+    await expect(page.getByLabel("Profile picture source")).toHaveValue("none");
+    await expect(page.locator(".profile-avatar img")).toHaveCount(0);
+    await page.getByLabel("Profile picture source").selectOption("upload");
+    await uploadInput().setInputFiles(photo);
+    await expect(page.locator(".profile-avatar-feedback")).toContainText("Picture uploaded");
     await page.getByRole("switch", { name: /Public profile/ }).check();
     await page.getByRole("switch", { name: /Share my selected apps/ }).uncheck();
-    await page.getByRole("button", { name: "Save profile" }).click();
-    await expect(page.locator(".profile-feedback")).toHaveText("Profile saved.");
+    await saveProfile();
     await page.getByRole("link", { name: /View your profile/ }).click();
     await expect(page.getByRole("heading", { name: "A fellow builder" })).toBeVisible();
     await expect(page.getByText("No apps shared.", { exact: true })).toBeVisible();
-    for (const app of appSeed.slice(0, 2))
-      await expect(page.getByText(app.name, { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /GitHub profile/ })).toHaveAttribute(
+      "href",
+      "https://github.com/fellow-builder",
+    );
+    await expect(page.getByRole("link", { name: /Personal website/ })).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
+    await expect(page.locator(".profile-avatar img")).toHaveAttribute(
+      "src",
+      new RegExp(`^/api/profiles/${username}/avatar`),
+    );
+    const card = await page.locator(".public-profile-card").boundingBox();
+    await page.waitForFunction(
+      () => document.querySelector<HTMLImageElement>(".profile-avatar img")?.naturalWidth,
+    );
+    expect(await page.locator(".public-profile-card").boundingBox()).toEqual(card);
+    await checkCLS("checkpoint3");
+    expect((await page.content()).includes("a".repeat(64))).toBe(false);
+    expect((await page.content()).includes("avatar_hash")).toBe(false);
     await page.goto(base + "/profile");
-    await expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "false");
+    await ready();
     await page.getByRole("switch", { name: /Share my selected apps/ }).check();
     await page.getByRole("checkbox", { name: appSeed[0].name, exact: true }).uncheck();
-    await page.getByRole("button", { name: "Save profile" }).click();
-    await expect(page.locator(".profile-feedback")).toHaveText("Profile saved.");
+    await saveProfile();
+    await page.waitForFunction(
+      () => document.querySelector<HTMLImageElement>(".profile-avatar img")?.naturalWidth,
+    );
+    await page.screenshot({ path: `test-results/profiles/settings-${width}.png`, fullPage: true });
     await page.getByRole("link", { name: /View your profile/ }).click();
     await expect(page.getByText(appSeed[1].name, { exact: true })).toBeVisible();
     await expect(page.getByText(appSeed[0].name, { exact: true })).toHaveCount(0);
     await expect(page.locator(".public-app .catalog-app-icon")).toHaveCount(1);
+    await page.waitForFunction(
+      () => document.querySelector<HTMLImageElement>(".profile-avatar img")?.naturalWidth,
+    );
     await page.screenshot({ path: `test-results/profiles/public-${width}.png`, fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
-    const cls = await page.evaluate(() =>
-      ((window as any).__profileShifts as number[]).reduce((n, value) => n + value, 0),
-    );
-    expect(cls).toBe(0);
+    await checkCLS("checkpoint4");
+    brokenAvatar = true;
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "A fellow builder" })).toBeVisible();
+    await expect(page.locator(".profile-avatar img")).toHaveCount(0);
+    await checkCLS("checkpoint5");
+    if (width === 320) {
+      const longName = "w".repeat(20) + randomUUID().slice(0, 4);
+      await fixture.save("profile_ui_" + randomUUID(), {
+        ...owner!,
+        username: longName,
+        displayName: "w".repeat(60),
+        bio: "w".repeat(280),
+        avatarMode: "none",
+        avatarURL: null,
+      });
+      await page.goto(base + "/u/" + longName);
+      await expect(page.getByRole("heading", { name: "w".repeat(60), exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+      await checkCLS("long-profile");
+    }
     expect(errors).toEqual([]);
     console.log(
-      `Profiles ${width}px: reservation, conflict, immutable username, private/public app controls, no overflow, CLS=${cls}.`,
+      `Profiles ${width}px: immutable claims, actual public SSR/privacy, links, explicit Gravatar opt-in, upload limits/progress/error/retry/removal, no overflow, CLS=0.`,
     );
     await context.close();
   }
@@ -196,12 +371,9 @@ try {
   await page.route("**/api/apps", (route) => route.fulfill({ json: { apps: appSeed } }));
   await page.goto(base + "/profile");
   await expect(page.getByRole("heading", { name: "Make it yours" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute(
-    "href",
-    "/",
-  );
 } finally {
-  await browser.close();
+  await browser?.close();
   server.kill();
   await server.exited;
+  await fixture.close();
 }

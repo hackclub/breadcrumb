@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Profile, PublicProfile as ProfileView } from "../lib/profiles";
 import { appSeed, type AppEntry } from "../lib/apps";
 import { AppIcon } from "./app-icon";
@@ -53,8 +53,95 @@ const empty = {
   visibility: "public" as "public" | "private",
   shareApps: false,
   apps: [] as string[],
+  avatarMode: "none" as "none" | "gravatar" | "upload",
+  githubUrl: "",
+  websiteUrl: "",
 };
 const valid = (username: string) => /^[a-z0-9][a-z0-9_]{2,23}$/.test(username);
+
+function Avatar({ name, source }: { name: string; source?: string | null }) {
+  const [failed, setFailed] = useState("");
+  const safe =
+    source &&
+    (source.startsWith("blob:") ||
+      /^\/api\/profiles?(?:\/[a-z0-9_]+)?\/avatar(?:\?|$)/.test(source));
+  return (
+    <span className="profile-avatar">
+      <svg
+        className="profile-avatar-fallback"
+        width="32"
+        height="32"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 22v-2a8 8 0 0 1 16 0v2" />
+      </svg>
+      {safe && source !== failed && (
+        <img
+          src={source!}
+          width="72"
+          height="72"
+          alt={`${name || "Your"} profile picture`}
+          onError={() => setFailed(source!)}
+        />
+      )}
+    </span>
+  );
+}
+function ProfileLink({ url, kind }: { url?: string; kind: "github" | "website" }) {
+  let href: URL;
+  try {
+    href = new URL(url || "");
+  } catch {
+    return null;
+  }
+  if (
+    href.protocol !== "https:" ||
+    href.username ||
+    href.password ||
+    (kind === "github" && href.hostname !== "github.com")
+  )
+    return null;
+  return (
+    <a
+      href={href.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="profile-external-link"
+      aria-label={`${kind === "github" ? "GitHub profile" : "Personal website"} (opens in a new tab)`}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {kind === "github" ? (
+          <>
+            <path d="M9 19c-5 1-5-3-7-3m14 6v-4a3.5 3.5 0 0 0-1-2.5c3.3-.4 6.8-1.6 6.8-7A5.4 5.4 0 0 0 20.3 5c.2-.9.1-1.9-.3-2.8 0 0-1.2-.4-4 1.5a13.6 13.6 0 0 0-7 0C6.2 1.8 5 2.2 5 2.2A6.8 6.8 0 0 0 4.7 5 5.4 5.4 0 0 0 3.2 8.5c0 5.4 3.5 6.6 6.8 7A3.5 3.5 0 0 0 9 18v4" />
+          </>
+        ) : (
+          <>
+            <circle cx="12" cy="12" r="9" />
+            <ellipse cx="12" cy="12" rx="4" ry="9" />
+            <path d="M3 12h18" />
+          </>
+        )}
+      </svg>
+      <span>{kind === "github" ? "GitHub" : href.hostname}</span>
+      <span aria-hidden="true">↗</span>
+    </a>
+  );
+}
 
 export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: boolean }) {
   const [profile, setProfile] = useState<Profile | null>(null),
@@ -67,7 +154,26 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
     [failed, setFailed] = useState(false),
     [retry, setRetry] = useState(0),
     [query, setQuery] = useState(""),
-    [availability, setAvailability] = useState({ state: "idle", message: "" });
+    [availability, setAvailability] = useState({ state: "idle", message: "" }),
+    [uploading, setUploading] = useState(false),
+    [progress, setProgress] = useState(0),
+    [avatarMessage, setAvatarMessage] = useState(""),
+    [avatarFailed, setAvatarFailed] = useState(false),
+    [preview, setPreview] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null),
+    transfer = useRef<XMLHttpRequest | null>(null);
+  useEffect(
+    () => () => {
+      transfer.current?.abort();
+    },
+    [],
+  );
+  useEffect(
+    () => () => {
+      if (preview) URL.revokeObjectURL(preview);
+    },
+    [preview],
+  );
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -160,6 +266,9 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
         visibility: draft.visibility,
         shareApps: draft.shareApps,
         apps: draft.apps,
+        githubUrl: draft.githubUrl,
+        websiteUrl: draft.websiteUrl,
+        ...(draft.avatarMode !== "upload" ? { avatarMode: draft.avatarMode } : {}),
       });
       setProfile(value.profile);
       setDraft({ ...empty, ...value.profile });
@@ -171,6 +280,83 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
         setAvailability({ state: "taken", message: "This username is already reserved." });
     } finally {
       setBusy(false);
+    }
+  }
+  async function upload(file?: File) {
+    if (!file) return;
+    setAvatarMessage("");
+    setAvatarFailed(false);
+    if (
+      !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+      file.size > 2 * 1024 * 1024 ||
+      !file.size
+    ) {
+      setAvatarFailed(true);
+      setAvatarMessage("Choose a JPG, PNG, or WebP image up to 2 MiB.");
+      return;
+    }
+    setPreview(URL.createObjectURL(file));
+    setUploading(true);
+    setProgress(0);
+    try {
+      const value = await new Promise<{ profile: Profile }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        transfer.current = xhr;
+        xhr.open("POST", "/api/profile/avatar");
+        xhr.responseType = "json";
+        xhr.timeout = 60000;
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
+        };
+        xhr.upload.onload = () => setProgress(100);
+        xhr.onload = () =>
+          xhr.status >= 200 && xhr.status < 300
+            ? resolve(xhr.response)
+            : reject(
+                new Error(
+                  xhr.response?.error || "Could not upload this picture. Please try again.",
+                ),
+              );
+        xhr.onerror = () => reject(new Error("Upload interrupted. Please try again."));
+        xhr.ontimeout = () => reject(new Error("Upload took too long. Please try again."));
+        xhr.onabort = () => reject(new Error("Upload cancelled."));
+        const body = new FormData();
+        body.append("avatar", file);
+        xhr.send(body);
+      });
+      setProfile(value.profile);
+      setDraft((current) => ({ ...current, avatarMode: value.profile.avatarMode }));
+      setAvatarMessage("Picture uploaded. Other profile edits are saved separately.");
+    } catch (error) {
+      setPreview(null);
+      setAvatarFailed(true);
+      setAvatarMessage(error instanceof Error ? error.message : "Could not upload your picture.");
+    } finally {
+      transfer.current = null;
+      setUploading(false);
+    }
+  }
+  async function removeAvatar() {
+    setUploading(true);
+    setAvatarMessage("Removing picture…");
+    setProgress(0);
+    setAvatarFailed(false);
+    try {
+      const response = await fetch("/api/profile/avatar", {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.error || "Could not remove your picture.");
+      setProfile(value.profile);
+      setDraft((current) => ({ ...current, avatarMode: "none" }));
+      setPreview(null);
+      setAvatarMessage("Profile picture removed.");
+    } catch (error) {
+      setAvatarFailed(true);
+      setAvatarMessage(error instanceof Error ? error.message : "Could not remove your picture.");
+    } finally {
+      setUploading(false);
     }
   }
   const apps = catalog.filter((app) =>
@@ -195,7 +381,9 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
           </div>
         ) : (
           <form onSubmit={save} aria-busy={loading} className="profile-form">
-            <fieldset disabled={loading || busy || (failed && !profile && !draft.username)}>
+            <fieldset
+              disabled={loading || busy || uploading || (failed && !profile && !draft.username)}
+            >
               <section className="profile-section">
                 <h2>Your name</h2>
                 <label htmlFor="profile-username">Username</label>
@@ -268,13 +456,151 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
                 />
               </section>
               <section className="profile-section">
+                <h2>Profile picture</h2>
+                <div className="profile-avatar-editor">
+                  <Avatar
+                    name={draft.displayName || draft.username}
+                    source={
+                      draft.avatarMode === "upload" && preview
+                        ? preview
+                        : draft.avatarMode === profile?.avatarMode
+                          ? profile?.avatarURL
+                          : null
+                    }
+                  />
+                  <div className="profile-avatar-controls">
+                    <label htmlFor="profile-avatar-mode" className="sr-only">
+                      Profile picture source
+                    </label>
+                    <select
+                      id="profile-avatar-mode"
+                      value={draft.avatarMode}
+                      disabled={!profile}
+                      onChange={(event) => {
+                        setDraft({
+                          ...draft,
+                          avatarMode: event.target.value as typeof draft.avatarMode,
+                        });
+                        setPreview(null);
+                        setAvatarMessage("");
+                        setAvatarFailed(false);
+                      }}
+                    >
+                      <option value="none">Default icon</option>
+                      <option value="gravatar">Gravatar (opt in)</option>
+                      <option value="upload">Upload an image</option>
+                    </select>
+                    <div className="profile-avatar-actions">
+                      <button
+                        type="button"
+                        className="quiet"
+                        disabled={!profile || draft.avatarMode !== "upload"}
+                        onClick={() => fileInput.current?.click()}
+                      >
+                        Choose image
+                      </button>
+                      <button
+                        type="button"
+                        className="quiet"
+                        disabled={!profile || profile.avatarMode === "none"}
+                        onClick={() => void removeAvatar()}
+                      >
+                        Remove picture
+                      </button>
+                    </div>
+                    <input
+                      ref={fileInput}
+                      type="file"
+                      className="sr-only"
+                      tabIndex={-1}
+                      accept="image/jpeg,image/png,image/webp"
+                      aria-label="Upload profile picture"
+                      disabled={!profile || draft.avatarMode !== "upload"}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = "";
+                        void upload(file);
+                      }}
+                    />
+                  </div>
+                </div>
+                <p className="profile-help">
+                  Gravatar receives a hash of your account email only if you choose it and save.
+                  Visitors receive the picture through Breadcrumb; your email is not published.
+                </p>
+                <p className="profile-help">
+                  JPG, PNG, or WebP · up to 2 MiB. Uploading or removing a picture applies
+                  immediately.
+                </p>
+                <div
+                  className="profile-upload-track"
+                  role={uploading ? "progressbar" : undefined}
+                  aria-label="Updating profile picture"
+                  aria-valuemin={uploading ? 0 : undefined}
+                  aria-valuemax={uploading ? 100 : undefined}
+                  aria-valuenow={uploading ? progress : undefined}
+                  aria-hidden={!uploading}
+                  style={{ visibility: uploading ? "visible" : "hidden" }}
+                >
+                  <span style={{ transform: `scaleX(${progress / 100})` }} />
+                </div>
+                <p
+                  className={`profile-avatar-feedback ${avatarFailed ? "error" : ""}`}
+                  role={avatarFailed ? "alert" : "status"}
+                >
+                  {uploading
+                    ? avatarMessage ||
+                      (progress === 100 ? "Processing picture…" : `Uploading… ${progress}%`)
+                    : avatarMessage ||
+                      (!profile
+                        ? "Reserve a username first to choose a picture."
+                        : draft.avatarMode === "upload" && profile.avatarMode !== "upload"
+                          ? "Choose an image to finish selecting Upload."
+                          : draft.avatarMode !== profile.avatarMode
+                            ? "Save your profile to apply this picture source."
+                            : "\u00a0")}
+                </p>
+              </section>
+              <section className="profile-section">
+                <h2>Links</h2>
+                <p className="profile-help">
+                  Optional links appear only when your profile is public.
+                </p>
+                <label htmlFor="profile-github">GitHub</label>
+                <input
+                  id="profile-github"
+                  name="githubUrl"
+                  type="url"
+                  inputMode="url"
+                  autoComplete="url"
+                  pattern="https://.*"
+                  maxLength={300}
+                  value={draft.githubUrl}
+                  onChange={(event) => setDraft({ ...draft, githubUrl: event.target.value })}
+                  placeholder="https://github.com/yourname"
+                />
+                <label htmlFor="profile-website">Personal website</label>
+                <input
+                  id="profile-website"
+                  name="websiteUrl"
+                  type="url"
+                  inputMode="url"
+                  autoComplete="url"
+                  pattern="https://.*"
+                  maxLength={300}
+                  value={draft.websiteUrl}
+                  onChange={(event) => setDraft({ ...draft, websiteUrl: event.target.value })}
+                  placeholder="https://example.com"
+                />
+              </section>
+              <section className="profile-section">
                 <h2>What people can see</h2>
                 <label className="profile-switch">
                   <span>
                     Public profile
                     <small>
-                      Anyone can see your name and bio when this is on. Turning it off keeps your
-                      username reserved.
+                      Anyone can see your name, picture, bio, and links when this is on. Turning it
+                      off keeps your username reserved.
                     </small>
                   </span>
                   <input
@@ -371,6 +697,8 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
                 disabled={
                   loading ||
                   busy ||
+                  uploading ||
+                  (draft.avatarMode === "upload" && profile?.avatarMode !== "upload") ||
                   (failed && !profile && !draft.username) ||
                   !valid(draft.username) ||
                   availability.state === "taken" ||
@@ -404,67 +732,33 @@ export function ProfileSettings({ initialSignedIn = true }: { initialSignedIn?: 
   );
 }
 
-export function PublicProfile({ username }: { username: string }) {
-  const [profile, setProfile] = useState<ProfileView | null>(null),
-    [loading, setLoading] = useState(true),
-    [failed, setFailed] = useState(false),
-    [retry, setRetry] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setFailed(false);
-    request(`/api/profiles/${encodeURIComponent(username)}`)
-      .then((value) => {
-        if (active) setProfile(value.profile);
-      })
-      .catch((error) => {
-        if (active) {
-          setProfile(null);
-          setFailed(!(error instanceof ProfileError && error.status === 404));
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [username, retry]);
+export function PublicProfile({
+  profile,
+  failed = false,
+}: {
+  profile: ProfileView | null;
+  failed?: boolean;
+}) {
   return (
     <Shell>
       <section className="public-profile-page">
-        <div className="public-profile-card" aria-busy={loading}>
-          {loading ? (
+        <div className="public-profile-card">
+          {profile ? (
             <>
               <div className="profile-identity">
-                <span className="skeleton profile-title-skeleton" />
-                <span className="skeleton skeleton-caption" />
-              </div>
-              <div className="profile-biography">
-                <span className="skeleton profile-bio-skeleton" />
-                <span className="skeleton profile-bio-skeleton" />
-              </div>
-              <div className="public-apps">
-                <h2>Apps</h2>
-                <div className="public-app-list">
-                  {Array.from({ length: 4 }, (_, i) => (
-                    <span key={i} className="skeleton profile-app-skeleton" />
-                  ))}
+                <Avatar name={profile.displayName || profile.username} source={profile.avatarURL} />
+                <div>
+                  <h1>{profile.displayName || profile.username}</h1>
+                  <p className="muted">@{profile.username}</p>
                 </div>
               </div>
-              <span className="sr-only" role="status">
-                Loading profile…
-              </span>
-            </>
-          ) : profile ? (
-            <>
-              <div className="profile-identity">
-                <h1>{profile.displayName || profile.username}</h1>
-                <p className="muted">@{profile.username}</p>
-              </div>
-              <div className="profile-biography">
-                <p>{profile.bio}</p>
-              </div>
+              {profile.bio && <p className="profile-biography">{profile.bio}</p>}
+              {(profile.githubUrl || profile.websiteUrl) && (
+                <nav className="profile-links" aria-label="Profile links">
+                  <ProfileLink url={profile.githubUrl} kind="github" />
+                  <ProfileLink url={profile.websiteUrl} kind="website" />
+                </nav>
+              )}
               <div className="public-apps">
                 <h2>Apps</h2>
                 <div className="public-app-list">
@@ -489,7 +783,7 @@ export function PublicProfile({ username }: { username: string }) {
                   ? "We couldn’t load this profile. Please try again."
                   : "This profile is private or doesn’t exist."}
               </p>
-              {failed && <button onClick={() => setRetry(retry + 1)}>Try again</button>}
+              {failed && <button onClick={() => location.reload()}>Try again</button>}
             </div>
           )}
         </div>

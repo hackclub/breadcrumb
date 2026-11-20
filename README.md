@@ -3,7 +3,7 @@
 <h1 align="center">Breadcrumb</h1>
 <p align="center">A little context goes a long way.</p>
 <p align="center">A passive desktop history that helps you understand where your time went.</p>
-<p align="center"><a href="https://breadcrumb.hackclub.dev">Web portal</a> · <a href="docs/development.md">Development</a> · <a href="web/README.md">Self-hosting</a> · <a href="LICENSE">AGPLv3</a></p>
+<p align="center"><a href="https://breadcrumb.hackclub.com">Web portal</a> · <a href="docs/development.md">Development</a> · <a href="web/README.md">Self-hosting</a> · <a href="LICENSE">AGPLv3</a></p>
 
 ![Breadcrumb time dashboard with real capture history](docs/images/dashboard.png)
 
@@ -17,6 +17,7 @@ Breadcrumb stays in your menu bar or system tray and records the display contain
 - **Stay lightweight.** Nearly unchanged screenshots share one image. Uploads reuse acknowledged images, with adjustable concurrency, progress, and an ETA.
 - **Make it yours.** Dark, light, and Catppuccin themes; configurable cadence, retention, storage, OCR, and app exclusions.
 - **Choose what is public.** Reserve a username, keep your profile public or private, and choose which apps to share. Capture history stays off your public profile.
+- **Stay up to date.** Check automatically every four hours and install signed updates when you are ready. See [desktop updates](docs/updates.md).
 - **Bring your agents.** Editable Python rules and an agent review protocol make labeling extensible.
 
 ![Activity details showing contributing apps and projects](docs/images/activity-details.png)

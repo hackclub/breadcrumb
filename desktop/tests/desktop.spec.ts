@@ -57,7 +57,9 @@ test("logging settings persist within the preview and reductions request confirm
     await dialog.accept();
   });
   await page.getByRole("button", { name: "Apply logging settings" }).click();
-  await expect(page.getByRole("status")).toContainText("Logging settings saved.");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Logging settings saved." }),
+  ).toBeVisible();
   expect(confirmed).toBe(true);
   await page.getByRole("button", { name: "Back to overview", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();

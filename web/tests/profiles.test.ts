@@ -10,6 +10,10 @@ import {
 } from "../lib/profiles";
 import { appSeed } from "../lib/apps";
 const sample: Profile = {
+  avatarMode: "none",
+  avatarURL: null,
+  githubUrl: "",
+  websiteUrl: "",
   username: "friend_123",
   displayName: "Friend",
   bio: "Building things",
@@ -73,7 +77,13 @@ test("private profiles and disabled app sharing cannot leak through the public p
     { ...sample, email: "secret@example.com", owner_id: "secret" } as Profile,
     appSeed,
   )!;
-  expect(Object.keys(minimal).sort()).toEqual(["bio", "displayName", "username"]);
+  expect(Object.keys(minimal).sort()).toEqual([
+    "bio",
+    "displayName",
+    "githubUrl",
+    "username",
+    "websiteUrl",
+  ]);
   const shared = publicProfile({ ...sample, shareApps: true }, appSeed)!;
   expect(shared.apps?.map((app) => app.id)).toEqual(sample.apps);
   expect("visibility" in shared).toBe(false);

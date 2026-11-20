@@ -1,6 +1,9 @@
 // Real PostgreSQL reservation/privacy invariants. Uses a dedicated disposable local DB only.
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import sharp from "sharp";
+import { AvatarAPI, cleanupAvatarObjects } from "../lib/profile-avatars";
+import { MemoryStore } from "../lib/store";
 import { Pool } from "pg";
 import {
   ProfileAPI,
@@ -140,6 +143,67 @@ try {
   );
   assert.equal((await api.handle(request({ visibility: "private" }), "owner")).status, 200);
   assert.equal((await api.handle(request(undefined, false), "public", name + "c")).status, 404);
+  const avatarStore = new MemoryStore();
+  const png = await sharp({ create: { width: 24, height: 36, channels: 3, background: "#345678" } })
+    .png()
+    .toBuffer();
+  const avatars = new AvatarAPI(
+    repo,
+    () => avatarStore,
+    (req) => auth.api.getSession({ headers: req.headers }),
+    { PUBLIC_URL: origin, NODE_ENV: "test" },
+    async () => new Response(png),
+  );
+  const uploadRequest = () => {
+    const form = new FormData();
+    form.set("avatar", new File([png], "synthetic.png", { type: "image/png" }));
+    return new Request(origin + "/api/profile/avatar", {
+      method: "POST",
+      headers: { Origin: origin, Cookie: cookie },
+      body: form,
+    });
+  };
+  const uploaded = await avatars.handle(uploadRequest());
+  assert.equal(uploaded.status, 200);
+  assert.equal((await uploaded.json()).profile.avatarMode, "upload");
+  assert.equal(avatarStore.data.size, 1);
+  const descriptor = await repo.avatar(session.user.id);
+  assert.ok(descriptor?.key);
+  const firstKey = descriptor.key;
+  await avatars.handle(uploadRequest());
+  assert.equal(avatarStore.data.has(firstKey), false);
+  assert.equal(avatarStore.data.size, 1);
+  const links = { githubUrl: "https://github.com/example", websiteUrl: "https://example.com/" };
+  const gravatar = await api.handle(
+    request({ ...links, avatarMode: "gravatar", visibility: "public" }),
+    "owner",
+  );
+  assert.equal(gravatar.status, 200);
+  const gravatarProfile = (await gravatar.json()).profile;
+  assert.equal(gravatarProfile.githubUrl, links.githubUrl);
+  assert.equal(gravatarProfile.websiteUrl, links.websiteUrl);
+  assert.equal(gravatarProfile.avatarMode, "gravatar");
+  const expectedHash = createHash("sha256").update("profile-test@example.com").digest("hex");
+  assert.equal((await repo.avatar(session.user.id))!.hash, expectedHash);
+  assert.ok(!JSON.stringify(gravatarProfile).includes(expectedHash));
+  await cleanupAvatarObjects(repo, avatarStore);
+  assert.equal(avatarStore.data.size, 0);
+  const avatarResponse = await avatars.handle(request(undefined, false), name + "c");
+  assert.equal(avatarResponse.status, 200);
+  assert.equal(
+    (await sharp(Buffer.from(await avatarResponse.arrayBuffer())).metadata()).format,
+    "webp",
+  );
+  await api.handle(request({ visibility: "private" }), "owner");
+  assert.equal((await avatars.handle(request(undefined, false), name + "c")).status, 404);
+  assert.equal((await avatars.handle(request())).status, 200);
+  await avatars.handle(uploadRequest());
+  assert.equal(avatarStore.data.size, 1);
+  const photo = await repo.avatar(session.user.id);
+  await pool.query('DELETE FROM breadcrumb_auth."user" WHERE id=$1', [session.user.id]);
+  assert.ok((await repo.avatarGarbage()).includes(photo!.key!));
+  await cleanupAvatarObjects(repo, avatarStore);
+  assert.equal(avatarStore.data.size, 0);
   for (let i = 0; i < 60; i++) await repo.limit(ids[3]);
   await assert.rejects(
     repo.limit(ids[3]),
@@ -149,7 +213,7 @@ try {
   assert.equal(await repo.get(winner), null);
   assert.equal(await repo.available(name), true);
   console.log(
-    "Passed: concurrent username claims, immutable reservations, ownership isolation, privacy-preserving partial edits, app opt-in, durable throttling, account deletion cleanup, real Better Auth cookie authorization and private-profile revocation.",
+    "Passed: concurrent username claims, immutable reservations, ownership isolation, privacy-preserving partial edits, app opt-in, durable throttling, account deletion cleanup, real Better Auth cookie authorization, private-profile revocation, canonical avatar uploads, Gravatar opt-in hashing, links, image gating and account-deletion object cleanup.",
   );
 } finally {
   await pool.query('DELETE FROM breadcrumb_auth."user" WHERE id=ANY($1)', [ids]);

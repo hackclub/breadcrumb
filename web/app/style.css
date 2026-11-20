@@ -1272,57 +1272,70 @@ button.rank-row:focus-visible .rank-name::after {
 .public-profile-card {
   border: 1px solid var(--line);
   border-radius: 16px;
-  height: 520px;
   padding: 28px;
-  overflow: auto;
 }
 .profile-identity {
-  height: 105px;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.profile-identity > div {
+  min-width: 0;
 }
 .profile-identity h1 {
   font-size: 32px;
   font-weight: 500;
   letter-spacing: -0.8px;
   line-height: 1.15;
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   overflow-wrap: anywhere;
-  max-height: 74px;
 }
 .profile-identity p {
   margin: 0;
   font-size: 13px;
-}
-.profile-title-skeleton {
-  display: block;
-  width: 65%;
-  height: 37px;
-  margin-bottom: 12px;
+  overflow-wrap: anywhere;
 }
 .profile-biography {
-  height: 100px;
-  overflow-y: auto;
-  margin-bottom: 20px;
-}
-.profile-biography p {
-  margin: 0;
+  margin: 22px 0 0;
   font-size: 14px;
   line-height: 1.75;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.profile-bio-skeleton {
-  display: block;
-  width: 90%;
-  height: 14px;
-  margin: 7px 0 13px;
+.profile-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
 }
-.profile-bio-skeleton + .profile-bio-skeleton {
-  width: 60%;
+.profile-external-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.profile-external-link:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.profile-external-link > svg,
+.profile-external-link > span:last-child {
+  flex-shrink: 0;
+}
+.profile-external-link > span:not(:last-child) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .public-apps {
   border-top: 1px solid var(--line);
   padding-top: 20px;
+  margin-top: 24px;
 }
 .public-apps h2 {
   font-size: 13px;
@@ -1333,9 +1346,92 @@ button.rank-row:focus-visible .rank-name::after {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  height: 180px;
-  overflow-y: auto;
   align-content: start;
+}
+.profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--raised);
+  color: var(--secondary);
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.profile-avatar > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.profile-avatar-editor {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin-top: 18px;
+}
+.profile-avatar-controls {
+  flex: 1;
+  min-width: 0;
+}
+.profile-avatar-controls > select {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.profile-avatar-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 8px;
+}
+.profile-avatar-actions button {
+  margin: 0;
+  padding: 7px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.profile-upload-track {
+  height: 3px;
+  margin-top: 14px;
+  background: var(--track);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.profile-upload-track > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform 120ms linear;
+}
+.profile-avatar-feedback {
+  height: 58px;
+  overflow: auto;
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.profile-avatar-feedback.error {
+  color: var(--danger);
+}
+.profile-form[aria-busy="true"] .profile-avatar {
+  color: transparent;
 }
 .public-app {
   display: flex;
@@ -1369,7 +1465,7 @@ button.rank-row:focus-visible .rank-name::after {
   flex-direction: column;
   align-items: start;
   justify-content: center;
-  height: 100%;
+  min-height: 180px;
 }
 .profile-unavailable h1 {
   font-size: 25px;
@@ -1408,7 +1504,14 @@ button.rank-row:focus-visible .rank-name::after {
     padding: 22px;
   }
   .profile-identity h1 {
-    font-size: 29px;
+    font-size: 24px;
+  }
+  .profile-avatar-actions {
+    gap: 3px;
+  }
+  .profile-avatar-actions button {
+    font-size: 11px;
+    padding: 7px 3px;
   }
 }
 @media (max-width: 360px) {
