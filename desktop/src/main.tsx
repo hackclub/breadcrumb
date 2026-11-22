@@ -324,9 +324,9 @@ function App() {
               <p className="quick-title">
                 {current?.windowTitle || "Start recording, then return to another app."}
               </p>
-              {state.capabilities.permission === "required" && (
+              {["required", "portal-required"].includes(state.capabilities.permission) && (
                 <button className="outline compact" onClick={() => expand("settings")}>
-                  Allow Screen Recording
+                  Set up screen recording
                 </button>
               )}
               {state.sync && (state.connected || state.sync.enabled) && (
@@ -857,6 +857,7 @@ function SettingsPage({
   refresh: () => Promise<void>;
 }) {
   const windows = state.capabilities.backend.startsWith("Windows");
+  const wayland = state.capabilities.backend.startsWith("Wayland");
   const [draft, setDraft] = useState(state.settings),
     [exclusions, setExclusions] = useState(state.exclusions.join("\n")),
     [server, setServer] = useState(state.server || ""),
@@ -1043,7 +1044,7 @@ function SettingsPage({
               ? "Available"
               : state.capabilities.permission === "granted"
                 ? "Allowed"
-                : state.capabilities.permission === "required"
+                : ["required", "portal-required"].includes(state.capabilities.permission)
                   ? "Required"
                   : state.capabilities.permission || "Unavailable"}
           </span>
@@ -1052,7 +1053,41 @@ function SettingsPage({
           <span>Accessibility</span>
           <span>{state.capabilities.accessibility ? "Available" : "Not available"}</span>
         </div>
-        {windows ? (
+        {wayland ? (
+          <>
+            <p className="muted">
+              Share one screen or window using your desktop’s picker. Everything visible in that
+              source can be recorded, including Breadcrumb and password managers. App exclusions
+              cannot be enforced. App attribution, accessibility context, and automatic idle pause
+              are unavailable in this mode. Pausing recording ends sharing; select a source again
+              after resuming or restarting.
+            </p>
+            <button
+              className="outline"
+              disabled={busy || !isNative || state.demo}
+              onClick={async () => {
+                if (
+                  !(await confirmAction(
+                    "Record all visible content in the source you choose? App exclusions, including password managers, cannot be applied on Wayland. Shared screenshots may also sync if your account is connected.",
+                  ))
+                )
+                  return;
+                await action(() => engine("share-source"));
+              }}
+            >
+              Share screen or window
+            </button>
+            {state.capabilities.screenshot && (
+              <button
+                className="outline"
+                disabled={busy}
+                onClick={() => action(() => engine("stop-sharing"))}
+              >
+                Stop sharing
+              </button>
+            )}
+          </>
+        ) : windows ? (
           <p className="muted">
             Windows desktop capture needs no separate permission prompt. Administrator-only and
             protected windows may provide less context.
@@ -1067,20 +1102,22 @@ function SettingsPage({
           </button>
         )}
         <label>
-          Never capture these apps
+          {wayland ? "App exclusions (available in X11 sessions)" : "Never capture these apps"}
           <textarea
             value={exclusions}
+            disabled={wayland}
             onChange={(e) => setExclusions(e.target.value)}
             placeholder="App bundle IDs or executable names, one per line"
           />
         </label>
         <p className="muted">
-          Breadcrumb and known password managers are excluded by default. Where native filtering is
-          unavailable, captures are skipped if an excluded app may be visible.
+          {wayland
+            ? "Exclusions do not apply to portal screen sharing. Use an X11 login session for app exclusions and foreground app context."
+            : "Breadcrumb and known password managers are excluded by default. Where native filtering is unavailable, captures are skipped if an excluded app may be visible."}
         </p>
         <button
           className="outline"
-          disabled={busy}
+          disabled={busy || wayland}
           onClick={() =>
             action(
               () =>

@@ -73,7 +73,11 @@ try:
             env={**os.environ,'WAYLAND_DISPLAY':'','XDG_SESSION_TYPE':'x11',**overrides})
         response = json.loads(result.stdout)
         assert not response['ok'] and 'payload' not in response and not response['capabilities']['screenshot']
-    print('Wayland/XWayland and headless sessions fail closed.')
+        if overrides.get('WAYLAND_DISPLAY') or overrides.get('XDG_SESSION_TYPE') == 'wayland':
+            assert response['capabilities']['permission'] == 'portal-required'
+            assert not response['capabilities']['windowContext']
+            assert not response['capabilities']['idle']
+    print('Wayland/XWayland requires explicit portal sharing; headless sessions fail closed.')
     with tempfile.TemporaryDirectory() as folder:
         output = Path(folder) / 'ipc.json'
         subprocess.run([str(root/'desktop/src-tauri/target/release/breadcrumb-desktop'), '--demo', '--smoke-test'],

@@ -1,6 +1,6 @@
 # Development
 
-Install Bun 1.4.4, Go 1.26+, Python 3, and stable Rust. macOS builds need a recent Xcode/Command Line Tools Swift toolchain; the shipped app targets macOS 14 Sonoma or newer on Intel and Apple Silicon. Linux needs the WebKitGTK, GTK, X11, D-Bus, PipeWire, and Wayland development packages listed in `.github/workflows/desktop.yml`.
+Install Bun 1.4.4, Go 1.26+, Python 3, and stable Rust. macOS builds need a recent Xcode/Command Line Tools Swift toolchain; the shipped app targets macOS 14 Sonoma or newer on Intel and Apple Silicon. Linux needs the WebKitGTK, GTK, X11, D-Bus, PipeWire, GStreamer, and Wayland development packages listed in `.github/workflows/desktop.yml`.
 
 ```sh
 bun install --frozen-lockfile
@@ -10,7 +10,7 @@ python3 scripts/desktop-prepare.py
 bun run --cwd desktop tauri dev
 ```
 
-`bun run --cwd desktop dev` opens the UI with synthetic browser-preview data. It never records or uploads. Build a native app with `bash scripts/desktop-build.sh`. On macOS, builds use the signing identity pinned in ignored `.breadcrumb-signing-identity`; set `APPLE_SIGNING_IDENTITY` explicitly on another machine. See [macOS packaging](macos.md) for signed downloads and notarization. Native builds support macOS, Windows, and Linux; see CI for platform build results.
+`bun run --cwd desktop dev` opens the UI with synthetic browser-preview data. It never records or uploads. Build a native app with `bash scripts/desktop-build.sh`. On macOS, builds use the signing identity pinned in ignored `.breadcrumb-signing-identity`; set `APPLE_SIGNING_IDENTITY` explicitly on another machine. See [macOS packaging](macos.md) for signed downloads and notarization. Native builds support macOS, Windows, and Linux; see CI for platform build results and [Linux setup](linux.md) for packages and session differences.
 
 ```sh
 bun run lint

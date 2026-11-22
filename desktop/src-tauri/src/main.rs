@@ -91,6 +91,8 @@ async fn engine(
         "disconnect",
         "syncOptions",
         "permissions",
+        "share-source",
+        "stop-sharing",
         "appIcon",
     ];
     if !commands.contains(&command.as_str()) {

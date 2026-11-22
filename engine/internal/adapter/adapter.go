@@ -88,6 +88,9 @@ func (p *Process) Request(command string, settings library.Settings, exclusions 
 	if command != "probe" {
 		timeout = 45 * time.Second
 	}
+	if command == "share-source" {
+		timeout = 2 * time.Minute
+	}
 	var line []byte
 	select {
 	case out := <-completed:
