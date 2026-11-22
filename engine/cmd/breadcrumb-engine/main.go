@@ -134,6 +134,15 @@ func (e *engine) state() map[string]any {
 func away(idle *float64, settings library.Settings) bool {
 	return idle != nil && *idle >= float64(settings.IdleMinutes*60)
 }
+func (e *engine) stopSharing() {
+	if e.capture != nil && strings.HasPrefix(e.capabilities.Backend, "Wayland") {
+		response, err := e.capture.Request("stop-sharing", e.lib.Settings, e.exclusions)
+		if err != nil {
+			_ = e.capture.Close()
+		}
+		e.capabilities = response.Capabilities
+	}
+}
 func (e *engine) tick() {
 	e.mu.Lock()
 	if !e.recording || e.demo || e.capture == nil {
@@ -344,6 +353,7 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 			e.status = "Starting capture…"
 		} else {
 			e.status = "Paused"
+			e.stopSharing()
 		}
 		if err := writePrivate(filepath.Join(e.lib.Dir, "desktop-state.json"), map[string]any{"recording": e.recording, "exclusions": e.exclusions}); err != nil {
 			return nil, err
@@ -411,6 +421,7 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 			return nil, err
 		}
 		e.recording = false
+		e.stopSharing()
 		e.status = "Paused"
 		if err := writePrivate(filepath.Join(e.lib.Dir, "desktop-state.json"), map[string]any{"recording": false, "exclusions": e.exclusions}); err != nil {
 			return nil, err
@@ -497,11 +508,12 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 			e.syncError = ""
 		}
 		return e.state(), nil
-	case "permissions":
+	case "permissions", "share-source", "stop-sharing":
 		if e.capture == nil {
 			return nil, errors.New("capture adapter unavailable")
 		}
-		response, err := e.capture.Request("permissions", e.lib.Settings, e.exclusions)
+		response, err := e.capture.Request(command, e.lib.Settings, e.exclusions)
+		e.capabilities = response.Capabilities
 		return response, err
 	}
 	return nil, fmt.Errorf("unknown engine command %q", command)
@@ -598,8 +610,9 @@ func main() {
 			e.status = "Native capture adapter could not start"
 		} else {
 			e.capture = capture
-			if probe, err := capture.Request("probe", lib.Settings, e.exclusions); err == nil {
-				e.capabilities = probe.Capabilities
+			probe, probeErr := capture.Request("probe", lib.Settings, e.exclusions)
+			e.capabilities = probe.Capabilities
+			if probeErr == nil {
 				if os.IsNotExist(stateErr) && probe.RecordingPreference != nil {
 					e.recording = *probe.RecordingPreference
 				}

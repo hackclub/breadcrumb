@@ -99,3 +99,32 @@ func TestOlderSettingsKeepIdleDefault(t *testing.T) {
 }
 
 func ptr(value float64) *float64 { return &value }
+
+type sharingAdapter struct{ commands []string }
+
+func (a *sharingAdapter) Request(command string, _ library.Settings, _ []string) (adapter.Response, error) {
+	a.commands = append(a.commands, command)
+	return adapter.Response{OK: true, Capabilities: adapter.Capabilities{Backend: "Wayland portal + PipeWire", Permission: "portal-required"}}, nil
+}
+func (*sharingAdapter) Close() error { return nil }
+
+func TestPauseEndsWaylandSharing(t *testing.T) {
+	lib, err := library.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := &sharingAdapter{}
+	e := &engine{lib: lib, capture: capture, recording: true, capabilities: adapter.Capabilities{Backend: "Wayland portal + PipeWire", Screenshot: true}}
+	if _, err := e.dispatch("toggle", nil); err != nil {
+		t.Fatal(err)
+	}
+	if e.recording || e.capabilities.Screenshot || len(capture.commands) != 1 || capture.commands[0] != "stop-sharing" {
+		t.Fatalf("pause did not end sharing: %+v, %v", e.capabilities, capture.commands)
+	}
+	if _, err := e.dispatch("toggle", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.commands) != 1 {
+		t.Fatal("resuming must not silently reopen the picker")
+	}
+}

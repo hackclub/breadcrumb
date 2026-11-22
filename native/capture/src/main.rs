@@ -3,8 +3,14 @@ use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 mod idle;
 mod tree;
+#[cfg(target_os = "linux")]
+mod wayland;
 
 fn capabilities() -> Value {
+    #[cfg(target_os = "linux")]
+    if wayland::is_session() {
+        return wayland::capabilities();
+    }
     let supported = session_error().is_none();
     json!({"screenshot":supported,"accessibility":supported && cfg!(any(windows,target_os="linux")),"ocr":false,"windowContext":supported,"exclusions":if supported {"skip-when-visible"} else {"unsupported-session"},"backend":if cfg!(windows){"Windows native capture + UI Automation"}else{"X11 capture + AT-SPI"},"permission":if supported {"managed-by-desktop"} else {"unsupported-session"},"idle":supported && idle::seconds().is_some()})
 }
@@ -28,12 +34,6 @@ fn session_error() -> Option<&'static str> {
     }
     #[cfg(target_os = "linux")]
     {
-        if std::env::var("WAYLAND_DISPLAY").is_ok_and(|value| !value.is_empty())
-            || std::env::var("XDG_SESSION_TYPE")
-                .is_ok_and(|value| value.eq_ignore_ascii_case("wayland"))
-        {
-            return Some("Wayland capture is not supported yet: XWayland cannot reliably identify native windows or enforce exclusions. Use an X11 login session.");
-        }
         if !std::env::var("DISPLAY").is_ok_and(|value| !value.is_empty()) {
             return Some(
                 "No X11 display is available. Start Breadcrumb inside an X11 desktop session.",
@@ -261,6 +261,10 @@ fn ensure_allowed(
     Ok(())
 }
 fn perform(request: &Value) -> Result<Value, String> {
+    #[cfg(target_os = "linux")]
+    if wayland::is_session() {
+        return wayland::perform(request);
+    }
     let command = request["command"].as_str().unwrap_or("");
     if command.starts_with("icon:") {
         return Ok(serde_json::json!({"ok":true,"icon":""}));

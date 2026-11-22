@@ -12,9 +12,9 @@ Screenshots cover the full display containing the focused window. Focused activi
 
 - **macOS:** ScreenCaptureKit, filtered Accessibility tree, local Vision OCR. Requires macOS 14 Sonoma or newer. Screen Recording is required; Accessibility is optional. Stable bundle ID `app.rewind.local` and signing identity retain permission identity across updates; macOS may still request approval after a host or signing change.
 - **Windows:** native display capture, focused/visible window context, filtered UI Automation tree. No local OCR yet.
-- **Linux:** X11 native display capture and filtered AT-SPI tree. Wayland/XWayland sessions are explicitly rejected because their native windows cannot yet be inspected reliably for exclusions. No local OCR yet.
+- **Linux:** X11 native display capture and filtered AT-SPI tree; Wayland uses explicitly selected portal screen sharing. Wayland sharing has no app exclusions, foreground attribution, accessibility tree, or idle detection. No local OCR yet. See [Linux setup](linux.md).
 
-On Windows/Linux, capture skips samples when an excluded window may be visible because those APIs cannot reliably filter arbitrary windows out of the full display. macOS excludes app windows from its capture stream. Accessibility trees skip editable/password values and have bounded traversal. Screenshots and visible labels can still contain private information.
+On Windows and Linux X11, capture skips samples when an excluded window may be visible because those APIs cannot reliably filter arbitrary windows out of the full display. macOS excludes app windows from its capture stream. Accessibility trees skip editable/password values and have bounded traversal. Screenshots and visible labels can still contain private information.
 
 History defaults to keeping data until deletion with a 20 GiB budget. Continuous mode stops at its limit; rolling retention may delete the oldest unsaved captures. Saved clips have a separate budget. Capture pauses below 5 GiB free disk. Shortening retention asks for confirmation; deleting recent history also pauses recording and sync.
 

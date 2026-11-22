@@ -31,6 +31,10 @@ pub fn seconds() -> Option<f64> {
 /// capture still works, without idle detection, where it is not installed.
 #[cfg(target_os = "linux")]
 pub fn seconds() -> Option<f64> {
+    // XWayland only sees input delivered to X11 clients, not native Wayland input.
+    if super::wayland::is_session() {
+        return None;
+    }
     use std::ffi::{c_char, c_int, c_ulong, c_void, CStr};
     use std::sync::OnceLock;
     #[repr(C)]

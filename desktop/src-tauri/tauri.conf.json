@@ -49,8 +49,36 @@
           "libxcb1",
           "libxss1",
           "libdbus-1-3",
-          "libgbm1"
-        ]
+          "libgbm1",
+          "libgstreamer1.0-0",
+          "libgstreamer-plugins-base1.0-0",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-pipewire",
+          "xdg-desktop-portal",
+          "libayatana-appindicator3-1",
+          "libxcb-randr0",
+          "libxcb-xfixes0",
+          "libwayland-client0",
+          "libxkbcommon0"
+        ],
+        "recommends": ["at-spi2-core"]
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "libayatana-appindicator-gtk3",
+          "pipewire-libs",
+          "libxcb",
+          "libXScrnSaver",
+          "dbus-libs",
+          "mesa-libgbm",
+          "gstreamer1",
+          "gstreamer1-plugins-base",
+          "pipewire-gstreamer",
+          "xdg-desktop-portal"
+        ],
+        "recommends": ["at-spi2-core"]
       }
     },
     "icon": [

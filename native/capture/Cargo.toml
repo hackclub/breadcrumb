@@ -14,5 +14,10 @@ uiautomation = "0.25.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 atspi = { version = "0.30", features = ["tokio"] }
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 libc = "0.2"
+ashpd = { version = "0.14", default-features = false, features = ["async-io", "screencast"] }
+futures-util = "0.3"
+gstreamer = "0.24"
+gstreamer-app = "0.24"
+gstreamer-video = "0.24"
