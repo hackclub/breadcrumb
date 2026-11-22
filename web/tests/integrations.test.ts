@@ -72,12 +72,28 @@ async function oauth(resource = "/api/v1", scopes = "time:read apps:read project
   );
   expect(details.status).toBe(200);
   expect((await details.json()).scopes).toEqual(scopes.split(" "));
+  const postDetails = (query: unknown, origin = root, path = "/api/authorization") =>
+    authorizationDetails(
+      new Request(root + path, {
+        method: "POST",
+        headers: { Cookie: cookie, Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      }),
+      auth,
+    );
+  const posted = await postDetails(consent.search, root, "/api/authorization?scope=untrusted");
+  expect(posted.status).toBe(200);
+  expect((await posted.json()).scopes).toEqual(scopes.split(" "));
+  expect((await postDetails(consent.search, "https://untrusted.example")).status).toBe(403);
+  expect((await postDetails(null)).status).toBe(400);
+  expect((await postDetails("x".repeat(9000))).status).toBe(413);
   const tampered = new URL(consent);
   tampered.searchParams.set("scope", "screenshots:read");
   expect(
     (await authorizationDetails(new Request(tampered, { headers: { Cookie: cookie } }), auth))
       .status,
   ).toBe(400);
+  expect((await postDetails(tampered.search)).status).toBe(400);
   const accepted = await call(
     "/oauth2/consent",
     { accept: true, oauth_query: consent.search.slice(1) },

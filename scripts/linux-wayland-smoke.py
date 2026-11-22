@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
     config = temp / 'config'
     backend = config / 'xdg-desktop-portal-wlr'
     backend.mkdir(parents=True)
-    (backend / 'config').write_text('[screencast]\nchooser_type=none\noutput_name=HEADLESS-1\n')
+    (backend / 'config').write_text('[screencast]\nchooser_type=none\noutput_name=HEADLESS-1\nmax_fps=5\n')
     (temp / 'sway.conf').write_text('output * bg #335577 solid_color\n')
     env = {**os.environ, 'XDG_RUNTIME_DIR': str(runtime), 'XDG_CONFIG_HOME': str(config),
            'XDG_SESSION_TYPE': 'wayland', 'XDG_CURRENT_DESKTOP': 'sway',
@@ -43,10 +43,11 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
         launch(['sway', '-c', str(temp / 'sway.conf')])
         for _ in range(100):
             sockets = [p for p in runtime.glob('wayland-*') if p.is_socket()]
-            if sockets:
+            ipc = [p for p in runtime.glob('sway-ipc.*.sock') if p.is_socket()]
+            if sockets and ipc:
                 break
             time.sleep(.1)
-        assert sockets, 'Headless Wayland compositor did not start'
+        assert sockets and ipc, 'Headless Wayland compositor did not start'
         env['WAYLAND_DISPLAY'] = sockets[0].name
         subprocess.run(['dbus-update-activation-environment', *[f'{k}={env[k]}' for k in
             ['WAYLAND_DISPLAY', 'XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME']]], check=True)
@@ -87,7 +88,15 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
         assert not request('capture')['ok'], 'Unattended capture must not open sharing'
         shared = request('share-source')
         assert shared['ok'], shared
-        for _ in range(30):
+        for attempt in range(30):
+            # Screencopy is damage-driven. A headless desktop can become static
+            # before PipeWire subscribes, so explicitly repaint after sharing
+            # starts instead of waiting for incidental compositor activity.
+            if attempt % 5 == 0:
+                color = '#335577' if attempt % 10 else '#446688'
+                subprocess.run(['swaymsg', '-s', str(ipc[0]),
+                    f'output HEADLESS-1 bg {color} solid_color'],
+                    env=env, capture_output=True, timeout=5, check=True)
             captured = request('capture')
             if captured['ok']:
                 break

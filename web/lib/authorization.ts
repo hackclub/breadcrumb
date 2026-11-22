@@ -1,12 +1,27 @@
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { getAuth, type BreadcrumbAuth } from "./auth";
-import { APIProblem, apiJSON, problem } from "./api-http";
+import { APIProblem, apiJSON, problem, sameOrigin, smallJSON } from "./api-http";
 export async function authorizationDetails(request: Request, auth: BreadcrumbAuth = getAuth()) {
   try {
-    const query = new URL(request.url).searchParams;
+    const context = await auth.$context;
+    let query: URLSearchParams;
+    if (request.method === "POST") {
+      sameOrigin(request, new URL(context.baseURL).origin);
+      const body = await smallJSON(request);
+      if (!body || typeof body !== "object" || !("query" in body) || typeof body.query !== "string")
+        throw new APIProblem(
+          400,
+          "invalid_request",
+          "A signed authorization query is required.",
+          "Start connecting again from your app.",
+        );
+      query = new URLSearchParams(body.query);
+    } else {
+      query = new URL(request.url).searchParams;
+    }
     const signed = new Set(["sig", "ba_param", ...query.getAll("ba_param")]);
     const verified = new URLSearchParams([...query].filter(([key]) => signed.has(key)));
-    const { secret } = await auth.$context;
+    const { secret } = context;
     if (!(await verifyOAuthQueryParams(verified.toString(), secret)))
       throw new APIProblem(
         400,

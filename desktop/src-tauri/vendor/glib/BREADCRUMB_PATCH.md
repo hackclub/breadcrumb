@@ -1,6 +1,6 @@
 # GLib 0.18.5 security backport
 
-This is the unmodified crates.io `glib` 0.18.5 source, except for the two-line fix in `src/variant_iter.rs` from gtk-rs/gtk-rs-core#1343 (upstream commit `05dff0ee696f9bcd8617cd48c4b812d046d440cb`). The original MIT license and copyright are retained. Package version is unchanged.
+This is the unmodified crates.io `glib` 0.18.5 source, except for the two-line fix in `src/variant_iter.rs` from gtk-rs/gtk-rs-core#1343 (upstream commit `05dff0ee696f9bcd8617cd48c4b812d046d440cb`). The original MIT license and copyright are retained. A regression test in `src/collections/ptr_slice.rs` also verifies that truncation drops pointees while preserving the allocated pointer array and its null terminator. The `StrV` null-terminator test reads the allocated sentinel through the raw pointer instead of indexing beyond the logical slice length. Both changes are test-only; no collection production code is changed. Package version is unchanged.
 
 - Advisory: https://github.com/advisories/GHSA-wrw7-89jp-8q8g (RUSTSEC-2024-0429)
 - Fix: https://github.com/gtk-rs/gtk-rs-core/pull/1343

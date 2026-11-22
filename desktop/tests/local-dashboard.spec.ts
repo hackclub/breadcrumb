@@ -52,3 +52,46 @@ test("dashboard opens separately without changing the popup frame", async ({ pag
     await page.locator(".desktop").evaluate((node) => node.getBoundingClientRect().height),
   ).toBe(400);
 });
+
+test("insights worker accepts its parent channel and ignores forged events", async ({ page }) => {
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const script = `
+      import ${JSON.stringify(location.origin + "/src/local-insights-worker.ts")};
+      for (const origin of ["", "https://untrusted.example"]) {
+        self.dispatchEvent(new MessageEvent("message", {
+          origin, data: { records: [], timeZone: "UTC" }
+        }));
+      }
+      self.postMessage({ ready: true });
+    `;
+    const url = URL.createObjectURL(new Blob([script], { type: "text/javascript" }));
+    const worker = new Worker(url, { type: "module" });
+    try {
+      return await new Promise<{ forged: unknown[]; response: unknown }>((resolve, reject) => {
+        const forged: unknown[] = [];
+        let ready = false;
+        const timeout = setTimeout(() => reject(Error("Worker did not reply")), 5000);
+        worker.addEventListener("error", (event) => {
+          clearTimeout(timeout);
+          reject(Error(event.message));
+        });
+        worker.addEventListener("message", (event) => {
+          if (event.data.ready) {
+            ready = true;
+            worker.postMessage({ records: [], timeZone: "UTC" });
+          } else if (!ready) {
+            forged.push(event.data);
+          } else {
+            clearTimeout(timeout);
+            resolve({ forged, response: event.data });
+          }
+        });
+      });
+    } finally {
+      worker.terminate();
+      URL.revokeObjectURL(url);
+    }
+  });
+  expect(result).toEqual({ forged: [], response: { days: [] } });
+});

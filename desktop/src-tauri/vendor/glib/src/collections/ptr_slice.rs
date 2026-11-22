@@ -1234,6 +1234,39 @@ mod test {
     }
 
     #[test]
+    fn truncate_drops_pointees_but_preserves_pointer_storage() {
+        use crate::prelude::*;
+
+        let first = crate::Object::new::<crate::Object>();
+        let tail = crate::Object::new::<crate::Object>();
+        let first_weak = first.downgrade();
+        let tail_weak = tail.downgrade();
+        let mut slice = PtrSlice::from(vec![first, tail]);
+        let allocation = slice.ptr;
+        let capacity = slice.capacity;
+
+        slice.truncate(1);
+        assert_eq!(slice.len(), 1);
+        assert_eq!(slice.ptr, allocation);
+        assert_eq!(slice.capacity, capacity);
+        assert!(first_weak.upgrade().is_some());
+        assert!(tail_weak.upgrade().is_none());
+        // Dropping an element releases its pointee, not the pointer array. The
+        // array slot remains writable for the null terminator and later reuse.
+        unsafe {
+            assert!((*slice.ptr.as_ptr().add(1)).is_null());
+        }
+
+        let replacement = crate::Object::new::<crate::Object>();
+        let replacement_weak = replacement.downgrade();
+        slice.push(replacement);
+        assert_eq!(slice.len(), 2);
+        drop(slice);
+        assert!(first_weak.upgrade().is_none());
+        assert!(replacement_weak.upgrade().is_none());
+    }
+
+    #[test]
     fn test_safe_api() {
         let items = [
             crate::Error::new(crate::FileError::Failed, "Failed 1"),
