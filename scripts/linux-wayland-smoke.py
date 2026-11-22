@@ -129,3 +129,10 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
             except subprocess.TimeoutExpired:
                 p.kill()
                 p.wait()
+        # The D-Bus-activated document portal can keep a FUSE mount alive after
+        # our child processes exit. Unmount it before TemporaryDirectory cleanup.
+        documents = runtime / 'doc'
+        if os.path.ismount(documents):
+            unmount = shutil.which('fusermount3') or shutil.which('fusermount')
+            assert unmount, 'Document portal mount needs fusermount for cleanup'
+            subprocess.run([unmount, '-u', str(documents)], check=True)

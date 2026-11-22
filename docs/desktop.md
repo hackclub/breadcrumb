@@ -8,7 +8,7 @@ Capture pauses while you’re away. After five minutes without keyboard, mouse, 
 
 Screenshots default to 1280 px wide. A Retina display captured at native resolution is about 4.7× larger with no added detail for review. Choose 1920 px, 2560 px, or native resolution under More capture options.
 
-Screenshots cover the full display containing the focused window. Focused activity and other visible windows are recorded separately: talking to an AI with YouTube visible alongside can represent both without claiming playback or attention. No audio or keystrokes are recorded.
+On macOS, Windows, and X11, screenshots cover the full display containing the focused window. Wayland captures the source selected in the desktop picker. Focused activity and other visible windows are recorded separately: talking to an AI with YouTube visible alongside can represent both without claiming playback or attention. No audio or keystrokes are recorded.
 
 - **macOS:** ScreenCaptureKit, filtered Accessibility tree, local Vision OCR. Requires macOS 14 Sonoma or newer. Screen Recording is required; Accessibility is optional. Stable bundle ID `app.rewind.local` and signing identity retain permission identity across updates; macOS may still request approval after a host or signing change.
 - **Windows:** native display capture, focused/visible window context, filtered UI Automation tree. No local OCR yet.
