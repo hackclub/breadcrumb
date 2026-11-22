@@ -88,8 +88,8 @@ jobs:
           BREADCRUMB_TEST_PORTAL: ${{ runner.temp }}/breadcrumb-test-portal/build/xdg-desktop-portal-wlr
         run: dbus-run-session python3 scripts/linux-wayland-smoke.py
       - if: runner.os == 'Linux'
-        name: GLib iterator security regression (release mode)
-        run: cargo test --release --manifest-path desktop/src-tauri/vendor/glib/Cargo.toml --lib variant_iter
+        name: GLib security and ownership regressions (release mode)
+        run: cargo test --release --manifest-path desktop/src-tauri/vendor/glib/Cargo.toml --lib -- --test-threads=1
       - if: runner.os == 'Linux'
         name: Build Linux packages
         run: bun run --cwd desktop tauri build --bundles deb,rpm,appimage

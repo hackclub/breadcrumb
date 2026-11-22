@@ -9,7 +9,12 @@ export default function Connect() {
     [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/authorization" + location.search, { signal: controller.signal })
+    fetch("/api/authorization", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: location.search }),
+      signal: controller.signal,
+    })
       .then(async (response) => {
         const value = await response.json();
         if (!response.ok) throw Error(value.detail ?? "Could not verify this connection.");
