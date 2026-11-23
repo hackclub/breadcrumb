@@ -33,7 +33,7 @@ pub fn seconds() -> Option<f64> {
 pub fn seconds() -> Option<f64> {
     // XWayland only sees input delivered to X11 clients, not native Wayland input.
     if super::wayland::is_session() {
-        return None;
+        return super::linux_idle::seconds();
     }
     use std::ffi::{c_char, c_int, c_ulong, c_void, CStr};
     use std::sync::OnceLock;

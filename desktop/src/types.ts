@@ -22,7 +22,7 @@ export type Capture = {
   classification?: { activity: string; reason: string };
   context?: { domain?: string; project?: string; document?: string };
   visibleWindows?: {
-    windowID: number;
+    windowID: number | string;
     app: string;
     bundleID?: string;
     title: string;
@@ -58,6 +58,7 @@ export type State = {
     permission: string;
     /** Whether the backend reports time since the last input. */
     idle?: boolean;
+    desktopIntegration?: string;
   };
   exclusions: string[];
   directory: string;

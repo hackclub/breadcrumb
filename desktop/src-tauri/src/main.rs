@@ -93,6 +93,7 @@ async fn engine(
         "permissions",
         "share-source",
         "stop-sharing",
+        "install-linux-integration",
         "appIcon",
     ];
     if !commands.contains(&command.as_str()) {
@@ -232,6 +233,11 @@ fn open_panel(app: &tauri::AppHandle, anchor: Option<tauri::Rect>) {
         }
     }
 }
+#[cfg(target_os = "linux")]
+fn should_dismiss(_window: &tauri::WebviewWindow) -> bool {
+    false
+}
+#[cfg(not(target_os = "linux"))]
 fn should_dismiss(window: &tauri::WebviewWindow) -> bool {
     if window.is_focused().unwrap_or(true) {
         return false;
@@ -323,6 +329,12 @@ fn main() {
         .setup(|app| {
             let result: Result<(), Box<dyn std::error::Error>> = (|| {
                 app.manage(PopupState::default());
+                #[cfg(target_os = "linux")]
+                if let Some(window) = app.get_webview_window("main") {
+                    // GNOME does not require an AppIndicator extension to reach
+                    // the app: retain a launcher/task-switcher entry on Linux.
+                    let _ = window.set_skip_taskbar(false);
+                }
                 #[cfg(windows)]
                 if app.autolaunch().is_enabled().unwrap_or(false) {
                     // Refresh registrations from versions without the login-only flag.
@@ -421,7 +433,12 @@ fn main() {
                         "quit" => app.exit(0),
                         _ => {}
                     });
+                #[cfg(not(target_os = "linux"))]
                 tray.build(app)?;
+                #[cfg(target_os = "linux")]
+                {
+                    let _ = tray.build(app);
+                }
                 let first_launch = app
                     .state::<Engine>()
                     .request("status", json!({}))

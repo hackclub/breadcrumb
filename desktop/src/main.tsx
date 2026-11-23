@@ -1056,19 +1056,36 @@ function SettingsPage({
         {wayland ? (
           <>
             <p className="muted">
-              Share one screen or window using your desktop’s picker. Everything visible in that
-              source can be recorded, including Breadcrumb and password managers. App exclusions
-              cannot be enforced. App attribution, accessibility context, and automatic idle pause
-              are unavailable in this mode. Pausing recording ends sharing; select a source again
-              after resuming or restarting.
+              {state.capabilities.windowContext
+                ? "Native desktop integration provides app attribution, visible-window exclusions, and matching accessibility context. Share your displays; capture follows the focused window among the displays you authorize."
+                : "Shared-source mode records everything visible in the source you choose. Install native desktop integration for app attribution, accessibility context, and app exclusions."}{" "}
+              Your desktop can remember the grant across restarts. Pausing closes the live stream;
+              resuming restores the grant when your desktop permits. Stop sharing forgets it.
             </p>
+            {state.capabilities.desktopIntegration === "GNOME" &&
+              !state.capabilities.windowContext && (
+                <button
+                  className="outline"
+                  disabled={busy || !isNative}
+                  onClick={() =>
+                    action(
+                      () => engine("install-linux-integration"),
+                      "GNOME integration installed. Enable Breadcrumb desktop context in Extensions; a fresh login may be required.",
+                    )
+                  }
+                >
+                  Install GNOME desktop integration
+                </button>
+              )}
             <button
               className="outline"
               disabled={busy || !isNative || state.demo}
               onClick={async () => {
                 if (
                   !(await confirmAction(
-                    "Record all visible content in the source you choose? App exclusions, including password managers, cannot be applied on Wayland. Shared screenshots may also sync if your account is connected.",
+                    state.capabilities.windowContext
+                      ? "Choose the displays Breadcrumb may record. Native app exclusions apply. Your desktop may remember this permission across restarts. Connected accounts sync captured screenshots."
+                      : "Record all visible content in the source you choose? Without native desktop integration, app exclusions, including password managers, cannot be applied. Your desktop may remember this permission across restarts. Connected accounts sync captured screenshots.",
                   ))
                 )
                   return;
@@ -1102,22 +1119,24 @@ function SettingsPage({
           </button>
         )}
         <label>
-          {wayland ? "App exclusions (available in X11 sessions)" : "Never capture these apps"}
+          {wayland && !state.capabilities.windowContext
+            ? "App exclusions (requires native desktop integration)"
+            : "Never capture these apps"}
           <textarea
             value={exclusions}
-            disabled={wayland}
+            disabled={wayland && !state.capabilities.windowContext}
             onChange={(e) => setExclusions(e.target.value)}
             placeholder="App bundle IDs or executable names, one per line"
           />
         </label>
         <p className="muted">
-          {wayland
-            ? "Exclusions do not apply to portal screen sharing. Use an X11 login session for app exclusions and foreground app context."
+          {wayland && !state.capabilities.windowContext
+            ? "App exclusions require native compositor integration. Shared-source mode does not apply exclusions."
             : "Breadcrumb and known password managers are excluded by default. Where native filtering is unavailable, captures are skipped if an excluded app may be visible."}
         </p>
         <button
           className="outline"
-          disabled={busy || wayland}
+          disabled={busy || (wayland && !state.capabilities.windowContext)}
           onClick={() =>
             action(
               () =>

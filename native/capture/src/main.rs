@@ -2,6 +2,14 @@ use image::codecs::jpeg::JpegEncoder;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 mod idle;
+#[cfg(target_os = "linux")]
+mod linux_context;
+#[cfg(target_os = "linux")]
+mod linux_idle;
+#[cfg(target_os = "linux")]
+mod linux_state;
+#[cfg(target_os = "linux")]
+mod ocr;
 mod tree;
 #[cfg(target_os = "linux")]
 mod wayland;
@@ -12,7 +20,17 @@ fn capabilities() -> Value {
         return wayland::capabilities();
     }
     let supported = session_error().is_none();
-    json!({"screenshot":supported,"accessibility":supported && cfg!(any(windows,target_os="linux")),"ocr":false,"windowContext":supported,"exclusions":if supported {"skip-when-visible"} else {"unsupported-session"},"backend":if cfg!(windows){"Windows native capture + UI Automation"}else{"X11 capture + AT-SPI"},"permission":if supported {"managed-by-desktop"} else {"unsupported-session"},"idle":supported && idle::seconds().is_some()})
+    json!({"screenshot":supported,"accessibility":supported && cfg!(any(windows,target_os="linux")),"ocr":ocr_available(),"windowContext":supported,"exclusions":if supported {"skip-when-visible"} else {"unsupported-session"},"backend":if cfg!(windows){"Windows native capture + UI Automation"}else{"X11 capture + AT-SPI"},"permission":if supported {"managed-by-desktop"} else {"unsupported-session"},"idle":supported && idle::seconds().is_some()})
+}
+fn ocr_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        ocr::available()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 fn session_error() -> Option<&'static str> {
     #[cfg(windows)]
@@ -262,6 +280,14 @@ fn ensure_allowed(
 }
 fn perform(request: &Value) -> Result<Value, String> {
     #[cfg(target_os = "linux")]
+    if request["command"] == "desktop-context" {
+        return Ok(json!({"ok":true,"desktop":linux_context::snapshot()?}));
+    }
+    #[cfg(target_os = "linux")]
+    if request["command"] == "diagnostics" {
+        return wayland::diagnostics();
+    }
+    #[cfg(target_os = "linux")]
     if wayland::is_session() {
         return wayland::perform(request);
     }
@@ -333,6 +359,18 @@ fn perform(request: &Value) -> Result<Value, String> {
     JpegEncoder::new_with_quality(&mut jpeg, quality)
         .encode_image(&image)
         .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    let (screen_text, ocr_status) = ocr::snapshot(
+        &image,
+        request["settings"]["recognizeText"]
+            .as_bool()
+            .unwrap_or(false),
+    );
+    #[cfg(not(target_os = "linux"))]
+    let (screen_text, ocr_status): (Option<String>, &str) = (None, "Unavailable");
+    #[cfg(target_os = "linux")]
+    let (tree, tree_status) = tree::snapshot_for(focused.pid().map_err(|e| e.to_string())?, &title);
+    #[cfg(not(target_os = "linux"))]
     let (tree, tree_status) = tree::snapshot();
     // Re-read focus after pixels/tree; never pair them with a different app/window.
     let after = xcap::Window::all().map_err(|e| e.to_string())?;
@@ -359,7 +397,7 @@ fn perform(request: &Value) -> Result<Value, String> {
         visible.push(json!({"windowID":window.id().unwrap_or(0),"app":app,"bundleID":app,"title":window.title().unwrap_or_default(),"focused":window.id().ok()==Some(id),"visibility":"on-screen-window; occlusion unknown"}));
     }
     Ok(
-        json!({"ok":true,"contextKey":key,"capabilities":capabilities(),"record":{"app":app,"bundleID":app,"windowTitle":title,"windowID":id,"treeStatus":tree_status,"captureScope":"display","displayID":monitor.id().unwrap_or(0),"visibleWindows":visible},"payload":{"jpeg":base64(&jpeg),"tree":tree}}),
+        json!({"ok":true,"contextKey":key,"capabilities":capabilities(),"record":{"app":app,"bundleID":app,"windowTitle":title,"windowID":id,"treeStatus":tree_status,"ocrStatus":ocr_status,"captureScope":"display","displayID":monitor.id().unwrap_or(0),"visibleWindows":visible},"payload":{"jpeg":base64(&jpeg),"tree":tree,"screenText":screen_text}}),
     )
 }
 fn base64(input: &[u8]) -> String {

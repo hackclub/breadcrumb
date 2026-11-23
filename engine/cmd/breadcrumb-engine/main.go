@@ -136,7 +136,7 @@ func away(idle *float64, settings library.Settings) bool {
 }
 func (e *engine) stopSharing() {
 	if e.capture != nil && strings.HasPrefix(e.capabilities.Backend, "Wayland") {
-		response, err := e.capture.Request("stop-sharing", e.lib.Settings, e.exclusions)
+		response, err := e.capture.Request("suspend-sharing", e.lib.Settings, e.exclusions)
 		if err != nil {
 			_ = e.capture.Close()
 		}
@@ -151,7 +151,11 @@ func (e *engine) tick() {
 	}
 	settings := e.lib.Settings
 	exclusions := append([]string(nil), e.exclusions...)
+	resumeSharing := strings.HasPrefix(e.capabilities.Backend, "Wayland") && !e.capabilities.Screenshot
 	e.mu.Unlock()
+	if resumeSharing {
+		_, _ = e.capture.Request("resume-sharing", settings, exclusions)
+	}
 	probe, err := e.capture.Request("probe", settings, exclusions)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -508,12 +512,16 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 			e.syncError = ""
 		}
 		return e.state(), nil
-	case "permissions", "share-source", "stop-sharing":
+	case "permissions", "share-source", "stop-sharing", "install-linux-integration":
 		if e.capture == nil {
 			return nil, errors.New("capture adapter unavailable")
 		}
 		response, err := e.capture.Request(command, e.lib.Settings, e.exclusions)
-		e.capabilities = response.Capabilities
+		if command == "install-linux-integration" {
+			e.status = response.Message
+		} else {
+			e.capabilities = response.Capabilities
+		}
 		return response, err
 	}
 	return nil, fmt.Errorf("unknown engine command %q", command)

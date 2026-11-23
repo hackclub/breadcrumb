@@ -59,9 +59,13 @@
           "libxcb-randr0",
           "libxcb-xfixes0",
           "libwayland-client0",
-          "libxkbcommon0"
+          "libxkbcommon0",
+          "libtesseract5"
         ],
-        "recommends": ["at-spi2-core"]
+        "recommends": ["at-spi2-core"],
+        "files": {
+          "/usr/share/applications/app.rewind.local.desktop": "../resources/linux/app.rewind.local.desktop"
+        }
       },
       "rpm": {
         "depends": [
@@ -76,9 +80,19 @@
           "gstreamer1",
           "gstreamer1-plugins-base",
           "pipewire-gstreamer",
-          "xdg-desktop-portal"
+          "xdg-desktop-portal",
+          "tesseract-libs"
         ],
-        "recommends": ["at-spi2-core"]
+        "recommends": ["at-spi2-core"],
+        "files": {
+          "/usr/share/applications/app.rewind.local.desktop": "../resources/linux/app.rewind.local.desktop"
+        }
+      },
+      "appimage": {
+        "bundleMediaFramework": true,
+        "files": {
+          "usr/share/applications/app.rewind.local.desktop": "../resources/linux/app.rewind.local.desktop"
+        }
       }
     },
     "icon": [

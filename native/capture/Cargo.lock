@@ -317,10 +317,15 @@ dependencies = [
  "gstreamer-video",
  "image",
  "libc",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "uiautomation",
+ "wayland-client",
+ "wayland-protocols",
  "xcap",
+ "zbus 6.3.0",
 ]
 
 [[package]]
@@ -2767,6 +2772,8 @@ dependencies = [
  "serde",
  "serde_repr",
  "socket2",
+ "tokio",
+ "tracing",
  "uds_windows",
  "uuid",
  "windows-sys 0.61.2",
@@ -2949,6 +2956,7 @@ dependencies = [
  "futures-io",
  "rustix 1.1.6",
  "socket2",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 

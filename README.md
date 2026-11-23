@@ -41,9 +41,9 @@ You can run your own portal. Authentication uses Better Auth and PostgreSQL; cap
 | Windows  | Native display capture, UI Automation        | x64; see [Windows setup and validation](docs/windows.md) |
 | Linux    | X11 capture + AT-SPI; Wayland portal sharing | See [Linux setup and limitations](docs/linux.md)         |
 
-Wayland sharing records the selected source without app exclusions, foreground attribution, or automatic idle pause. Select a source explicitly in Settings → Privacy. X11 retains foreground context and exclusions.
+Wayland supports native window context and exclusions on supported desktops. Select displays in Settings → Privacy; see the Linux guide for setup and fallback behavior.
 
-Accessibility is optional on macOS. Windows and Linux do not yet provide local OCR. See [macOS installation and packaging](docs/macos.md) for Mac downloads and signing. Windows publisher signing remains separate from verified update signatures.
+Accessibility is optional on macOS. Windows does not yet provide local OCR. Linux includes local English OCR. See [macOS installation and packaging](docs/macos.md) for Mac downloads and signing. Windows publisher signing remains separate from verified update signatures.
 
 ## Run locally
 

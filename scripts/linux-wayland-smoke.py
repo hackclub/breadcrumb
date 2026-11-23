@@ -21,12 +21,16 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
     temp = Path(folder)
     runtime = temp / 'runtime'
     runtime.mkdir(mode=0o700)
+    data = temp / 'data'
+    (data / 'applications').mkdir(parents=True)
+    (data / 'applications/app.rewind.local.desktop').write_text('[Desktop Entry]\nName=Breadcrumb\nType=Application\nExec=breadcrumb-desktop\nNoDisplay=true\n')
     config = temp / 'config'
     backend = config / 'xdg-desktop-portal-wlr'
     backend.mkdir(parents=True)
     (backend / 'config').write_text('[screencast]\nchooser_type=none\noutput_name=HEADLESS-1\nmax_fps=5\n')
     (temp / 'sway.conf').write_text('output * bg #335577 solid_color\n')
     env = {**os.environ, 'XDG_RUNTIME_DIR': str(runtime), 'XDG_CONFIG_HOME': str(config),
+           'XDG_DATA_HOME': str(data), 'XDG_STATE_HOME': str(temp / 'state'), 'GDK_BACKEND': 'wayland', 'NO_AT_BRIDGE': '0', 'GTK_MODULES': 'gail:atk-bridge',
            'XDG_SESSION_TYPE': 'wayland', 'XDG_CURRENT_DESKTOP': 'sway',
            'WLR_BACKENDS': 'headless', 'WLR_LIBINPUT_NO_DEVICES': '1', 'WLR_RENDERER': 'pixman'}
     env.pop('DISPLAY', None)
@@ -49,8 +53,9 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
             time.sleep(.1)
         assert sockets and ipc, 'Headless Wayland compositor did not start'
         env['WAYLAND_DISPLAY'] = sockets[0].name
+        env['SWAYSOCK'] = str(ipc[0])
         subprocess.run(['dbus-update-activation-environment', *[f'{k}={env[k]}' for k in
-            ['WAYLAND_DISPLAY', 'XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME']]], check=True)
+            ['WAYLAND_DISPLAY', 'XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME']]], check=True)
         launch(['pipewire'])
         for _ in range(100):
             if (runtime / 'pipewire-0').is_socket():
@@ -68,6 +73,8 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
         assert 'true' in owner.stdout, 'Test portal did not register on D-Bus'
         launch([shutil.which('xdg-desktop-portal') or '/usr/libexec/xdg-desktop-portal'])
         time.sleep(3)
+        fixture = launch(['/usr/bin/python3', str(root / 'scripts/linux-tree-fixture.py')])
+        time.sleep(1)
         # A new, paused installation must expose portal setup before its first tick.
         target = 'aarch64' if os.uname().machine == 'aarch64' else 'x86_64'
         engine = root / f'desktop/src-tauri/binaries/breadcrumb-engine-{target}-unknown-linux-gnu'
@@ -79,8 +86,8 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
         helper = subprocess.Popen([str(binary)], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
         processes.append(helper)
 
-        def request(command):
-            helper.stdin.write(json.dumps({'command': command, 'settings': {'maximumWidth': 1280, 'jpegQuality': .65}}) + '\n')
+        def request(command, exclusions=None, settings=None):
+            helper.stdin.write(json.dumps({'command': command, 'settings': {'maximumWidth': 1280, 'jpegQuality': .65, 'recognizeText': True, **(settings or {})}, 'exclusions': exclusions or []}) + '\n')
             helper.stdin.flush()
             assert select.select([helper.stdout], [], [], 30)[0], f'{command} timed out'
             return json.loads(helper.stdout.readline())
@@ -103,16 +110,36 @@ with tempfile.TemporaryDirectory(prefix='breadcrumb-wayland-') as folder:
             time.sleep(.2)
         assert captured['ok'], captured
         assert base64.b64decode(captured['payload']['jpeg'], validate=True).startswith(b'\xff\xd8')
-        assert captured['record']['captureScope'] == 'portal-source'
-        assert captured['record']['app'] == 'Shared screen'
-        assert captured['payload']['tree'] == []
-        assert not captured['capabilities']['windowContext'] and not captured['capabilities']['idle']
-        assert captured['capabilities']['exclusions'] == 'unavailable-for-shared-source'
+        assert captured['record']['captureScope'] == 'display'
+        assert captured['record']['windowTitle'] == 'Synthetic GTK fixture'
+        for _ in range(20):
+            if 'PUBLIC_LABEL_SENTINEL' in json.dumps(captured['payload']['tree']):
+                break
+            time.sleep(.2)
+            captured = request('capture')
+            assert captured['ok'], captured.get('error')
+        assert 'PUBLIC_LABEL_SENTINEL' in json.dumps(captured['payload']['tree']), (captured['record']['treeStatus'], captured['payload']['tree'])
+        assert all(value not in json.dumps(captured['payload']['tree']) for value in ['EDITABLE_VALUE_SENTINEL', 'PASSWORD_VALUE_SENTINEL', 'COMBO_EDITABLE_SENTINEL'])
+        assert 'PUBLIC' in captured['payload']['screenText'], captured['record']['ocrStatus']
+        assert captured['capabilities']['windowContext'] and captured['capabilities']['idle']
+        assert captured['capabilities']['ocr']
+        excluded = request('capture', exclusions=[captured['record']['bundleID'].upper()])
+        assert not excluded.get('contextKey') and 'payload' not in excluded
+        assert captured['capabilities']['exclusions'] == 'skip-when-visible'
         time.sleep(6)
-        assert request('capture')['ok'], 'Static sources must continue providing fresh frames'
+        static = request('capture')
+        assert static['ok'], f'Static sources must continue providing fresh frames: {static}'
+        assert request('suspend-sharing')['ok']
+        assert not request('capture')['ok']
+        # Restore is explicit in the protocol and runs only when the engine's
+        # recording intent is on; ordinary probes never reopen a chooser.
+        restored = request('resume-sharing')
+        assert restored['ok'], restored
         assert request('stop-sharing')['ok']
         assert not request('capture')['ok'], 'Stopped sharing returned pixels'
         assert not request('probe')['ok'], 'Polling restarted sharing'
+        assert request('resume-sharing')['ok']
+        assert not request('capture')['ok'], 'Forgotten grant restored sharing'
         assert request('share-source')['ok'], 'Reselection failed'
         portal_backend.terminate()
         portal_backend.wait(timeout=5)
