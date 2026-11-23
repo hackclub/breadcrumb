@@ -78,16 +78,17 @@ pub fn snapshot() -> (Vec<Value>, String) {
     }
 }
 #[cfg(target_os = "linux")]
-pub fn snapshot() -> (Vec<Value>, String) {
-    // AT-SPI is queried through its standard D-Bus interface below. Missing bus
-    // access is a reported capability gap, never a fabricated empty success.
-    match linux_snapshot() {
-        Ok(rows) => (rows, "Filtered AT-SPI tree (bounded)".into()),
-        Err(e) => (vec![], format!("AT-SPI unavailable: {e}")),
+pub fn snapshot_for(pid: u32, title: &str) -> (Vec<Value>, String) {
+    match linux_snapshot(Some((pid, title))) {
+        Ok(rows) => (
+            rows,
+            "Filtered AT-SPI tree for the matching foreground window".into(),
+        ),
+        Err(error) => (Vec::new(), format!("AT-SPI unavailable: {error}")),
     }
 }
 #[cfg(target_os = "linux")]
-fn linux_snapshot() -> Result<Vec<Value>, String> {
+fn linux_snapshot(target: Option<(u32, &str)>) -> Result<Vec<Value>, String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -115,6 +116,7 @@ fn linux_snapshot() -> Result<Vec<Value>, String> {
                 .collect::<Vec<_>>();
             let deadline = std::time::Instant::now() + std::time::Duration::from_millis(700);
             let mut rows = Vec::new();
+            let mut matches = 0;
             while let Some((reference, depth)) = stack.pop() {
                 if depth > 7 || rows.len() >= 180 || std::time::Instant::now() > deadline {
                     break;
@@ -128,9 +130,38 @@ fn linux_snapshot() -> Result<Vec<Value>, String> {
                         .build()
                         .await
                         .map_err(|e| e.to_string())?;
+                if let Some((pid, title)) = target {
+                    if depth == 0 {
+                        let bus = atspi::zbus::fdo::DBusProxy::new(connection.connection())
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        let name = reference
+                            .name()
+                            .ok_or("Missing application bus name")?
+                            .as_str()
+                            .try_into()
+                            .map_err(|_| "Invalid application bus name")?;
+                        if bus
+                            .get_connection_unix_process_id(name)
+                            .await
+                            .map_err(|e| e.to_string())?
+                            != pid
+                        {
+                            continue;
+                        }
+                    } else if depth == 1 {
+                        if proxy.name().await.map_err(|e| e.to_string())? != title {
+                            continue;
+                        }
+                        matches += 1;
+                        if matches > 1 {
+                            return Err("Accessible window identity is ambiguous".to_owned());
+                        }
+                    }
+                }
                 let states = proxy.get_state().await.map_err(|e| e.to_string())?;
                 // Traverse applications but include only their active/showing windows.
-                if depth == 1 && !states.contains(atspi::State::Active) {
+                if target.is_none() && depth == 1 && !states.contains(atspi::State::Active) {
                     continue;
                 }
                 let role = proxy.get_role_name().await.unwrap_or_default();
@@ -156,6 +187,11 @@ fn linux_snapshot() -> Result<Vec<Value>, String> {
                         stack.extend(children.into_iter().rev().take(60).map(|r| (r, depth + 1)));
                     }
                 }
+            }
+            if target.is_some() && matches != 1 {
+                return Err(
+                    "Focused application does not expose a matching accessible window".to_owned(),
+                );
             }
             Ok(rows)
         })

@@ -12,7 +12,7 @@ On macOS, Windows, and X11, screenshots cover the full display containing the fo
 
 - **macOS:** ScreenCaptureKit, filtered Accessibility tree, local Vision OCR. Requires macOS 14 Sonoma or newer. Screen Recording is required; Accessibility is optional. Stable bundle ID `app.rewind.local` and signing identity retain permission identity across updates; macOS may still request approval after a host or signing change.
 - **Windows:** native display capture, focused/visible window context, filtered UI Automation tree. No local OCR yet.
-- **Linux:** X11 native display capture and filtered AT-SPI tree; Wayland uses explicitly selected portal screen sharing. Wayland sharing has no app exclusions, foreground attribution, accessibility tree, or idle detection. No local OCR yet. See [Linux setup](linux.md).
+- **Linux:** X11 native display capture and filtered AT-SPI tree; Wayland uses explicitly selected portal screen sharing. Wayland uses compositor integration for foreground context, visible-window exclusions, and matching AT-SPI trees on supported desktops. Local English OCR and idle detection are available. See [Linux setup](linux.md).
 
 On Windows and Linux X11, capture skips samples when an excluded window may be visible because those APIs cannot reliably filter arbitrary windows out of the full display. macOS excludes app windows from its capture stream. Accessibility trees skip editable/password values and have bounded traversal. Screenshots and visible labels can still contain private information.
 

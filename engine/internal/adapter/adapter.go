@@ -12,20 +12,22 @@ import (
 )
 
 type Capabilities struct {
-	Screenshot    bool   `json:"screenshot"`
-	Accessibility bool   `json:"accessibility"`
-	OCR           bool   `json:"ocr"`
-	WindowContext bool   `json:"windowContext"`
-	Exclusions    string `json:"exclusions"`
-	Backend       string `json:"backend"`
-	Permission    string `json:"permission"`
-	Idle          bool   `json:"idle"`
+	Screenshot         bool   `json:"screenshot"`
+	Accessibility      bool   `json:"accessibility"`
+	OCR                bool   `json:"ocr"`
+	WindowContext      bool   `json:"windowContext"`
+	Exclusions         string `json:"exclusions"`
+	Backend            string `json:"backend"`
+	Permission         string `json:"permission"`
+	Idle               bool   `json:"idle"`
+	DesktopIntegration string `json:"desktopIntegration,omitempty"`
 }
 type Response struct {
 	Icon                string `json:"icon,omitempty"`
 	RecordingPreference *bool  `json:"recordingPreference"`
 	OK                  bool   `json:"ok"`
 	Error               string `json:"error"`
+	Message             string `json:"message,omitempty"`
 	ContextKey          string `json:"contextKey"`
 	// IdleSeconds is the time since the last user input; nil when the platform cannot report it.
 	IdleSeconds  *float64        `json:"idleSeconds"`
@@ -88,7 +90,7 @@ func (p *Process) Request(command string, settings library.Settings, exclusions 
 	if command != "probe" {
 		timeout = 45 * time.Second
 	}
-	if command == "share-source" {
+	if command == "share-source" || command == "resume-sharing" {
 		timeout = 2 * time.Minute
 	}
 	var line []byte

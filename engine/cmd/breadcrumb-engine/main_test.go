@@ -118,7 +118,7 @@ func TestPauseEndsWaylandSharing(t *testing.T) {
 	if _, err := e.dispatch("toggle", nil); err != nil {
 		t.Fatal(err)
 	}
-	if e.recording || e.capabilities.Screenshot || len(capture.commands) != 1 || capture.commands[0] != "stop-sharing" {
+	if e.recording || e.capabilities.Screenshot || len(capture.commands) != 1 || capture.commands[0] != "suspend-sharing" {
 		t.Fatalf("pause did not end sharing: %+v, %v", e.capabilities, capture.commands)
 	}
 	if _, err := e.dispatch("toggle", nil); err != nil {
