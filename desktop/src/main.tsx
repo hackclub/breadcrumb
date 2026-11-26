@@ -3,7 +3,15 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { SyncProgress } from "./sync-progress";
 import { SyncPage } from "./sync-page";
-import { engine, isNative, hidePanel, withPanelDialog, confirmAction, onPanelOpen } from "./bridge";
+import {
+  defaultServer,
+  engine,
+  isNative,
+  hidePanel,
+  withPanelDialog,
+  confirmAction,
+  onPanelOpen,
+} from "./bridge";
 import {
   activities,
   activity,
@@ -860,7 +868,7 @@ function SettingsPage({
   const wayland = state.capabilities.backend.startsWith("Wayland");
   const [draft, setDraft] = useState(state.settings),
     [exclusions, setExclusions] = useState(state.exclusions.join("\n")),
-    [server, setServer] = useState(state.server || ""),
+    [server, setServer] = useState(state.server || defaultServer),
     [startup, setStartup] = useState(false);
   useEffect(() => {
     if (isNative)

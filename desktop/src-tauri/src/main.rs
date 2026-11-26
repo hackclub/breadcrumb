@@ -95,6 +95,10 @@ async fn engine(
         "stop-sharing",
         "install-linux-integration",
         "appIcon",
+        "agentUsage",
+        "agentUsageSettings",
+        "agentUsageSync",
+        "beginAgentSignIn",
     ];
     if !commands.contains(&command.as_str()) {
         return Err("Unknown desktop command".into());
