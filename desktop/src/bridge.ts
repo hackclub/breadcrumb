@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { State, Payload } from "./types";
 const native = Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
 export const isNative = native;
+export const defaultServer = "https://breadcrumb.hackclub.com/";
 export async function withPanelDialog<T>(task: () => Promise<T> | T): Promise<T> {
   if (native) await invoke("panel_dialog", { open: true });
   try {
