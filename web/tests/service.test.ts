@@ -302,6 +302,21 @@ test("synced history counts concurrent uploads once and excludes overlapping tim
         );
     }
   }
+  // Without an analytics index, `since` is ignored and full history is returned.
+  const since = await (
+    await service.dispatch(
+      req("/v1/account/summary?since=9999-01-01", undefined, undefined, headers),
+    )
+  ).json();
+  assert.deepEqual(since.days, summary.days);
+  assert.equal(
+    (
+      await service.dispatch(
+        req("/v1/account/summary?since=yesterday", undefined, undefined, headers),
+      )
+    ).status,
+    400,
+  );
   assert.equal((await service.dispatch(req("/v1/account/summary"))).status, 401);
   const another = "another-session";
   assert.equal(

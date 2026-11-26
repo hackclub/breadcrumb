@@ -488,7 +488,11 @@ export class Service {
         } catch {
           fail(400, "Invalid time zone");
         }
-        const cursor = url.searchParams.get("cursor") ?? "";
+        const since = url.searchParams.get("since") ?? "";
+        if (since && !/^\d{4}-\d{2}-\d{2}$/.test(since)) fail(400, "Invalid since date");
+        // Analytics cursors are UTC days, so `since` starts a page there. R2 listings use opaque
+        // continuation tokens; they ignore `since` and return full history.
+        const cursor = url.searchParams.get("cursor") || (this.analytics ? since : "");
         if (this.analytics && cursor && !/^\d{4}-\d{2}-\d{2}$/.test(cursor))
           fail(400, "Invalid analytics cursor");
         return Response.json(
