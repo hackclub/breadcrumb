@@ -401,3 +401,21 @@ func TestPauseCancelsEveryUploadAndResumesWithoutLosingQueue(t *testing.T) {
 		t.Fatal("sync options did not persist")
 	}
 }
+
+func TestStoppedConnectionExplainsHowToResume(t *testing.T) {
+	lib, err := library.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &engine{lib: lib, credentials: credentials{Server: "https://example.com", Token: "token"}}
+	if message, _ := e.syncState()["error"].(string); !strings.Contains(message, "Sign in again") {
+		t.Fatalf("stopped sync did not explain how to resume: %q", message)
+	}
+	e.credentials.AutoSync = true
+	e.credentials.SyncPaused = true
+	e.syncProfile = e.syncDirectory(e.credentials)
+	e.syncSent = map[string]bool{}
+	if message, _ := e.syncState()["error"].(string); message != "" {
+		t.Fatalf("enabled sync reported an error: %q", message)
+	}
+}

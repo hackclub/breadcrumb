@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { SyncProgress } from "./sync-progress";
 import { SyncPage } from "./sync-page";
 import {
-  defaultServer,
+  portalServer,
   engine,
   isNative,
   hidePanel,
@@ -340,8 +340,8 @@ function App() {
               {state.sync && (state.connected || state.sync.enabled) && (
                 <button
                   className="sync-status quiet"
-                  aria-label="Open sync details"
-                  onClick={() => expand("sync")}
+                  aria-label={state.sync.enabled ? "Open sync details" : "Open account settings"}
+                  onClick={() => expand(state.sync?.enabled ? "sync" : "settings")}
                 >
                   <SyncProgress sync={state.sync} />
                 </button>
@@ -868,7 +868,7 @@ function SettingsPage({
   const wayland = state.capabilities.backend.startsWith("Wayland");
   const [draft, setDraft] = useState(state.settings),
     [exclusions, setExclusions] = useState(state.exclusions.join("\n")),
-    [server, setServer] = useState(state.server || defaultServer),
+    [server, setServer] = useState(portalServer(state.server)),
     [startup, setStartup] = useState(false);
   useEffect(() => {
     if (isNative)

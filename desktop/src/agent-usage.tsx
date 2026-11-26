@@ -1,6 +1,6 @@
 import { AgentUsageView as SharedAgentUsageView } from "../../web/app/agent-usage-view";
 import { useEffect, useState } from "react";
-import { defaultServer, engine, isNative } from "./bridge";
+import { engine, isNative, portalServer } from "./bridge";
 import type { AgentStatus, AgentUsage } from "./agent-usage-types";
 export function AgentUsageSettings({ server }: { server?: string }) {
   const [status, setStatus] = useState<AgentStatus | null>(null),
@@ -86,7 +86,7 @@ type UploadStatus = {
 };
 function AgentUploadSettings({ initialServer }: { initialServer?: string }) {
   const [state, setState] = useState<UploadStatus | null>(null),
-    [server, setServer] = useState(initialServer || defaultServer),
+    [server, setServer] = useState(portalServer(initialServer)),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   useEffect(() => {
