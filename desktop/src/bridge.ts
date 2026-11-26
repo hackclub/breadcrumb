@@ -4,6 +4,11 @@ import type { State, Payload } from "./types";
 const native = Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
 export const isNative = native;
 export const defaultServer = "https://breadcrumb.hackclub.com/";
+// Connections saved before the portal moved to hackclub.com should sign in again there.
+export const portalServer = (server?: string) =>
+  !server || /^https:\/\/breadcrumb\.hackclub\.dev\/?$/i.test(server.trim())
+    ? defaultServer
+    : server;
 export async function withPanelDialog<T>(task: () => Promise<T> | T): Promise<T> {
   if (native) await invoke("panel_dialog", { open: true });
   try {

@@ -198,7 +198,12 @@ func (e *engine) syncState() map[string]any {
 		first := e.syncByteSamples[0]
 		byteRate = float64(e.syncBytes-first.Bytes) / max(.001, time.Since(first.At).Seconds())
 	}
-	return map[string]any{"email": e.credentials.Email, "enabled": e.credentials.AutoSync, "paused": e.credentials.SyncPaused, "uploaded": uploaded, "pending": pending, "etaSeconds": eta, "uploading": e.syncInFlight, "active": active, "parallelism": syncConcurrency(e.credentials), "capturesPerSecond": rate, "bytesPerSecond": byteRate, "bytesSent": e.syncBytes, "sessionUploaded": e.syncSessionUploaded, "imagesReused": e.syncReused, "retryAt": e.syncBackoff.UTC().Format(time.RFC3339), "error": e.syncError, "failed": len(e.syncFailures), "lastSynced": e.syncLast, "signingIn": e.auth != nil, "authError": e.authError}
+	syncError := e.syncError
+	if syncError == "" && e.credentials.Token != "" && !e.credentials.AutoSync {
+		// Sync is only switched off this way after the portal rejects the connection; that reason is not persisted.
+		syncError = "Sync stopped because the portal rejected this connection. Sign in again to resume syncing."
+	}
+	return map[string]any{"email": e.credentials.Email, "enabled": e.credentials.AutoSync, "paused": e.credentials.SyncPaused, "uploaded": uploaded, "pending": pending, "etaSeconds": eta, "uploading": e.syncInFlight, "active": active, "parallelism": syncConcurrency(e.credentials), "capturesPerSecond": rate, "bytesPerSecond": byteRate, "bytesSent": e.syncBytes, "sessionUploaded": e.syncSessionUploaded, "imagesReused": e.syncReused, "retryAt": e.syncBackoff.UTC().Format(time.RFC3339), "error": syncError, "failed": len(e.syncFailures), "lastSynced": e.syncLast, "signingIn": e.auth != nil, "authError": e.authError}
 }
 
 func queuedPayload(profile, id string) (queuedCapture, error) {

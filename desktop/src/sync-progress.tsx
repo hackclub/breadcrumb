@@ -26,9 +26,11 @@ export function SyncProgress({ sync }: { sync: NonNullable<State["sync"]> }) {
                   ? "Syncing"
                   : "All captures synced"}
         </span>
-        <span>
-          {sync.uploaded.toLocaleString()} / {total.toLocaleString()}
-        </span>
+        {(sync.enabled || total > 0) && (
+          <span>
+            {sync.uploaded.toLocaleString()} / {total.toLocaleString()}
+          </span>
+        )}
       </span>
       {sync.pending > 0 && (
         <>
