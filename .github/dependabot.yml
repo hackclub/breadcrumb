@@ -15,6 +15,11 @@ updates:
     groups:
       go:
         patterns: ["*"]
+    # modernc.org/sqlite requires the exact libc and memory versions it was built with.
+    # They move only when the sqlite driver is upgraded.
+    ignore:
+      - dependency-name: modernc.org/libc
+      - dependency-name: modernc.org/memory
   - package-ecosystem: cargo
     directories: ["/desktop/src-tauri", "/native/capture"]
     schedule:

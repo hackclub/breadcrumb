@@ -18,9 +18,9 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 libc = "0.2"
 ashpd = { version = "0.14", default-features = false, features = ["async-io", "screencast"] }
 futures-util = "0.3"
-gstreamer = "0.24"
-gstreamer-app = "0.24"
-gstreamer-video = "0.24"
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+gstreamer-video = "0.25"
 serde = { version = "1", features = ["derive"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }

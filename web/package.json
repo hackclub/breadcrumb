@@ -26,14 +26,14 @@
     "test:agents:backends": "bun scripts/agents-smoke.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1169.0",
-    "@aws-sdk/s3-request-presigner": "3.1169.0",
-    "@better-auth/cimd": "1.7.27",
-    "@better-auth/oauth-provider": "1.7.27",
+    "@aws-sdk/client-s3": "3.1178.0",
+    "@aws-sdk/s3-request-presigner": "3.1178.0",
+    "@better-auth/cimd": "1.7.28",
+    "@better-auth/oauth-provider": "1.7.28",
     "@modelcontextprotocol/server": "2.4.0",
-    "@vercel/functions": "3.11.3",
-    "@vercel/speed-insights": "^2.1.0",
-    "better-auth": "1.7.27",
+    "@vercel/functions": "3.11.4",
+    "@vercel/speed-insights": "^2.1.1",
+    "better-auth": "1.7.28",
     "next": "16.4.6",
     "pg": "^8.23.1",
     "react": "19.3.1",
@@ -43,10 +43,10 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.4.0",
-    "@types/bun": "latest",
-    "@types/node": "26.6.6",
+    "@types/bun": "^1.4.5",
+    "@types/node": "26.6.11",
     "@types/pg": "^8.23.1",
-    "@types/react": "19.3.0",
+    "@types/react": "19.3.3",
     "@types/react-dom": "19.3.0",
     "typescript": "7.0.2"
   }
