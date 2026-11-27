@@ -118,48 +118,48 @@ export function useUpdates() {
   return { ...info, phase, error, progress, check, install };
 }
 export type AppUpdates = ReturnType<typeof useUpdates>;
-export function UpdatesSection({ updates }: { updates: AppUpdates }) {
+export function UpdateRows({ updates }: { updates: AppUpdates }) {
   const installing = updates.phase === "installing";
   const busy = installing || updates.phase === "checking";
   const progress = updates.progress.total
     ? Math.min(100, (updates.progress.downloaded / updates.progress.total) * 100)
     : undefined;
   return (
-    <section className="settings-section">
-      <h2>Updates</h2>
+    <>
       <div className="setting-row">
-        <span>Breadcrumb</span>
-        <span>{updates.currentVersion || (isNative ? "…" : "Browser preview")}</span>
+        <span>
+          Version {updates.currentVersion || (isNative ? "…" : "preview")}
+          <small role="status" aria-label="Update status">
+            {installing
+              ? `Downloading ${bytes(updates.progress.downloaded)}${updates.progress.total ? ` of ${bytes(updates.progress.total)}` : ""}…`
+              : updates.version
+                ? `Version ${updates.version} is available.`
+                : updates.phase === "checking"
+                  ? "Checking for updates…"
+                  : updates.phase === "current"
+                    ? "No updates available."
+                    : "Checks automatically every four hours."}
+          </small>
+        </span>
+        <button className="quiet" disabled={!isNative || busy} onClick={() => void updates.check()}>
+          {updates.phase === "checking" ? "Checking…" : "Check for updates"}
+        </button>
       </div>
-      <p role="status" aria-label="Update status">
-        {installing
-          ? `Downloading ${bytes(updates.progress.downloaded)}${updates.progress.total ? ` of ${bytes(updates.progress.total)}` : ""}…`
-          : updates.version
-            ? `Version ${updates.version} is available.`
-            : updates.phase === "checking"
-              ? "Checking for updates…"
-              : updates.phase === "current"
-                ? "No updates available."
-                : "Checks automatically every four hours."}
-      </p>
+      {updates.version && (
+        <div className="actions">
+          <button className="primary" disabled={busy} onClick={() => void updates.install()}>
+            {installing ? "Installing…" : "Install & restart"}
+          </button>
+        </div>
+      )}
       {installing && <progress aria-label="Update download" value={progress} max={100} />}
       {updates.error && <p role="alert">{updates.error}</p>}
-      {updates.notes && (
+      {updates.notes && updates.version && (
         <details>
           <summary>What’s new</summary>
           <p className="update-notes">{updates.notes}</p>
         </details>
       )}
-      <div className="actions">
-        <button disabled={!isNative || busy} onClick={() => void updates.check()}>
-          {updates.phase === "checking" ? "Checking…" : "Check for updates"}
-        </button>
-        {updates.version && (
-          <button className="primary" disabled={busy} onClick={() => void updates.install()}>
-            {installing ? "Installing…" : "Install & restart"}
-          </button>
-        )}
-      </div>
-    </section>
+    </>
   );
 }

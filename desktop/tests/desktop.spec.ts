@@ -56,11 +56,10 @@ test("logging settings persist within the preview and reductions request confirm
     confirmed = true;
     await dialog.accept();
   });
-  await page.getByRole("button", { name: "Apply logging settings" }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Logging settings saved." }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Settings saved." })).toBeVisible();
   expect(confirmed).toBe(true);
+  await expect(page.getByRole("group", { name: "Unsaved settings" })).toHaveCount(0);
   await page.getByRole("button", { name: "Back to overview", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByLabel("Keep history")).toHaveValue("168");
@@ -129,4 +128,25 @@ test("sync status opens fixed-size details with upload controls", async ({ page 
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(400);
   await page.getByRole("button", { name: "Back to overview", exact: true }).click();
   await expect(page.getByRole("button", { name: "Open sync details" })).toBeVisible();
+});
+
+test("settings save only real changes and keep the usage server tucked away", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open history", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const unsaved = page.getByRole("group", { name: "Unsaved settings" });
+  await expect(unsaved).toHaveCount(0);
+  await page.getByLabel("Capture interval", { exact: true }).selectOption("120");
+  await expect(unsaved).toBeVisible();
+  await unsaved.getByRole("button", { name: "Discard" }).click();
+  await expect(unsaved).toHaveCount(0);
+  await expect(page.getByLabel("Capture interval", { exact: true })).toHaveValue("60");
+  const saveExclusions = page.getByRole("button", { name: "Save exclusions" });
+  await expect(saveExclusions).toBeDisabled();
+  await page.getByLabel("Never capture these apps").fill("com.example.secret");
+  await expect(saveExclusions).toBeEnabled();
+  const usageServer = page.getByLabel("Usage server");
+  await expect(usageServer).toBeHidden();
+  await page.getByText("Use a different server").click();
+  await expect(usageServer).toHaveValue("https://breadcrumb.example");
 });
