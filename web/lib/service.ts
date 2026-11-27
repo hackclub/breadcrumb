@@ -6,6 +6,8 @@ import { z } from "zod";
 import type { Store } from "./store";
 import { analyticsIndex, type AnalyticsIndex, type IndexedSample } from "./analytics";
 import { recordSynced, syncedSummary, syncSample } from "./sync";
+import { Timing } from "./timing";
+import { platformDB } from "./platform-db";
 import { createAuthAccess, type AuthAccess, type Identity } from "./auth";
 export const sha = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex");
 const secret = () => randomBytes(32).toString("hex");
@@ -354,6 +356,25 @@ export class Service {
       fail(409, "Review already submitted");
     return new Response(null, { status: 201 });
   }
+  /** Round-trip latency from this function to each backing service. Reveals no account data. */
+  async timingProbe() {
+    const rounds = async (task: () => Promise<unknown>) => {
+      const times: number[] = [];
+      for (let i = 0; i < 5; i++) {
+        const start = performance.now();
+        await task();
+        times.push(Math.round((performance.now() - start) * 10) / 10);
+      }
+      return times;
+    };
+    const db = this.env.DATABASE_URL ? platformDB() : undefined;
+    return {
+      region: this.env.VERCEL_REGION ?? null,
+      analytics: this.analytics?.ping ? await rounds(() => this.analytics!.ping!()) : null,
+      database: db ? await rounds(() => db.query("SELECT 1")) : null,
+      r2: await rounds(() => this.store.get("diagnostics/timing-probe-missing.json")),
+    };
+  }
   async runReview() {
     if (this.env.ENABLE_AI_REVIEWS !== "true") return { status: "disabled" };
     if (!this.env.AI_GATEWAY_API_KEY || !this.env.AI_GATEWAY_MODEL)
@@ -480,8 +501,14 @@ export class Service {
         });
         return Response.json({ done: !page.cursor });
       }
+      if (path === "/api/cron/timing" && method === "GET") {
+        if (!this.env.CRON_SECRET || !equal(sha(this.token(req)), sha(this.env.CRON_SECRET)))
+          fail(401, "Cron authorization required");
+        return Response.json(await this.timingProbe());
+      }
       if (path === "/v1/account/summary" && method === "GET") {
-        const account = await this.account(req, "session");
+        const timing = new Timing();
+        const account = await timing.measure("auth", () => this.account(req, "session"));
         const zone = url.searchParams.get("timeZone") || "UTC";
         try {
           new Intl.DateTimeFormat("en", { timeZone: zone });
@@ -495,9 +522,16 @@ export class Service {
         const cursor = url.searchParams.get("cursor") || (this.analytics ? since : "");
         if (this.analytics && cursor && !/^\d{4}-\d{2}-\d{2}$/.test(cursor))
           fail(400, "Invalid analytics cursor");
-        return Response.json(
-          await syncedSummary(this.store, account.id, cursor, zone, this.analytics),
+        const summary = await syncedSummary(
+          this.store,
+          account.id,
+          cursor,
+          zone,
+          this.analytics,
+          timing,
         );
+        timing.log("summary_timing");
+        return Response.json(summary, { headers: { "Server-Timing": timing.header() } });
       }
       if (path === "/v1/ingest" && method === "POST") {
         const account = await this.account(req, "upload");

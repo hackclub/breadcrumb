@@ -269,9 +269,13 @@ test("synced history counts concurrent uploads once and excludes overlapping tim
   assert.ok(results.every((result) => result.status === 201));
   await service.dispatch(req("/v1/ingest", captures[0], token));
   const headers = { Cookie: session };
-  const summary = await (
-    await service.dispatch(req("/v1/account/summary", undefined, undefined, headers))
-  ).json();
+  const summaryResponse = await service.dispatch(
+    req("/v1/account/summary", undefined, undefined, headers),
+  );
+  assert.match(summaryResponse.headers.get("server-timing") ?? "", /auth;dur=.*total;dur=/);
+  const summary = await summaryResponse.json();
+  // Latency diagnostics require the cron secret.
+  assert.equal((await service.dispatch(req("/api/cron/timing"))).status, 401);
   assert.equal(
     summary.days.reduce((sum: number, day: { captures: number }) => sum + day.captures, 0),
     8,
