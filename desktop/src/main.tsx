@@ -849,6 +849,11 @@ function PageTitle({ title, text }: { title: string; text: string }) {
     </div>
   );
 }
+// The bundled font loads in milliseconds; waiting for it keeps text from reflowing after first paint.
+await Promise.race([
+  document.fonts.load('600 12px "Familjen Grotesk"').catch(() => null),
+  new Promise((resolve) => setTimeout(resolve, 1000)),
+]);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {new URLSearchParams(location.search).get("view") === "dashboard" ? (
