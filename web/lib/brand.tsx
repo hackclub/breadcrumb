@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-/** The same unequal crumbs and red indicator used by the macOS menu bar. */
+/** The unequal crumbs from the app icon, without the desktop recording indicator. */
 export function BrandIcon({
   size = 24,
   className,
@@ -24,7 +24,7 @@ export function BrandIcon({
       <circle cx="13" cy="13" r="6" />
       <circle cx="29" cy="15" r="4.5" />
       <circle cx="18" cy="31" r="4.5" />
-      <circle cx="35" cy="35" r="5.5" fill="#ef5555" />
+      <circle cx="35" cy="35" r="5.5" />
     </svg>
   );
 }
