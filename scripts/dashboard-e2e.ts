@@ -238,12 +238,15 @@ try {
     await expect(page.getByRole("button", { name: "Clear day ×" })).toBeVisible();
     const cells = page.locator(".hour-cell");
     await expect(cells).toHaveCount(24);
+    // Each hour's crumb is drawn by the cell's ::before.
     const paint = await cells.nth(1).evaluate((element) => ({
-      actual: getComputedStyle(element).backgroundColor,
+      actual: getComputedStyle(element, "::before").backgroundColor,
       height: element.getBoundingClientRect().height,
     }));
     expect(paint.actual).not.toBe(
-      await cells.first().evaluate((element) => getComputedStyle(element).backgroundColor),
+      await cells
+        .first()
+        .evaluate((element) => getComputedStyle(element, "::before").backgroundColor),
     );
     expect(paint.height).toBe(22);
     await cells.nth(1).click();
