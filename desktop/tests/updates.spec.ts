@@ -31,6 +31,7 @@ test("updates refresh native status after wake and install only after confirmati
               return {
                 enabled: false,
                 connected: false,
+                allowed: false,
                 server: "",
                 lastSynced: "",
                 error: "",

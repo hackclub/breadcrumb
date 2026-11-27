@@ -5,7 +5,8 @@ import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { Pool } from "pg";
 import { testUtils } from "better-auth/plugins";
 import { getMigrations } from "better-auth/db/migration";
-import { authOptions, participantID } from "../lib/auth";
+import { authOptions, createAuthAccess, participantID, type BreadcrumbAuth } from "../lib/auth";
+import { Service } from "../lib/service";
 import { integrationsSchema } from "../lib/platform-db";
 import { sharesSchema, Screenshots } from "../lib/screenshots";
 import { MemoryStore } from "../lib/store";
@@ -41,7 +42,12 @@ const options = authOptions({
   env: { NODE_ENV: "test" },
   send: async () => {},
 });
-const auth = betterAuth({ ...options, plugins: [...options.plugins, testUtils()] });
+// Registers several clients from one address, so the per-path auth limiter would trip.
+const auth = betterAuth({
+  ...options,
+  rateLimit: { enabled: false },
+  plugins: [...options.plugins, testUtils()],
+});
 const registeredClients: string[] = [];
 const ids = [
   "api_smoke_" + randomBytes(8).toString("hex"),
@@ -49,7 +55,7 @@ const ids = [
 ];
 try {
   await pool.query("CREATE SCHEMA IF NOT EXISTS breadcrumb_auth");
-  await (await getMigrations(auth.options)).runMigrations();
+  await (await getMigrations({ ...auth.options, rateLimit: options.rateLimit })).runMigrations();
   await pool.query(profilesSchema + integrationsSchema + sharesSchema + leaderboardsSchema);
   const { test } = await auth.$context;
   const cookies: string[] = [];
@@ -138,58 +144,63 @@ try {
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
     );
-  const registered = await requestAuth("/oauth2/register", {
-    client_name: "Integration fixture",
-    application_type: "native",
-    token_endpoint_auth_method: "none",
-    redirect_uris: ["http://127.0.0.1:49201/callback"],
-    grant_types: ["authorization_code"],
-    response_types: ["code"],
-    scope: "time:read",
-    resources: [root + "/api/v1"],
-  });
-  assert.equal(registered.status, 201);
-  const oauthClient = await registered.json();
-  registeredClients.push(oauthClient.client_id);
-  const verifier = randomBytes(32).toString("base64url");
-  const start = await requestAuth(
-    "/oauth2/authorize?" +
-      new URLSearchParams({
-        client_id: oauthClient.client_id,
-        response_type: "code",
-        redirect_uri: oauthClient.redirect_uris[0],
-        scope: "time:read",
-        resource: root + "/api/v1",
-        prompt: "consent",
-        code_challenge: createHash("sha256").update(verifier).digest("base64url"),
-        code_challenge_method: "S256",
+  // Registers a native client and completes consent with PKCE, like the desktop app and MCP clients.
+  async function connect(scope: string, resource: string, name = "Integration fixture") {
+    const registered = await requestAuth("/oauth2/register", {
+      client_name: name,
+      application_type: "native",
+      token_endpoint_auth_method: "none",
+      redirect_uris: ["http://127.0.0.1:49201/callback"],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      scope,
+      resources: [resource],
+    });
+    assert.equal(registered.status, 201);
+    const client = await registered.json();
+    registeredClients.push(client.client_id);
+    const verifier = randomBytes(32).toString("base64url");
+    const start = await requestAuth(
+      "/oauth2/authorize?" +
+        new URLSearchParams({
+          client_id: client.client_id,
+          response_type: "code",
+          redirect_uri: client.redirect_uris[0],
+          scope,
+          resource,
+          prompt: "consent",
+          code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+          code_challenge_method: "S256",
+        }),
+      undefined,
+      { Cookie: cookies[0], Accept: "text/html" },
+    );
+    const consent = new URL(start.headers.get("location")!, root);
+    const approved = await requestAuth(
+      "/oauth2/consent",
+      { accept: true, oauth_query: consent.search.slice(1) },
+      { Cookie: cookies[0] },
+    );
+    const callback = new URL((await approved.json()).url);
+    const exchanged = await auth.handler(
+      new Request(root + "/api/auth/oauth2/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: client.client_id,
+          redirect_uri: client.redirect_uris[0],
+          resource,
+          code: callback.searchParams.get("code")!,
+          code_verifier: verifier,
+        }),
       }),
-    undefined,
-    { Cookie: cookies[0], Accept: "text/html" },
-  );
-  const consent = new URL(start.headers.get("location")!, root);
-  const approved = await requestAuth(
-    "/oauth2/consent",
-    { accept: true, oauth_query: consent.search.slice(1) },
-    { Cookie: cookies[0] },
-  );
-  const callback = new URL((await approved.json()).url);
-  const exchanged = await auth.handler(
-    new Request(root + "/api/auth/oauth2/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        client_id: oauthClient.client_id,
-        redirect_uri: oauthClient.redirect_uris[0],
-        resource: root + "/api/v1",
-        code: callback.searchParams.get("code")!,
-        code_verifier: verifier,
-      }),
-    }),
-  );
-  assert.equal(exchanged.status, 200);
-  const accessToken = (await exchanged.json()).access_token;
+    );
+    assert.equal(exchanged.status, 200, `${scope} ${resource}: ${await exchanged.clone().text()}`);
+    return { clientId: client.client_id as string, token: await exchanged.json() };
+  }
+  const oauthClient = await connect("time:read", root + "/api/v1");
+  const accessToken = oauthClient.token.access_token;
   const read = (path: string) =>
     integrationsAPI(
       new Request(root + "/api/v1/" + path, {
@@ -206,9 +217,91 @@ try {
   assert.equal((await read("screenshots")).status, 403);
   const grants = await auth.api.getOAuthConsents({ headers: new Headers({ Cookie: cookies[0] }) });
   await call("connections", "DELETE", {
-    id: grants.find((g) => g.clientId === oauthClient.client_id)!.id,
+    id: grants.find((g) => g.clientId === oauthClient.clientId)!.id,
   });
   assert.equal((await read("activity")).status, 401);
+  // Desktop devices: a new sign-in on the same device replaces its older sync connections.
+  const service = new Service(
+    store,
+    process.env,
+    createAuthAccess(() => auth as unknown as BreadcrumbAuth),
+    undefined,
+    undefined,
+    pool,
+  );
+  const register = (token: string, body: unknown) =>
+    service.dispatch(
+      new Request(root + "/v1/device", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  const sync = "email offline_access captures:sync agents:sync";
+  const laptop = { deviceId: "device-" + randomUUID(), platform: "darwin-arm64", version: "0.2.9" };
+  const oldDesktop = await connect(sync, root + "/v1", "Breadcrumb Desktop");
+  const oldUsage = await connect("email offline_access agents:sync", root + "/v1", "Token Usage");
+  const otherDevice = await connect(sync, root + "/v1", "Breadcrumb Desktop");
+  const mcp = await connect("time:read", root + "/mcp", "MCP fixture");
+  assert.equal((await register(accessToken, { ...laptop, name: "Laptop" })).status, 401);
+  assert.equal((await register(oldDesktop.token.access_token, { name: "Laptop" })).status, 400);
+  const first = await register(oldDesktop.token.access_token, {
+    ...laptop,
+    name: " Echo's\u0007  Laptop ",
+  });
+  assert.deepEqual(await first.json(), { replaced: 0 });
+  assert.deepEqual(
+    await (
+      await register(otherDevice.token.access_token, {
+        ...laptop,
+        deviceId: "device-" + randomUUID(),
+        name: "Desktop",
+        platform: "windows-amd64",
+      })
+    ).json(),
+    { replaced: 0 },
+  );
+  const current = await connect(sync, root + "/v1", "Breadcrumb Desktop");
+  const replacing = await register(current.token.access_token, {
+    ...laptop,
+    name: "Laptop",
+    replaces: [oldUsage.clientId, mcp.clientId],
+  });
+  assert.deepEqual(await replacing.json(), { replaced: 2 });
+  const listedConnections = (await (await call("connections")).json()).entries as {
+    clientId: string;
+    device: { name: string; platform: string; version: string } | null;
+    lastUsed: string | null;
+  }[];
+  const byClient = new Map(listedConnections.map((entry) => [entry.clientId, entry]));
+  assert.equal(byClient.has(oldDesktop.clientId), false);
+  assert.equal(byClient.has(oldUsage.clientId), false);
+  assert.ok(byClient.has(mcp.clientId), "Device registration never removes app connections");
+  assert.deepEqual(byClient.get(current.clientId)!.device, {
+    name: "Laptop",
+    platform: "darwin-arm64",
+    version: "0.2.9",
+  });
+  assert.equal(byClient.get(otherDevice.clientId)!.device!.name, "Desktop");
+  assert.ok(Date.now() - Date.parse(byClient.get(current.clientId)!.lastUsed!) < 60_000);
+  assert.equal(byClient.get(mcp.clientId)!.device, null);
+  assert.equal(
+    (await register(oldDesktop.token.access_token, { ...laptop, name: "Laptop" })).status,
+    401,
+  );
+  const renewed = await auth.handler(
+    new Request(root + "/api/auth/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: oldDesktop.clientId,
+        refresh_token: oldDesktop.token.refresh_token,
+        resource: root + "/v1",
+      }),
+    }),
+  );
+  assert.ok(renewed.status >= 400, "A replaced connection cannot renew access");
   const defaults = await (await call("leaderboard/preferences")).json();
   assert.equal(defaults.enabled, true);
   assert.equal(defaults.shareApps, false);
@@ -219,7 +312,7 @@ try {
   assert.equal(limited.status, 429);
   assert.ok(limited.headers.get("Retry-After"));
   console.log(
-    "Passed: database-backed sessions and scoped OAuth/PKCE, live withdrawal, screenshot ownership, hashed share secrets, expiry, cross-owner/revocation, CSRF, default leaderboard settings and durable quotas.",
+    "Passed: database-backed sessions and scoped OAuth/PKCE, live withdrawal, screenshot ownership, hashed share secrets, expiry, one sync connection per device, cross-owner/revocation, CSRF, default leaderboard settings and durable quotas.",
   );
 } finally {
   await pool.query('DELETE FROM breadcrumb_auth."user" WHERE id=ANY($1)', [ids]);

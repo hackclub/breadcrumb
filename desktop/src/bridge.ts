@@ -28,7 +28,8 @@ export async function hidePanel() {
 }
 const demoAgentUpload = {
   enabled: false,
-  connected: false,
+  connected: true,
+  allowed: false,
   server: "https://breadcrumb.example",
   lastSynced: "",
   error: "",
@@ -166,14 +167,11 @@ export async function engine<T = State>(command: string, args: unknown = {}): Pr
   if (command === "agentUsageSync") {
     const input = args as { enabled?: boolean; disconnect?: boolean };
     if (typeof input.enabled === "boolean") demoAgentUpload.enabled = input.enabled;
-    if (input.disconnect) {
-      demoAgentUpload.connected = false;
-      demoAgentUpload.enabled = false;
-    }
+    if (input.disconnect) demoAgentUpload.enabled = false;
     return structuredClone(demoAgentUpload) as T;
   }
   if (command === "beginAgentSignIn") {
-    demoAgentUpload.connected = true;
+    demoAgentUpload.allowed = true;
     demoAgentUpload.enabled = true;
     return { url: "https://breadcrumb.example/agents" } as T;
   }

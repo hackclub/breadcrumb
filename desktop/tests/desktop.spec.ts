@@ -130,7 +130,9 @@ test("sync status opens fixed-size details with upload controls", async ({ page 
   await expect(page.getByRole("button", { name: "Open sync details" })).toBeVisible();
 });
 
-test("settings save only real changes and keep the usage server tucked away", async ({ page }) => {
+test("settings save only real changes and token usage reuses the account connection", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open history", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -145,8 +147,12 @@ test("settings save only real changes and keep the usage server tucked away", as
   await expect(saveExclusions).toBeDisabled();
   await page.getByLabel("Never capture these apps").fill("com.example.secret");
   await expect(saveExclusions).toBeEnabled();
-  const usageServer = page.getByLabel("Usage server");
-  await expect(usageServer).toBeHidden();
-  await page.getByText("Use a different server").click();
-  await expect(usageServer).toHaveValue("https://breadcrumb.example");
+  await expect(page.getByLabel("Usage server")).toHaveCount(0);
+  const upload = page.getByLabel("Upload hourly token counts");
+  await expect(upload).toHaveCount(0);
+  await expect(page.getByText("Sign in again to allow hourly token counts.")).toBeVisible();
+  await page.getByRole("button", { name: "Allow", exact: true }).click();
+  await expect(upload).toBeChecked();
+  await upload.click();
+  await expect(upload).not.toBeChecked();
 });

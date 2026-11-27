@@ -1,9 +1,8 @@
 import { AgentUsageView as SharedAgentUsageView } from "../../web/app/agent-usage-view";
 import { useEffect, useState } from "react";
-import { engine, isNative, portalServer } from "./bridge";
-import { Icon } from "./icons";
+import { engine, isNative } from "./bridge";
 import type { AgentStatus, AgentUsage } from "./agent-usage-types";
-export function AgentUsageSettings({ server }: { server?: string }) {
+export function AgentUsageSettings() {
   const [status, setStatus] = useState<AgentStatus | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -70,7 +69,7 @@ export function AgentUsageSettings({ server }: { server?: string }) {
           {status.pending ? ` · ${status.pending} files pending` : ""}
         </p>
       )}
-      <AgentUploadSettings initialServer={server} />
+      <AgentUploadSettings />
     </section>
   );
 }
@@ -84,22 +83,17 @@ export function AgentUsageView() {
 type UploadStatus = {
   enabled: boolean;
   connected: boolean;
+  /** The account connection includes permission to upload token counts. */
+  allowed: boolean;
   server: string;
   lastSynced: string;
   error: string;
   signingIn: boolean;
   authError: string;
 };
-const host = (server: string) => {
-  try {
-    return new URL(server).host;
-  } catch {
-    return server;
-  }
-};
-function AgentUploadSettings({ initialServer }: { initialServer?: string }) {
+/** Token usage uploads share the account connection; there is no separate sign-in. */
+function AgentUploadSettings() {
   const [state, setState] = useState<UploadStatus | null>(null),
-    [server, setServer] = useState(portalServer(initialServer)),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const signingIn = Boolean(state?.signingIn);
@@ -113,7 +107,7 @@ function AgentUploadSettings({ initialServer }: { initialServer?: string }) {
           setError("");
         })
         .catch(() => {
-          if (live) setError("Could not load token usage connection.");
+          if (live) setError("Could not load token usage uploads.");
         });
     void load();
     // Poll quickly only while a browser sign-in is waiting for approval.
@@ -123,100 +117,65 @@ function AgentUploadSettings({ initialServer }: { initialServer?: string }) {
       clearInterval(timer);
     };
   }, [signingIn]);
-  async function configure(args: unknown) {
+  async function run(work: () => Promise<UploadStatus>, failure: string) {
     setBusy(true);
     setError("");
     try {
-      setState(await engine<UploadStatus>("agentUsageSync", args));
+      setState(await work());
     } catch {
-      setError("Could not update token usage uploads.");
+      setError(failure);
     } finally {
       setBusy(false);
     }
   }
-  async function connect() {
-    setBusy(true);
-    setError("");
-    try {
-      const result = await engine<{ url: string }>("beginAgentSignIn", { server });
+  const allow = () =>
+    run(async () => {
+      const result = await engine<{ url: string }>("beginAgentSignIn", {});
       if (isNative) {
         const { openUrl } = await import("@tauri-apps/plugin-opener");
         await openUrl(result.url);
       } else window.open(result.url, "_blank", "noopener");
-      setState(await engine<UploadStatus>("agentUsageSync", {}));
-    } catch {
-      setError("Could not start token usage sign-in.");
-    } finally {
-      setBusy(false);
-    }
-  }
+      return engine<UploadStatus>("agentUsageSync", {});
+    }, "Could not start sign-in.");
+  const detail = !state?.connected
+    ? "Sign in under Account first."
+    : signingIn
+      ? "Approve the connection in your browser."
+      : !state.allowed
+        ? "Sign in again to allow hourly token counts."
+        : state.lastSynced
+          ? `Last upload ${new Date(state.lastSynced).toLocaleString()}`
+          : "Hourly token counts and project names. Chats are never uploaded.";
   return (
     <>
       {error && <p role="alert">{error}</p>}
-      {state?.error && <p role="alert">{state.error}</p>}
-      {state?.authError && <p role="alert">{state.authError}</p>}
-      {state?.connected ? (
-        <>
-          <label className="setting-row">
-            <span>
-              Upload to dashboard
-              <small>
-                {host(state.server)} ·{" "}
-                {state.lastSynced
-                  ? `Last upload ${new Date(state.lastSynced).toLocaleString()}`
-                  : "Not yet uploaded"}
-              </small>
-            </span>
-            <input
-              type="checkbox"
-              aria-label="Upload hourly token counts"
-              checked={state.enabled}
-              disabled={busy}
-              onChange={(e) => void configure({ enabled: e.target.checked })}
-            />
-          </label>
-          <div className="actions">
-            <button
-              className="quiet"
-              disabled={busy}
-              onClick={() => void configure({ disconnect: true })}
-            >
-              Disconnect token usage
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="setting-row">
-            <span>
-              Upload to dashboard
-              <small>
-                {signingIn
-                  ? "Approve the connection in your browser."
-                  : `Hourly token counts and project names, to ${host(server)}`}
-              </small>
-            </span>
-            <button className="quiet" disabled={busy || signingIn || !server} onClick={connect}>
-              {signingIn ? "Waiting…" : "Connect"}
-            </button>
-          </div>
-          <details>
-            <summary>
-              Use a different server
-              <Icon name="chevron" size={14} />
-            </summary>
-            <label className="settings-field">
-              Usage server
-              <input
-                aria-label="Usage server"
-                type="url"
-                value={server}
-                onChange={(e) => setServer(e.target.value)}
-              />
-            </label>
-          </details>
-        </>
+      {state?.connected && state.allowed && state.enabled && state.error && (
+        <p role="alert">{state.error}</p>
       )}
+      <div className="setting-row">
+        <span>
+          Upload to dashboard
+          <small>{detail}</small>
+        </span>
+        {state?.connected && !state.allowed ? (
+          <button className="quiet" disabled={busy || signingIn} onClick={() => void allow()}>
+            {signingIn ? "Waiting…" : "Allow"}
+          </button>
+        ) : (
+          <input
+            type="checkbox"
+            aria-label="Upload hourly token counts"
+            checked={Boolean(state?.connected && state.enabled)}
+            disabled={busy || !state?.connected}
+            onChange={(e) =>
+              void run(
+                () => engine<UploadStatus>("agentUsageSync", { enabled: e.target.checked }),
+                "Could not update token usage uploads.",
+              )
+            }
+          />
+        )}
+      </div>
     </>
   );
 }

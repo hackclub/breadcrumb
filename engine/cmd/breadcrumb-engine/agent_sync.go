@@ -11,13 +11,45 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
 
-func (e *engine) agentSyncStatus() map[string]any {
-	return map[string]any{"enabled": e.agentCredentials.AutoSync, "connected": e.agentCredentials.Token != "", "server": e.agentCredentials.Server, "lastSynced": e.agentLastSynced, "error": e.agentSyncError, "signingIn": e.auth != nil, "authError": e.authError}
+func hasScope(c credentials, scope string) bool {
+	return slices.Contains(strings.Fields(c.Scopes), scope)
 }
+
+// Token usage uploads with the device's one connection once it grants agents:sync.
+func (e *engine) agentSyncStatus() map[string]any {
+	c := e.credentials
+	return map[string]any{"enabled": c.AgentSync, "connected": c.Token != "", "allowed": c.Token != "" && hasScope(c, "agents:sync"), "server": c.Server, "lastSynced": e.agentLastSynced, "error": e.agentSyncError, "signingIn": e.auth != nil, "authError": e.authError}
+}
+
+// migrateAgentConnection retires the separate token-usage connection from before 0.2.9. Its
+// preference carries over, and the portal removes it when this device next registers.
+func (e *engine) migrateAgentConnection() {
+	path := filepath.Join(e.lib.Dir, "agent-connection.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var legacy credentials
+	json.Unmarshal(data, &legacy)
+	if legacy.Token != "" && legacy.AutoSync && e.credentials.Token != "" && !e.credentials.AgentSync {
+		next := e.credentials
+		next.AgentSync = true
+		if writePrivate(filepath.Join(e.lib.Dir, "connection.json"), next) != nil {
+			return
+		}
+		e.credentials = next
+	}
+	e.replaceConnection(legacy.ClientID)
+	if os.Remove(path) == nil {
+		go revokeOAuth(legacy)
+	}
+}
+
 func uploadAgentSnapshots(ctx context.Context, c credentials, snapshots []agentusage.Snapshot) error {
 	data, err := json.Marshal(map[string]any{"consent": true, "snapshots": snapshots})
 	if err != nil {
@@ -40,43 +72,43 @@ func uploadAgentSnapshots(ctx context.Context, c credentials, snapshots []agentu
 	defer resp.Body.Close()
 	io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return errors.New("Token usage upload was not accepted; reconnect if permission was revoked")
+		return errors.New("Token usage upload was not accepted")
 	}
 	return nil
 }
+
+// same reports whether c is still the active token-usage connection.
+func (e *engine) sameAgentConnection(c credentials) bool {
+	return e.credentials.ClientID == c.ClientID && e.credentials.Participant == c.Participant && e.credentials.AgentSync && e.credentials.AutoSync
+}
+
 func (e *engine) syncAgentUsage() {
 	e.mu.Lock()
-	c := e.agentCredentials
-	if e.demo || e.usage == nil || !c.AutoSync || c.Token == "" {
+	c := e.credentials
+	if e.demo || e.usage == nil || !c.AgentSync || !c.AutoSync || c.Token == "" || !hasScope(c, "agents:sync") {
 		e.mu.Unlock()
 		return
+	}
+	if expiry, err := time.Parse(time.RFC3339, c.Expires); err == nil && c.RefreshToken != "" && time.Until(expiry) < 90*time.Second {
+		// Capture sync renews the shared connection; renew here only when it is idle.
+		if e.syncInFlight {
+			e.mu.Unlock()
+			return
+		}
+		if !e.refreshSync(c) { // Returns with the engine unlocked.
+			return
+		}
+		e.mu.Lock()
+		c = e.credentials
+		if !e.sameAgentConnection(c) {
+			e.mu.Unlock()
+			return
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	e.agentCancel = cancel
 	e.mu.Unlock()
 	defer cancel()
-	expiry, _ := time.Parse(time.RFC3339, c.Expires)
-	if time.Until(expiry) < time.Minute {
-		next, err := refreshOAuth(ctx, c)
-		e.mu.Lock()
-		if e.agentCredentials.Token != c.Token || !e.agentCredentials.AutoSync {
-			e.mu.Unlock()
-			return
-		}
-		if err != nil {
-			e.agentSyncError = "Could not refresh token usage access. Reconnect token usage."
-			e.mu.Unlock()
-			return
-		}
-		if err := writePrivate(filepath.Join(e.lib.Dir, "agent-connection.json"), next); err != nil {
-			e.agentSyncError = "Could not save token usage access"
-			e.mu.Unlock()
-			return
-		}
-		e.agentCredentials = next
-		c = next
-		e.mu.Unlock()
-	}
 	snapshots, err := e.usage.Export(time.Now())
 	if err != nil {
 		e.mu.Lock()
@@ -110,19 +142,19 @@ func (e *engine) syncAgentUsage() {
 			continue
 		}
 		e.mu.Lock()
-		active := e.agentCredentials.Token == c.Token && e.agentCredentials.AutoSync
+		active := e.sameAgentConnection(c)
 		e.mu.Unlock()
 		if !active || ctx.Err() != nil {
 			return
 		}
 		err = uploadAgentSnapshots(ctx, c, batch)
 		e.mu.Lock()
-		if e.agentCredentials.Token != c.Token || !e.agentCredentials.AutoSync {
+		if !e.sameAgentConnection(c) {
 			e.mu.Unlock()
 			return
 		}
 		if err != nil {
-			e.agentSyncError = "Token usage sync interrupted. Reconnect if access was revoked."
+			e.agentSyncError = "Token usage sync interrupted. It will retry automatically."
 			e.mu.Unlock()
 			return
 		}

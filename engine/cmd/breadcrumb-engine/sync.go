@@ -398,7 +398,8 @@ func (e *engine) finishUpload(ctx context.Context, c credentials, profile, id st
 	e.syncFailures[id] = syncFailure{err.Error(), retry}
 }
 
-// Called with the engine locked; refresh remains serialized with every upload.
+// Called with the engine locked and returns with it unlocked. Refresh stays serialized with
+// every upload, so capture and token-usage sync never rotate the refresh token at once.
 func (e *engine) refreshSync(c credentials) bool {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.syncCancel = cancel
@@ -416,6 +417,7 @@ func (e *engine) refreshSync(c credentials) bool {
 	if err == nil {
 		refreshed.SyncPaused = e.credentials.SyncPaused
 		refreshed.UploadConcurrency = e.credentials.UploadConcurrency
+		refreshed.AgentSync = e.credentials.AgentSync
 		e.credentials = refreshed
 		if err = writePrivate(filepath.Join(e.lib.Dir, "connection.json"), refreshed); err != nil {
 			e.credentials.AutoSync = false

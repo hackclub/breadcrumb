@@ -30,7 +30,7 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  padding: 16px 0;
+  padding: 14px 0;
   border-top: 1px solid var(--line);
 }
 .connection-row h3 {
@@ -38,7 +38,39 @@
   font-weight: 500;
   font-size: 15px;
 }
-.connection-row ul {
+.connection-main {
+  min-width: 0;
+}
+.connections-panel .connection-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 0;
+}
+.connection-online {
+  color: var(--ink);
+}
+.connection-online::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #2f9e5b;
+  vertical-align: 1px;
+}
+.connection-scopes {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.connection-scopes summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.connection-scopes ul {
+  margin: 6px 0 0;
   padding-left: 18px;
 }
 .connection-row button {

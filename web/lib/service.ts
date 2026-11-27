@@ -8,6 +8,8 @@ import { analyticsIndex, type AnalyticsIndex, type IndexedSample } from "./analy
 import { recordSynced, syncedSummary, syncSample } from "./sync";
 import { Timing } from "./timing";
 import { platformDB } from "./platform-db";
+import { registerDevice } from "./devices";
+import type { Pool } from "pg";
 import { createAuthAccess, type AuthAccess, type Identity } from "./auth";
 export const sha = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex");
 const secret = () => randomBytes(32).toString("hex");
@@ -167,6 +169,8 @@ export class Service {
     public access: AuthAccess = createAuthAccess(),
     public analytics: AnalyticsIndex | undefined = analyticsIndex(env),
     public onSynced?: (participant: string, date: number) => void,
+    /** Database for desktop device names; defaults to the platform database. */
+    public deviceDB?: Pool,
   ) {}
   async account(req: Request, kind: "session" | "upload") {
     const account = await this.access[kind](req);
@@ -532,6 +536,24 @@ export class Service {
         );
         timing.log("summary_timing");
         return Response.json(summary, { headers: { "Server-Timing": timing.header() } });
+      }
+      if (path === "/v1/device" && method === "POST") {
+        const account = (await this.access.upload(req)) ?? (await this.access.agents?.(req));
+        if (!account?.userId || !account.clientId) fail(401, "Desktop authorization required");
+        const body = await smallJSON(req, 4096);
+        try {
+          this.deviceDB ??= platformDB();
+          return Response.json(
+            await registerDevice(
+              this.deviceDB,
+              { userId: account!.userId!, clientId: account!.clientId! },
+              body,
+            ),
+          );
+        } catch (error) {
+          if (error instanceof z.ZodError) fail(400, "Invalid device details");
+          throw error;
+        }
       }
       if (path === "/v1/ingest" && method === "POST") {
         const account = await this.account(req, "upload");

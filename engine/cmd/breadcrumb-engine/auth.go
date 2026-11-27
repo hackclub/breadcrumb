@@ -66,12 +66,12 @@ func postJSON(ctx context.Context, server, path string, value, result any) error
 	}
 	return nil
 }
+
+// desktopScopes covers captures and token usage, so each device keeps a single connection.
+var desktopScopes = []string{"email", "offline_access", "captures:sync", "agents:sync"}
+
 func oauthConfig(c credentials, redirect string) *oauth2.Config {
-	scope := "captures:sync"
-	if c.AgentOnly {
-		scope = "agents:sync"
-	}
-	return &oauth2.Config{ClientID: c.ClientID, RedirectURL: redirect, Scopes: []string{"email", "offline_access", scope}, Endpoint: oauth2.Endpoint{AuthURL: c.Server + "/api/auth/oauth2/authorize", TokenURL: c.Server + "/api/auth/oauth2/token", AuthStyle: oauth2.AuthStyleInParams}}
+	return &oauth2.Config{ClientID: c.ClientID, RedirectURL: redirect, Scopes: desktopScopes, Endpoint: oauth2.Endpoint{AuthURL: c.Server + "/api/auth/oauth2/authorize", TokenURL: c.Server + "/api/auth/oauth2/token", AuthStyle: oauth2.AuthStyleInParams}}
 }
 
 type desktopAuth struct {
@@ -80,7 +80,9 @@ type desktopAuth struct {
 }
 
 func (e *engine) beginSignIn(server string) (any, error) { return e.beginSignInFor(server, false) }
-func (e *engine) beginSignInFor(server string, agents bool) (any, error) {
+
+// beginSignInFor replaces this device's connection. allowAgents turns on token usage uploads.
+func (e *engine) beginSignInFor(server string, allowAgents bool) (any, error) {
 	if e.demo {
 		return nil, errors.New("Sign-in is disabled in demo mode")
 	}
@@ -98,16 +100,10 @@ func (e *engine) beginSignInFor(server string, agents bool) (any, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	flow := &desktopAuth{cancel: cancel, server: server, state: randomSecret(), verifier: oauth2.GenerateVerifier(), redirect: "http://" + listener.Addr().String() + "/callback"}
-	scope := "captures:sync"
-	clientName := "Breadcrumb Desktop"
-	if agents {
-		scope = "agents:sync"
-		clientName = "Breadcrumb Token Usage"
-	}
 	var client struct {
 		ID string `json:"client_id"`
 	}
-	err = postJSON(ctx, server, "/api/auth/oauth2/register", map[string]any{"client_name": clientName, "application_type": "native", "token_endpoint_auth_method": "none", "redirect_uris": []string{flow.redirect}, "grant_types": []string{"authorization_code", "refresh_token"}, "response_types": []string{"code"}, "scope": "email offline_access " + scope, "resources": []string{server + "/v1"}}, &client)
+	err = postJSON(ctx, server, "/api/auth/oauth2/register", map[string]any{"client_name": "Breadcrumb Desktop", "application_type": "native", "token_endpoint_auth_method": "none", "redirect_uris": []string{flow.redirect}, "grant_types": []string{"authorization_code", "refresh_token"}, "response_types": []string{"code"}, "scope": strings.Join(desktopScopes, " "), "resources": []string{server + "/v1"}}, &client)
 	if err != nil || client.ID == "" || len(client.ID) > 300 {
 		cancel()
 		listener.Close()
@@ -119,7 +115,7 @@ func (e *engine) beginSignInFor(server string, agents bool) (any, error) {
 	flow.clientID = client.ID
 	e.auth = flow
 	e.authError = ""
-	config := oauthConfig(credentials{Server: server, ClientID: client.ID, AgentOnly: agents}, flow.redirect)
+	config := oauthConfig(credentials{Server: server, ClientID: client.ID}, flow.redirect)
 	callback := &http.Server{ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second}
 	callback.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -159,27 +155,35 @@ func (e *engine) beginSignInFor(server string, agents bool) (any, error) {
 				}
 			}
 			if exchangeErr == nil {
-				c := credentials{AgentOnly: agents, Server: server, Token: token.AccessToken, RefreshToken: token.RefreshToken, ClientID: client.ID, Email: email, Participant: participant, Expires: token.Expiry.UTC().Format(time.RFC3339), AutoSync: true}
-				if agents {
-					exchangeErr = writePrivate(filepath.Join(e.lib.Dir, "agent-connection.json"), c)
-					if exchangeErr == nil {
-						if e.agentCancel != nil {
-							e.agentCancel()
-						}
-						e.agentCredentials = c
-						e.agentSyncError = ""
-						message = "Token usage is connected. Breadcrumb will upload hourly token counts and project names. Chats are never uploaded. You can close this tab."
+				scopes, _ := token.Extra("scope").(string)
+				if scopes == "" {
+					scopes = strings.Join(desktopScopes, " ")
+				}
+				previous := e.credentials
+				c := credentials{Scopes: scopes, Server: server, Token: token.AccessToken, RefreshToken: token.RefreshToken, ClientID: client.ID, Email: email, Participant: participant, Expires: token.Expiry.UTC().Format(time.RFC3339), AutoSync: true, AgentSync: allowAgents || (previous.AgentSync && previous.Participant == participant), SyncPaused: previous.SyncPaused, UploadConcurrency: previous.UploadConcurrency}
+				exchangeErr = writePrivate(filepath.Join(e.lib.Dir, "connection.json"), c)
+				if exchangeErr == nil {
+					if e.syncCancel != nil {
+						e.syncCancel()
 					}
-				} else {
-					exchangeErr = writePrivate(filepath.Join(e.lib.Dir, "connection.json"), c)
-					if exchangeErr == nil {
-						if e.syncCancel != nil {
-							e.syncCancel()
+					if e.agentCancel != nil {
+						e.agentCancel()
+					}
+					if previous.ClientID != "" && previous.ClientID != c.ClientID {
+						e.replaceConnection(previous.ClientID)
+						if previous.Server == server {
+							go revokeOAuth(previous)
 						}
-						e.credentials = c
-						e.authCompleted = time.Now().UnixNano()
-						e.syncError = ""
-						message = "You’re signed in. Breadcrumb is syncing your captures. You can close this tab."
+					}
+					e.credentials = c
+					e.authCompleted = time.Now().UnixNano()
+					e.syncError = ""
+					e.agentSyncError = ""
+					e.deviceRetry = time.Time{}
+					go e.registerDevice()
+					message = "You’re signed in. Breadcrumb is syncing your captures. You can close this tab."
+					if c.AgentSync {
+						message = "You’re signed in. Breadcrumb is syncing your captures and hourly token counts. Chats are never uploaded. You can close this tab."
 					}
 				}
 			}
@@ -248,6 +252,8 @@ func (e *engine) disconnect() error {
 	e.credentials = credentials{}
 	e.authError = ""
 	e.syncError = ""
+	// Revocation keeps the portal's consent, so the next sign-in removes this connection too.
+	e.replaceConnection(previous.ClientID)
 	go revokeOAuth(previous)
 	return nil
 }

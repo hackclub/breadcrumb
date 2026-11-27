@@ -23,7 +23,11 @@ import (
 )
 
 type engine struct {
-	agentCredentials    credentials
+	device              deviceRecord
+	deviceName          string
+	deviceBusy          bool
+	deviceRetry         time.Time
+	appVersion          string
 	agentCancel         context.CancelFunc
 	agentLastSynced     string
 	agentSyncError      string
@@ -65,7 +69,12 @@ type engine struct {
 	demo                bool
 }
 type credentials struct {
-	AgentOnly         bool   `json:"agentOnly,omitempty"`
+	// AgentOnly marks a separate token-usage connection from before 0.2.9.
+	AgentOnly bool `json:"agentOnly,omitempty"`
+	// Scopes the portal granted, space separated. Empty for connections from before 0.2.9.
+	Scopes string `json:"scopes,omitempty"`
+	// AgentSync uploads hourly coding-agent token counts with this connection.
+	AgentSync         bool   `json:"agentSync,omitempty"`
 	ClientID          string `json:"clientID,omitempty"`
 	RefreshToken      string `json:"refreshToken,omitempty"`
 	Server            string `json:"server"`
@@ -255,6 +264,9 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 		if err := json.Unmarshal(args, &input); err != nil {
 			return nil, err
 		}
+		if input.Server == "" {
+			input.Server = e.credentials.Server
+		}
 		return e.beginSignInFor(input.Server, true)
 	case "agentUsageSync":
 		var input struct {
@@ -267,30 +279,27 @@ func (e *engine) dispatch(command string, args json.RawMessage) (any, error) {
 		if e.demo {
 			return nil, errors.New("disabled in demo mode")
 		}
+		enabled := e.credentials.AgentSync
 		if input.Enabled != nil {
-			if *input.Enabled && e.agentCredentials.Token == "" {
-				return nil, errors.New("Connect token usage first")
-			}
-			next := e.agentCredentials
-			next.AutoSync = *input.Enabled
-			if err := writePrivate(filepath.Join(e.lib.Dir, "agent-connection.json"), next); err != nil {
-				return nil, err
-			}
-			e.agentCredentials = next
-			if e.agentCancel != nil {
-				e.agentCancel()
-			}
+			enabled = *input.Enabled
 		}
 		if input.Disconnect {
-			old := e.agentCredentials
-			if err := writePrivate(filepath.Join(e.lib.Dir, "agent-connection.json"), credentials{}); err != nil {
+			enabled = false
+		}
+		if enabled && e.credentials.Token == "" {
+			return nil, errors.New("Sign in first")
+		}
+		if enabled != e.credentials.AgentSync {
+			next := e.credentials
+			next.AgentSync = enabled
+			if err := writePrivate(filepath.Join(e.lib.Dir, "connection.json"), next); err != nil {
 				return nil, err
 			}
-			e.agentCredentials = credentials{}
+			e.credentials = next
 			if e.agentCancel != nil {
 				e.agentCancel()
 			}
-			go revokeOAuth(old)
+			e.agentSyncError = ""
 		}
 		return e.agentSyncStatus(), nil
 	case "agentUsage":
@@ -554,6 +563,7 @@ func writePrivate(path string, v any) error {
 func main() {
 	dir := flag.String("data-dir", "", "Local library directory")
 	helper := flag.String("capture-helper", "", "Native capture executable")
+	appVersion := flag.String("app-version", "", "Desktop app version reported to the portal")
 	demo := flag.Bool("demo", false, "Synthetic library; never records or uploads")
 	flag.Parse()
 	if *dir == "" {
@@ -570,6 +580,9 @@ func main() {
 		os.Exit(1)
 	}
 	e := &engine{lib: lib, status: "Paused", demo: *demo, exclusions: []string{}}
+	if appVersionPattern.MatchString(*appVersion) {
+		e.appVersion = *appVersion
+	}
 	if !*demo {
 		usage, err := agentusage.Open(lib.Dir)
 		if err != nil {
@@ -586,14 +599,20 @@ func main() {
 			}()
 		}
 	}
+	if data, err := os.ReadFile(filepath.Join(*dir, "connection.json")); err == nil {
+		json.Unmarshal(data, &e.credentials)
+	}
 	if !*demo {
-		if data, err := os.ReadFile(filepath.Join(*dir, "agent-connection.json")); err == nil {
-			json.Unmarshal(data, &e.agentCredentials)
+		if device, err := loadDevice(*dir); err == nil {
+			e.device = device
 		}
+		e.deviceName = deviceName()
+		e.migrateAgentConnection()
 		go func() {
 			ticker := time.NewTicker(30 * time.Second)
 			defer ticker.Stop()
 			for range ticker.C {
+				e.registerDevice()
 				e.syncAgentUsage()
 			}
 		}()
@@ -608,9 +627,6 @@ func main() {
 		json.Unmarshal(data, &previous)
 		e.recording = previous.Recording
 		e.exclusions = previous.Exclusions
-	}
-	if data, err := os.ReadFile(filepath.Join(*dir, "connection.json")); err == nil {
-		json.Unmarshal(data, &e.credentials)
 	}
 	if *helper != "" && !*demo {
 		capture, err := adapter.Start(*helper)
