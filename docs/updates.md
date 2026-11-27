@@ -14,10 +14,14 @@ The desktop first polls `https://breadcrumb.hackclub.com`, then the public GitHu
 
 ## Publish an update
 
-1. Update the app version and code through a pull request. Merge after review and relevant checks.
-2. Download the tested `Breadcrumb-Windows-x64-setup` artifact from the main-branch Desktop workflow. It contains the offline first-install setup, a lightweight update installer, and version-bound `.sig` files when signing is configured. Updates omit the bundled WebView2 runtime because the running app already has it.
-3. Upload the installer and signature to the release. Use a durable public HTTPS download URL; do not use an expiring private capture URL.
-4. Generate the manifest, adding each available platform with its actual signature:
+1. Bump the app version and add `docs/releases/<version>.md` with the release notes, through a pull request. Merge after review and relevant checks.
+2. Run the **Release** workflow on `main` (Actions → Release → Run workflow, or `gh workflow run release.yml --ref main`).
+
+The workflow builds and signs the Windows installer and lightweight update, and runs the installer lifecycle check. Then `scripts/desktop-publish.sh` uploads the packages, `SHA256SUMS.txt` and the release notes, tags `v<version>`, and uploads `latest.json` **last**, so apps never see a version whose downloads are missing. Updates omit the bundled WebView2 runtime because the running app already has it.
+
+macOS packages are built in the same workflow once the `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY` secrets are set. Adding `APPLE_API_KEY`, `APPLE_API_ISSUER` and `APPLE_API_KEY_P8` also notarizes them. Without the certificate, the workflow reuses the signed macOS packages already attached for that version (see [macOS](macos.md)). It never publishes an ad-hoc-signed Mac build, because a changed signature makes macOS drop the app's Screen Recording permission.
+
+To publish by hand instead, add each platform to the feed with `bun run release:manifest`:
 
 ```sh
 bun run release:manifest \
@@ -26,8 +30,6 @@ bun run release:manifest \
   --signature path/to/Breadcrumb-Windows-x64-update.exe.sig \
   --notes path/to/release-notes.md
 ```
-
-5. Upload `build/latest.json` as the release's `latest.json` asset **last**, after its downloads are available. Check a manual update from the previous version. The website will refresh its cached feed within an hour.
 
 The manifest command takes the version from `tauri.conf.json`, merges platforms for that version, and starts a new platform list when the version changes. It writes ignored build output, so publishing release metadata does not require a source commit. Configure a different output with `--output`.
 
