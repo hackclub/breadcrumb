@@ -28,6 +28,8 @@ export interface SummaryRollups {
   writeSummaries(participant: string, timeZone: string, rows: CachedSummary[]): Promise<void>;
 }
 export interface AnalyticsIndex extends AgentIndex, Partial<SummaryRollups> {
+  /** One trivial round trip, for latency diagnostics. */
+  ping?(): Promise<void>;
   readonly key: string;
   write(rows: IndexedSample[]): Promise<void>;
   page(
@@ -216,6 +218,9 @@ export class PostgresAnalytics implements AnalyticsIndex {
     } finally {
       client.release();
     }
+  }
+  async ping() {
+    await this.pool.query("SELECT 1");
   }
   async sourceDays(participant: string) {
     const result = await this.pool.query<{

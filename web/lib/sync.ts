@@ -8,6 +8,7 @@ import type {
   SampleDay as Day,
   SummaryRollups,
 } from "./analytics";
+import type { Timing } from "./timing";
 export function syncSample(
   participant: string,
   record: { id: string; date: number; sampleIntervalSeconds?: unknown; [key: string]: unknown },
@@ -64,6 +65,7 @@ export async function syncedSummary(
   cursor: string,
   timeZone = "UTC",
   index?: AnalyticsIndex,
+  timing?: Timing,
 ) {
   const prefix = `sync/days/${participant}/`;
   const dateOf = (key: string) => key.split("/").at(-1)!.slice(0, -5);
@@ -72,7 +74,7 @@ export async function syncedSummary(
     historyStart: number | undefined;
   if (index) {
     if (cursor && !/^\d{4}-\d{2}-\d{2}$/.test(cursor)) throw Error("Invalid analytics cursor");
-    if (hasRollups(index)) return rolledUpSummary(index, participant, cursor, timeZone);
+    if (hasRollups(index)) return rolledUpSummary(index, participant, cursor, timeZone, timing);
     const value = await index.page(participant, cursor, 60);
     page = { keys: value.days.map((day) => prefix + day + ".json"), cursor: value.nextCursor };
     if (!page.keys.length) return { days: [], nextCursor: page.cursor, timeZone };
@@ -177,8 +179,11 @@ async function rolledUpSummary(
   participant: string,
   cursor: string,
   timeZone: string,
+  timing?: Timing,
 ) {
-  const sources = await index.sourceDays(participant);
+  const measure = <T>(name: string, task: () => Promise<T>) =>
+    timing ? timing.measure(name, task) : task();
+  const sources = await measure("sources", () => index.sourceDays(participant));
   const after = sources.filter((source) => source.day > cursor);
   const page = after.slice(0, PAGE_DAYS);
   const nextCursor = after.length > PAGE_DAYS ? page[PAGE_DAYS - 1].day : "";
@@ -200,26 +205,32 @@ async function rolledUpSummary(
       settled: nearby.every((source) => !source || source.last + SETTLE_SECONDS < now),
     });
   }
-  const cached = await index.readSummaries(participant, timeZone, [...wanted]);
+  const cached = await measure("rollups", () =>
+    index.readSummaries(participant, timeZone, [...wanted]),
+  );
   const stale = [...wanted].filter((day) => cached.get(day)?.stamp !== stamps.get(day)!.stamp);
   const fresh = new Map<string, DaySummary>();
   if (stale.length) {
     stale.sort();
-    const source = await index.read(
-      participant,
-      dayOffset(stale[0], -1),
-      dayOffset(stale.at(-1)!, 1),
+    const source = await measure("samples", () =>
+      index.read(participant, dayOffset(stale[0], -1), dayOffset(stale.at(-1)!, 1)),
     );
-    for (const day of summarizeDays(source, stale, timeZone, historyStart, now))
-      fresh.set(day.day, day);
+    await measure("compute", async () => {
+      for (const day of summarizeDays(source, stale, timeZone, historyStart, now))
+        fresh.set(day.day, day);
+    });
     const rows: CachedSummary[] = stale
       .filter((day) => stamps.get(day)!.settled)
       .map((day) => ({ day, stamp: stamps.get(day)!.stamp, summary: fresh.get(day) ?? null }));
     // A cache write failure must not fail the request; the next read recomputes.
-    await index.writeSummaries(participant, timeZone, rows).catch(() => {
-      console.error("Could not store dashboard summary rollups");
-    });
+    await measure("store", () =>
+      index.writeSummaries(participant, timeZone, rows).catch(() => {
+        console.error("Could not store dashboard summary rollups");
+      }),
+    );
   }
+  timing?.count("days", wanted.size);
+  timing?.count("recomputed", stale.length);
   const days = [...wanted].sort().flatMap((day) => {
     const value = fresh.get(day) ?? (stale.includes(day) ? null : cached.get(day)?.summary);
     return value ? [value as DaySummary] : [];
