@@ -1,5 +1,14 @@
 @import "../../web/app/themes.css";
 
+/* Bundled with the app, so it is ready before first paint. */
+@font-face {
+  font-family: "Familjen Grotesk";
+  font-style: normal;
+  font-display: block;
+  font-weight: 400 700;
+  src: url("../../web/app/fonts/familjen-grotesk.woff2") format("woff2-variations");
+}
+
 :root {
   font-family: var(--font);
   font-size: 12px;
