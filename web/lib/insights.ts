@@ -49,7 +49,7 @@ export function calendarClock(timeZone = "UTC") {
     second: "2-digit",
     hourCycle: "h23",
   });
-  return (date: number) => {
+  const exact = (date: number) => {
     const parts = Object.fromEntries(
       format.formatToParts(new Date((date + REFERENCE) * 1000)).map((p) => [p.type, p.value]),
     );
@@ -58,6 +58,38 @@ export function calendarClock(timeZone = "UTC") {
       hour: Number(parts.hour),
       minute: Number(parts.minute),
       second: Number(parts.second),
+    };
+  };
+  // Whole-second UTC offset at an instant, from the zone's own calendar fields.
+  const offset = (date: number) => {
+    const at = Math.floor(date);
+    const local = exact(at);
+    const [year, month, day] = local.day.split("-").map(Number);
+    return (
+      Date.UTC(year, month - 1, day, local.hour, local.minute, local.second) / 1000 -
+      (at + REFERENCE)
+    );
+  };
+  // Offsets only change at transitions. If both ends of a 15-minute bucket agree, no transition
+  // falls inside it, so local fields follow from plain UTC arithmetic. Otherwise ask Intl.
+  const buckets = new Map<number, number | null>();
+  return (date: number) => {
+    const bucket = Math.floor(date / 900);
+    let shift = buckets.get(bucket);
+    if (shift === undefined) {
+      const start = offset(bucket * 900),
+        end = offset(bucket * 900 + 899);
+      shift = start === end ? start : null;
+      if (buckets.size > 50000) buckets.clear();
+      buckets.set(bucket, shift);
+    }
+    if (shift === null) return exact(date);
+    const local = new Date((date + REFERENCE + shift) * 1000);
+    return {
+      day: local.toISOString().slice(0, 10),
+      hour: local.getUTCHours(),
+      minute: local.getUTCMinutes(),
+      second: local.getUTCSeconds(),
     };
   };
 }

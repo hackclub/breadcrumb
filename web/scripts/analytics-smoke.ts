@@ -48,8 +48,11 @@ records.push({
   app: "界".repeat(199) + "😀",
 });
 const receivedAt = new Date().toISOString();
-const reference = new MemoryStore();
-for (const r of records) await recordSynced(reference, "alice", r, receivedAt);
+async function referenceStore() {
+  const store = new MemoryStore();
+  for (const r of records) await recordSynced(store, "alice", r, receivedAt);
+  return store;
+}
 async function pages(store: MemoryStore, index?: AnalyticsIndex, zone = "UTC") {
   const result = [];
   let cursor = "";
@@ -63,6 +66,8 @@ async function pages(store: MemoryStore, index?: AnalyticsIndex, zone = "UTC") {
 assert.throws(() => analyticsIndex({ NODE_ENV: "test", ANALYTICS_BACKEND: "invalid" }));
 assert.throws(() => new ClickHouseAnalytics(chURL, user, password, "invalid; DROP DATABASE test"));
 for (const factory of factories) {
+  // Each backend gets its own reference; later checks add captures to it.
+  const reference = await referenceStore();
   let index: AnalyticsIndex = factory.open();
   try {
     await index.migrate();
@@ -73,10 +78,25 @@ for (const factory of factories) {
     await index.write([syncSample("bob", { ...records[0], id: randomUUID() }, receivedAt)]);
     await index.close();
     index = factory.open(); // Data survives a new connection.
-    for (const zone of ["UTC", "America/New_York", "Asia/Kathmandu"])
+    const zones = ["UTC", "America/New_York", "Asia/Kathmandu"];
+    // Cold reads build rollups; warm reads must return the same pages from them.
+    for (const pass of ["cold", "warm"])
+      for (const zone of zones)
+        assert.deepEqual(
+          await pages(reference, index, zone),
+          await pages(reference, undefined, zone),
+          `${pass} ${zone} summaries differ`,
+        );
+    // A late capture in an old day, and an edited one, must invalidate only affected rollups.
+    const late = { ...records[3], id: randomUUID(), date: records[3].date + 90, app: "Late" };
+    const edited = { ...records[10], app: "Renamed", sampleIntervalSeconds: 30 };
+    for (const r of [late, edited]) await recordSynced(reference, "alice", r, receivedAt);
+    await index.write([late, edited].map((r) => syncSample("alice", r, receivedAt)));
+    for (const zone of zones)
       assert.deepEqual(
         await pages(reference, index, zone),
         await pages(reference, undefined, zone),
+        `updated ${zone} summaries differ`,
       );
     assert.equal((await index.page("bob", "", 60)).days.length, 1);
     assert.equal((await index.page("alice' OR 1=1 --", "", 60)).days.length, 0);
@@ -137,6 +157,16 @@ for (const factory of factories) {
       1,
     );
     assert.equal((await service.dispatch(summaryReq("not-a-date"))).status, 400);
+    const sinceReq = (since: string) =>
+      new Request(env.PUBLIC_URL + "/v1/account/summary?since=" + since, {
+        headers: { authorization: "Bearer test" },
+      });
+    // Analytics backends return only days after `since`.
+    assert.deepEqual((await (await service.dispatch(sinceReq("9999-01-01"))).json()).days, []);
+    assert.equal(
+      (await (await service.dispatch(sinceReq("1970-01-01"))).json()).days.length,
+      summary.days.length,
+    );
     assert.equal(
       (await service.dispatch(new Request(env.PUBLIC_URL + "/v1/account/summary"))).status,
       401,

@@ -53,35 +53,44 @@ export default function Portal({
     if (!account) return;
     let cancelled = false;
     let loading = false;
-    async function load() {
+    let polls = 0;
+    let values = new Map<string, Day>();
+    // A full load replaces every day. `since` (a UTC day) asks only for days after it; servers
+    // without an analytics index ignore it and return everything.
+    async function fetchDays(since = "") {
+      const next = since ? new Map(values) : new Map<string, Day>();
+      let cursor = "";
+      do {
+        const query = new URLSearchParams({ timeZone });
+        if (cursor) query.set("cursor", cursor);
+        else if (since) query.set("since", since);
+        const page = await request("/v1/account/summary?" + query);
+        for (const day of page.days as Day[]) next.set(day.day, day);
+        cursor = page.nextCursor;
+      } while (cursor && !cancelled);
+      if (!cancelled) {
+        values = next;
+        setDays([...values.values()]);
+        setStatsError("");
+      }
+    }
+    async function load(full: boolean) {
       if (loading || cancelled) return;
       loading = true;
       try {
-        const refresh = async () => {
-          let cursor = "";
-          const values = new Map<string, Day>();
-          do {
-            const query = new URLSearchParams({ timeZone });
-            if (cursor) query.set("cursor", cursor);
-            const page = await request("/v1/account/summary?" + query);
-            for (const day of page.days as Day[]) values.set(day.day, day);
-            cursor = page.nextCursor;
-          } while (cursor && !cancelled);
-          if (!cancelled) {
-            setDays([...values.values()]);
-            setStatsError("");
-          }
-        };
-        // Show existing summaries immediately while older captures gain breakdowns.
-        await refresh();
+        // Polls refresh recent days; a periodic full load picks up late uploads to older days.
+        const recent = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+        await fetchDays(full ? "" : recent);
+        if (!full) return;
+        let migration = await request("/v1/account/index", {}),
+          pages = 1;
+        if (migration.done) return;
         if (!cancelled) setIndexing(true);
-        let migration,
-          pages = 0;
-        do {
+        while (!migration.done && !cancelled) {
           migration = await request("/v1/account/index", {});
-          if (++pages % 5 === 0 && !cancelled) await refresh();
-        } while (!migration.done && !cancelled);
-        if (!cancelled) await refresh();
+          if (++pages % 5 === 0 && !cancelled) await fetchDays();
+        }
+        if (!cancelled) await fetchDays();
       } catch (error) {
         if (!cancelled) setStatsError(error instanceof Error ? error.message : String(error));
       } finally {
@@ -89,9 +98,9 @@ export default function Portal({
         if (!cancelled) setIndexing(false);
       }
     }
-    void load();
+    void load(true);
     const timer = setInterval(() => {
-      if (!document.hidden) void load();
+      if (!document.hidden) void load(++polls % 10 === 0);
     }, 60000);
     return () => {
       cancelled = true;

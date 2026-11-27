@@ -1,7 +1,13 @@
 import { classifyActivity } from "./activities";
 import type { Store } from "./store";
 import { summarize, calendarClock, REFERENCE } from "./insights";
-import type { AnalyticsIndex, IndexedSample, SampleDay as Day } from "./analytics";
+import type {
+  AnalyticsIndex,
+  CachedSummary,
+  IndexedSample,
+  SampleDay as Day,
+  SummaryRollups,
+} from "./analytics";
 export function syncSample(
   participant: string,
   record: { id: string; date: number; sampleIntervalSeconds?: unknown; [key: string]: unknown },
@@ -66,6 +72,7 @@ export async function syncedSummary(
     historyStart: number | undefined;
   if (index) {
     if (cursor && !/^\d{4}-\d{2}-\d{2}$/.test(cursor)) throw Error("Invalid analytics cursor");
+    if (hasRollups(index)) return rolledUpSummary(index, participant, cursor, timeZone);
     const value = await index.page(participant, cursor, 60);
     page = { keys: value.days.map((day) => prefix + day + ".json"), cursor: value.nextCursor };
     if (!page.keys.length) return { days: [], nextCursor: page.cursor, timeZone };
@@ -109,7 +116,23 @@ export async function syncedSummary(
       const half = Math.min(300, Math.max(15, sample.interval || 60)) / 2;
       for (const offset of [-half, 0, half]) wanted.add(clock(sample.date + offset).day);
     }
-  const days = [...wanted].sort().flatMap((day) => {
+  return {
+    days: summarizeDays(source, [...wanted], timeZone, historyStart),
+    nextCursor: page.cursor,
+    timeZone,
+  };
+}
+
+type DaySummary = ReturnType<typeof summarize> & { day: string; lastSynced: string };
+/** Local days are summarized from their own UTC partition and both neighbors. */
+function summarizeDays(
+  source: Map<string, Day>,
+  wanted: string[],
+  timeZone: string,
+  historyStart: number | undefined,
+  now?: number,
+): DaySummary[] {
+  return [...wanted].sort().flatMap((day) => {
     const nearby = [-1, 0, 1].flatMap((offset) => {
       const value = source.get(dayOffset(day, offset));
       return value ? [value] : [];
@@ -121,7 +144,7 @@ export async function syncedSummary(
           .map(([, sample]) => sample),
       ),
       day,
-      undefined,
+      now,
       timeZone,
       historyStart,
     );
@@ -138,5 +161,68 @@ export async function syncedSummary(
       },
     ];
   });
-  return { days, nextCursor: page.cursor, timeZone };
+}
+const PAGE_DAYS = 60;
+// A sample can extend at most 150 seconds past its timestamp; afterwards its day stops changing.
+const SETTLE_SECONDS = 300;
+function hasRollups(index: AnalyticsIndex): index is AnalyticsIndex & SummaryRollups {
+  return Boolean(index.sourceDays && index.readSummaries && index.writeSummaries);
+}
+/**
+ * Serves finished day summaries from rollups and recomputes only days whose source partitions
+ * changed. Pages and cursors match the uncached path exactly.
+ */
+async function rolledUpSummary(
+  index: AnalyticsIndex & SummaryRollups,
+  participant: string,
+  cursor: string,
+  timeZone: string,
+) {
+  const sources = await index.sourceDays(participant);
+  const after = sources.filter((source) => source.day > cursor);
+  const page = after.slice(0, PAGE_DAYS);
+  const nextCursor = after.length > PAGE_DAYS ? page[PAGE_DAYS - 1].day : "";
+  if (!page.length) return { days: [], nextCursor, timeZone };
+  const historyStart = Math.min(...sources.map((source) => source.first));
+  const byDay = new Map(sources.map((source) => [source.day, source]));
+  const clock = calendarClock(timeZone);
+  const wanted = new Set<string>();
+  for (const source of page) {
+    const end = clock(source.end).day;
+    for (let day = clock(source.start).day; day <= end; day = dayOffset(day, 1)) wanted.add(day);
+  }
+  const now = Date.now() / 1000 - REFERENCE;
+  const stamps = new Map<string, { stamp: string; settled: boolean }>();
+  for (const day of wanted) {
+    const nearby = [-1, 0, 1].map((offset) => byDay.get(dayOffset(day, offset)));
+    stamps.set(day, {
+      stamp: [...nearby.map((source) => source?.revision ?? "0"), historyStart].join(":"),
+      settled: nearby.every((source) => !source || source.last + SETTLE_SECONDS < now),
+    });
+  }
+  const cached = await index.readSummaries(participant, timeZone, [...wanted]);
+  const stale = [...wanted].filter((day) => cached.get(day)?.stamp !== stamps.get(day)!.stamp);
+  const fresh = new Map<string, DaySummary>();
+  if (stale.length) {
+    stale.sort();
+    const source = await index.read(
+      participant,
+      dayOffset(stale[0], -1),
+      dayOffset(stale.at(-1)!, 1),
+    );
+    for (const day of summarizeDays(source, stale, timeZone, historyStart, now))
+      fresh.set(day.day, day);
+    const rows: CachedSummary[] = stale
+      .filter((day) => stamps.get(day)!.settled)
+      .map((day) => ({ day, stamp: stamps.get(day)!.stamp, summary: fresh.get(day) ?? null }));
+    // A cache write failure must not fail the request; the next read recomputes.
+    await index.writeSummaries(participant, timeZone, rows).catch(() => {
+      console.error("Could not store dashboard summary rollups");
+    });
+  }
+  const days = [...wanted].sort().flatMap((day) => {
+    const value = fresh.get(day) ?? (stale.includes(day) ? null : cached.get(day)?.summary);
+    return value ? [value as DaySummary] : [];
+  });
+  return { days, nextCursor, timeZone };
 }
