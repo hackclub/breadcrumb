@@ -10,7 +10,7 @@ parent identifiers and project identity. It discards message text, tool calls,
 responses, instructions and file contents without decoding their string values.
 Usage is stored separately from capture history in a local database. Turning a
 provider off stops further reads; previously collected statistics remain local.
-Capture sync does not upload this database. Token-account usage uploads require a separate connection and opt-in; chats are never uploaded by that feature.
+Capture sync does not upload this database. Token usage uploads are a separate opt-in; chats are never uploaded by that feature.
 
 ## Providers and discovery
 
@@ -119,12 +119,13 @@ permits reuse; Breadcrumb's reader implementation is independent.
 
 ## Optional private uploads
 
-In Settings → Coding agents → Token usage uploads, connect a token-only account
-and approve `agents:sync`. This enables uploads of existing and future hourly
-statistics. It does not enable capture sync, and capture-only consent cannot
-upload agent statistics. Uncheck Upload hourly token counts to pause, or disconnect
-token usage to revoke its separate connection. Previously uploaded statistics
-remain private on the server.
+Desktop sign-in asks for both `captures:sync` and `agents:sync`, so each device
+keeps one connection to the portal. Token usage uploads still stay off until you
+turn on Settings → Coding agents → Upload to dashboard. That uploads existing and
+future hourly statistics. Turn it off to pause; capture sync keeps running.
+Connections made before 0.2.9 lack `agents:sync`; choose Allow to sign in again.
+The app then retires any older token-usage connection from that device.
+Previously uploaded statistics remain private on the server.
 
 The upload boundary has only provider/model/project names, hourly token buckets,
 event and session-start counts, a revision, and a random library identifier.

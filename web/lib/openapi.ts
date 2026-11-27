@@ -114,7 +114,7 @@ export function openAPI() {
       "/v1/agents/ingest": {
         post: {
           operationId: "ingestAgentUsage",
-          summary: "Upload hourly token usage with separate consent",
+          summary: "Upload hourly token usage",
           description:
             "Requires an agents:sync token for the /v1 resource. Accepts versioned hourly snapshots, up to 24 snapshots and 512 KiB per request. Replaces older revisions for each source and hour; each provider/model/project row is unique within an hour. Unknown fields, chats and paths are rejected.",
           security: [{ oauth: ["agents:sync"] }],

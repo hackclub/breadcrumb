@@ -357,6 +357,8 @@ fn main() {
                 command
                     .arg("--capture-helper")
                     .arg(capture)
+                    .arg("--app-version")
+                    .arg(app.package_info().version.to_string())
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::inherit());

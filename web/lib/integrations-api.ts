@@ -7,6 +7,7 @@ import { APIProblem, apiJSON, problem, sameOrigin, smallJSON } from "./api-http"
 import { readActivity } from "./activity-api";
 import { getLeaderboards, LeaderboardError } from "./leaderboards";
 import { platformDB, requestQuota } from "./platform-db";
+import { connectionDetails } from "./devices";
 import { R2Store, type Store } from "./store";
 import { Screenshots } from "./screenshots";
 
@@ -181,7 +182,19 @@ export async function integrationsAPI(request: Request, store?: Store) {
           )),
         );
       }
-      return json({ entries });
+      // Device names and activity are extras; the list still loads without them.
+      const details = await connectionDetails(
+        platformDB(),
+        owner.owner,
+        entries.map((entry) => entry.clientId),
+      ).catch(() => new Map());
+      return json({
+        entries: entries.map((entry) => ({
+          ...entry,
+          device: details.get(entry.clientId)?.device ?? null,
+          lastUsed: details.get(entry.clientId)?.lastUsed ?? null,
+        })),
+      });
     }
     if (path === "leaderboard/preferences")
       return json(

@@ -185,7 +185,7 @@ export function SettingsPage({
         </p>
         <p className="path">{state.directory}</p>
       </Section>
-      <AgentUsageSettings server={state.server} />
+      <AgentUsageSettings />
       <Section title="App">
         <LaunchAtLogin state={state} action={action} />
         <ThemePicker />

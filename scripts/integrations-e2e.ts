@@ -57,6 +57,24 @@ try {
                 name: "Personal assistant",
                 clientId: "client",
                 scopes: ["time:read", "apps:read"],
+                device: null,
+                lastUsed: null,
+              },
+              {
+                id: "old-laptop",
+                name: "Breadcrumb Desktop",
+                clientId: "desktop-old",
+                scopes: ["email", "offline_access", "captures:sync", "agents:sync"],
+                device: { name: "Studio iMac", platform: "darwin-amd64", version: "0.2.9" },
+                lastUsed: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+              },
+              {
+                id: "laptop",
+                name: "Breadcrumb Desktop",
+                clientId: "desktop",
+                scopes: ["email", "offline_access", "captures:sync", "agents:sync"],
+                device: { name: "Synthetic MacBook", platform: "darwin-arm64", version: "0.2.9" },
+                lastUsed: new Date(Date.now() - 60_000).toISOString(),
               },
             ],
           },
@@ -98,6 +116,12 @@ try {
     });
     await page.goto(origin + "/connections");
     await expect(page.getByText("Personal assistant", { exact: true })).toBeVisible();
+    const devices = page.locator(".connections-panel").filter({ hasText: "Devices" });
+    await expect(devices.locator("h3")).toHaveText(["Synthetic MacBook", "Studio iMac"]);
+    await expect(devices.locator(".connection-row").first()).toContainText("Online");
+    await expect(devices.locator(".connection-row").first()).toContainText("macOS · Apple silicon");
+    await expect(devices.locator(".connection-row").nth(1)).toContainText("Last used 3 hours ago");
+    await expect(devices.getByText("Upload all existing and future captures").first()).toBeHidden();
     await expect(page.locator(".screenshot-preview")).toHaveCount(0);
     await page.locator(".capture-choice").click();
     await expect(page.locator(".screenshot-preview img")).toBeVisible();
@@ -109,7 +133,11 @@ try {
     await page.getByRole("button", { name: "Revoke link", exact: true }).click();
     expect(revoked).toBe(true);
     await expect(page.getByRole("textbox", { name: "Screenshot share link" })).toHaveCount(0);
-    await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+    await page
+      .locator(".connection-row")
+      .filter({ hasText: "Personal assistant" })
+      .getByRole("button", { name: "Disconnect", exact: true })
+      .click();
     expect(disconnected).toBe(true);
     await expect(page.getByText("No apps connected yet.")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
@@ -122,7 +150,7 @@ try {
     await page.close();
   }
   console.log(
-    "Passed: desktop/mobile connection withdrawal, screenshot preview, explicit link creation, expiry choice, link revocation and no horizontal overflow.",
+    "Passed: desktop/mobile device names and last use, connection withdrawal, screenshot preview, explicit link creation, expiry choice, link revocation and no horizontal overflow.",
   );
 } finally {
   await browser.close();

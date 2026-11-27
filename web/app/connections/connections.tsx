@@ -1,7 +1,50 @@
 "use client";
 import { useEffect, useState } from "react";
 import { permissionLabels } from "../../lib/permissions";
-type Connection = { id: string; name: string; clientId: string; scopes: string[] };
+type Connection = {
+  id: string;
+  name: string;
+  clientId: string;
+  scopes: string[];
+  device?: { name: string; platform: string; version: string } | null;
+  lastUsed?: string | null;
+};
+const SYNC_SCOPES = ["captures:sync", "agents:sync"];
+const isDevice = (c: Connection) =>
+  Boolean(c.device) || c.scopes.some((scope) => SYNC_SCOPES.includes(scope));
+const platformNames: Record<string, string> = {
+  "darwin-arm64": "macOS · Apple silicon",
+  "darwin-amd64": "macOS · Intel",
+  "windows-amd64": "Windows",
+  "windows-arm64": "Windows on Arm",
+};
+function platformName(platform: string) {
+  if (platformNames[platform]) return platformNames[platform];
+  const os = platform.split("-")[0];
+  return { darwin: "macOS", windows: "Windows", linux: "Linux" }[os] ?? platform;
+}
+/** Desktop clients renew their five-minute access tokens while they run. */
+const ONLINE_MS = 10 * 60_000;
+function lastSeen(iso: string | null | undefined, now: number) {
+  if (!iso) return { online: false, label: "Not used yet" };
+  const ago = now - Date.parse(iso);
+  if (ago < ONLINE_MS) return { online: true, label: "Online" };
+  const format = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const minutes = Math.round(ago / 60_000),
+    hours = Math.round(ago / 3_600_000),
+    days = Math.round(ago / 86_400_000);
+  const when =
+    minutes < 60
+      ? format.format(-minutes, "minute")
+      : hours < 48
+        ? format.format(-hours, "hour")
+        : days < 60
+          ? format.format(-days, "day")
+          : new Date(iso).toLocaleDateString();
+  return { online: false, label: "Last used " + when };
+}
+const recent = (a: Connection, b: Connection) =>
+  (b.lastUsed ? Date.parse(b.lastUsed) : 0) - (a.lastUsed ? Date.parse(a.lastUsed) : 0);
 type Capture = { id: string; date: string; hasScreenshot: boolean };
 type Share = { id: string; captureId: string; expiresAt: string };
 async function call(path: string, method = "GET", body?: unknown) {
@@ -62,51 +105,77 @@ export function Connections() {
       setBusy(false);
     }
   }
+  const now = Date.now(),
+    sorted = connections && [...connections].sort(recent),
+    devices = sorted?.filter(isDevice) ?? null,
+    apps = sorted?.filter((c) => !isDevice(c)) ?? null;
+  function connectionList(list: Connection[] | null, empty: string) {
+    if (list === null)
+      return failed ? (
+        <p>Connections couldn’t be loaded.</p>
+      ) : (
+        <div className="skeleton connection-placeholder" />
+      );
+    if (!list.length) return <p>{empty}</p>;
+    return list.map((app) => {
+      const seen = lastSeen(app.lastUsed, now),
+        details = app.device
+          ? [platformName(app.device.platform), app.device.version && "v" + app.device.version]
+          : [isDevice(app) ? "Device name not reported" : null];
+      return (
+        <article key={app.id} className="connection-row">
+          <div className="connection-main">
+            <h3>{app.device?.name ?? app.name}</h3>
+            <p className="connection-meta">
+              <span className={seen.online ? "connection-online" : undefined}>{seen.label}</span>
+              {details.filter(Boolean).map((detail) => (
+                <span key={detail as string}>{detail}</span>
+              ))}
+            </p>
+            <details className="connection-scopes">
+              <summary>
+                {app.scopes.length} {app.scopes.length === 1 ? "permission" : "permissions"}
+              </summary>
+              <ul>
+                {app.scopes.map((scope) => (
+                  <li key={scope}>{permissionLabels[scope] ?? scope}</li>
+                ))}
+              </ul>
+            </details>
+          </div>
+          <button
+            className="quiet"
+            disabled={busy}
+            onClick={() =>
+              void action(async () => {
+                await call("connections", "DELETE", { id: app.id });
+                setConnections((current) => current?.filter((c) => c.id !== app.id) ?? null);
+              })
+            }
+          >
+            Disconnect
+          </button>
+        </article>
+      );
+    });
+  }
   return (
     <>
       <p className="connections-status" role="status">
         {error}
       </p>
       <section className="connections-panel">
+        <h2>Devices</h2>
+        <p>Computers running Breadcrumb Desktop. Each device keeps one connection.</p>
+        {connectionList(devices, "No devices connected yet.")}
+      </section>
+      <section className="connections-panel">
         <h2>Connected apps</h2>
         <p>
           Disconnecting stops API and MCP access immediately. App names are supplied by their
           developers.
         </p>
-        {connections === null ? (
-          failed ? (
-            <p>Connected apps couldn’t be loaded.</p>
-          ) : (
-            <div className="skeleton connection-placeholder" />
-          )
-        ) : connections.length === 0 ? (
-          <p>No apps connected yet.</p>
-        ) : (
-          connections.map((app) => (
-            <article key={app.id} className="connection-row">
-              <div>
-                <h3>{app.name}</h3>
-                <ul>
-                  {app.scopes.map((scope) => (
-                    <li key={scope}>{permissionLabels[scope] ?? scope}</li>
-                  ))}
-                </ul>
-              </div>
-              <button
-                className="quiet"
-                disabled={busy}
-                onClick={() =>
-                  void action(async () => {
-                    await call("connections", "DELETE", { id: app.id });
-                    setConnections(connections.filter((c) => c.id !== app.id));
-                  })
-                }
-              >
-                Disconnect
-              </button>
-            </article>
-          ))
-        )}
+        {connectionList(apps, "No apps connected yet.")}
       </section>
       <section className="connections-panel">
         <h2>Share a screenshot</h2>

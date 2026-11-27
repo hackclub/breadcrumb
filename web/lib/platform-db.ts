@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
+import { devicesSchema } from "./devices";
 const pools = new Map<string, Pool>();
 function poolSize(value: string | undefined, fallback: number) {
   const max = !value?.trim() ? fallback : Number(value);
@@ -56,7 +57,7 @@ CREATE TABLE IF NOT EXISTS breadcrumb_integrations.limits (
 );
 CREATE INDEX IF NOT EXISTS oauth_consent_live_access ON breadcrumb_auth."oauthConsent" ("userId","clientId") INCLUDE (scopes,resources);
 ALTER TABLE breadcrumb_integrations.limits SET (fillfactor=75,autovacuum_vacuum_scale_factor=0.02,autovacuum_analyze_scale_factor=0.05);
-`;
+${devicesSchema}`;
 export async function requestQuota(id: string, db: Pick<Pool, "query"> = platformDB()) {
   // A finite row per authenticated principal/client; no attacker-controlled IP rows.
   const result = await db.query<{ requests: number; retry: number }>(
