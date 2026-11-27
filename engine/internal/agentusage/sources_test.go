@@ -35,7 +35,9 @@ func TestGrokBuildTurnsPerModel(t *testing.T) {
 	s, _ := setup(t)
 	project := filepath.Join(t.TempDir(), "grok-project")
 	os.MkdirAll(filepath.Join(project, ".git"), 0700)
-	dir := filepath.Join(os.Getenv("GROK_HOME"), "sessions", url.PathEscape(project), "grok-session")
+	// Escaping the drive letter's colon keeps the name valid on Windows.
+	escaped := strings.ReplaceAll(url.PathEscape(project), ":", "%3A")
+	dir := filepath.Join(os.Getenv("GROK_HOME"), "sessions", escaped, "grok-session")
 	os.MkdirAll(dir, 0700)
 	now := time.Now().UTC()
 	chat := `{"method":"session/update","params":{"sessionId":"grok-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"PROMPT_SENTINEL"}},"_meta":{"totalTokens":99999}}}` + "\n"
