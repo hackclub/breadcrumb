@@ -15,7 +15,7 @@ folder=root/'desktop/src-tauri/binaries';folder.mkdir(parents=True,exist_ok=True
 if sys.platform=='darwin':os.environ.setdefault('MACOSX_DEPLOYMENT_TARGET','14.0')
 go_env=dict(os.environ)
 if requested:go_env.update(GOOS='darwin',GOARCH='arm64' if target.startswith('aarch64') else 'amd64',CGO_ENABLED='0')
-subprocess.run(['go','build','-trimpath','-o',str(folder/f'breadcrumb-engine-{target}{suffix}'),'./cmd/breadcrumb-engine'],cwd=root/'engine',env=go_env,check=True)
+subprocess.run(['go','build','-trimpath','-ldflags=-s -w','-o',str(folder/f'breadcrumb-engine-{target}{suffix}'),'./cmd/breadcrumb-engine'],cwd=root/'engine',env=go_env,check=True)
 if sys.platform=='darwin':
     env=dict(os.environ)
     env.setdefault('SDKROOT',subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip())

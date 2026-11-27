@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { authClient } from "../lib/auth-client";
 import { TimeDashboard } from "./time-dashboard";
 import type { InsightDay as Day } from "../lib/insights";
 import { SiteHeader } from "./site-header";
@@ -22,7 +21,7 @@ export default function Portal({
   signedIn = false,
   initialDesktop = "",
 }: {
-  /** Session verified on the server; the client session takes over once loaded. */
+  /** Session verified on the server. Sign-in and sign-out reload the page, so it stays current. */
   signedIn?: boolean;
   initialDesktop?: string;
 }) {
@@ -34,10 +33,7 @@ export default function Portal({
     [days, setDays] = useState<Day[] | null>(null),
     [indexing, setIndexing] = useState(false),
     [statsError, setStatsError] = useState("");
-  const { data: session, isPending } = authClient.useSession();
-  const account = session?.user ?? null,
-    ready = !isPending;
-  const dashboardVisible = !desktop && (Boolean(account) || (!ready && signedIn));
+  const dashboardVisible = !desktop && signedIn;
   useEffect(() => {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
     const query = new URLSearchParams(location.search);
@@ -50,7 +46,7 @@ export default function Portal({
   }, []);
   useEffect(() => {
     setDays(null);
-    if (!account) return;
+    if (!signedIn) return;
     let cancelled = false;
     let loading = false;
     let polls = 0;
@@ -106,7 +102,7 @@ export default function Portal({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [account?.id, timeZone]);
+  }, [signedIn, timeZone]);
   async function action(fn: () => Promise<void>) {
     setBusy(true);
     setStatus("");
@@ -124,11 +120,11 @@ export default function Portal({
     .sort()
     .at(-1);
   useEffect(() => {
-    if (account && desktop) location.replace("/connect" + location.search);
-  }, [account, desktop]);
+    if (signedIn && desktop) location.replace("/connect" + location.search);
+  }, [signedIn, desktop]);
   const dashboard = (
     <section>
-      <TimeDashboard days={days ?? []} loading={!ready || days === null} timeZone={timeZone} />
+      <TimeDashboard days={days ?? []} loading={days === null} timeZone={timeZone} />
       <div className="dashboard-feedback">
         <p className="sync-count">
           <span>{days ? `${captures.toLocaleString()} captures` : "Loading synced captures…"}</span>
@@ -145,37 +141,22 @@ export default function Portal({
   );
   return (
     <main className="portal">
-      <SiteHeader signedIn={ready ? Boolean(account) : signedIn} />
+      <SiteHeader signedIn={signedIn} />
       <div className={dashboardVisible ? "dashboard" : "auth-page"}>
-        {!ready ? (
-          dashboardVisible ? (
-            dashboard
-          ) : (
-            <section
-              className="sign-in auth-skeleton"
-              aria-busy="true"
-              aria-label="Loading sign in"
-            >
-              <h1>Sign in to Breadcrumb</h1>
-              <p>
-                <span className="skeleton skeleton-caption" />
-              </p>
-              <div className="skeleton skeleton-field" />
-              <div className="skeleton skeleton-field" />
-            </section>
-          )
-        ) : !account ? (
+        {!signedIn ? (
           <section className="sign-in">
             <h1>Sign in to Breadcrumb</h1>
             <p>
               {desktop
-                ? "Sign in to connect an app app."
+                ? "Sign in to connect an app."
                 : "See your synced history and connect your desktop."}
             </p>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
                 void action(async () => {
+                  // Loaded on demand: only this form and the consent page need the auth client.
+                  const { authClient } = await import("../lib/auth-client");
                   const result = await authClient.signIn.magicLink({
                     email,
                     callbackURL: returnPath(),
