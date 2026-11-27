@@ -23,6 +23,10 @@ export async function onPanelOpen(callback: () => void) {
   const { listen } = await import("@tauri-apps/api/event");
   return listen("panel-compact", callback);
 }
+export async function openLocalDashboard() {
+  if (native) await invoke("open_dashboard");
+  else window.open("/?view=dashboard", "breadcrumb-dashboard");
+}
 export async function hidePanel() {
   if (native) await invoke("hide_panel");
 }

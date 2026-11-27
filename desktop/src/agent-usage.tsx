@@ -1,7 +1,6 @@
-import { AgentUsageView as SharedAgentUsageView } from "../../web/app/agent-usage-view";
 import { useEffect, useState } from "react";
 import { engine, isNative } from "./bridge";
-import type { AgentStatus, AgentUsage } from "./agent-usage-types";
+import type { AgentStatus } from "./agent-usage-types";
 export function AgentUsageSettings() {
   const [status, setStatus] = useState<AgentStatus | null>(null),
     [error, setError] = useState(""),
@@ -72,12 +71,6 @@ export function AgentUsageSettings() {
       <AgentUploadSettings />
     </section>
   );
-}
-
-const loadUsage = (range: number, timeZone: string) =>
-  engine<AgentUsage>("agentUsage", { range, timeZone });
-export function AgentUsageView() {
-  return <SharedAgentUsageView loadUsage={loadUsage} />;
 }
 
 type UploadStatus = {

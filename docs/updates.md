@@ -17,7 +17,7 @@ The desktop first polls `https://breadcrumb.hackclub.com`, then the public GitHu
 1. Bump the app version and add `docs/releases/<version>.md` with the release notes, through a pull request. Merge after review and relevant checks.
 2. Run the **Release** workflow on `main` (Actions → Release → Run workflow, or `gh workflow run release.yml --ref main`).
 
-The workflow builds and signs the Windows installer and lightweight update, and runs the installer lifecycle check. Then `scripts/desktop-publish.sh` uploads the packages, `SHA256SUMS.txt` and the release notes, tags `v<version>`, and uploads `latest.json` **last**, so apps never see a version whose downloads are missing. Updates omit the bundled WebView2 runtime because the running app already has it.
+The workflow builds and signs the Windows installer and lightweight update, and runs the installer lifecycle check. Then `scripts/desktop-publish.sh` uploads the packages, `SHA256SUMS.txt` and the release notes, tags `v<version>`, and uploads `latest.json` **last**, so apps never see a version whose downloads are missing. Updates skip the WebView2 bootstrapper because the running app already has the runtime.
 
 macOS packages are built in the same workflow once the `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY` secrets are set. Adding `APPLE_API_KEY`, `APPLE_API_ISSUER` and `APPLE_API_KEY_P8` also notarizes them. Without the certificate, the workflow reuses the signed macOS packages already attached for that version (see [macOS](macos.md)). It never publishes an ad-hoc-signed Mac build, because a changed signature makes macOS drop the app's Screen Recording permission.
 

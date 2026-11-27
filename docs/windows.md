@@ -1,6 +1,6 @@
 # Windows setup
 
-Breadcrumb uses a per-user Nullsoft (NSIS) installer. It installs the app and both native helpers, and includes Microsoft's offline WebView2 runtime installer. No development tools or separate runtime download are needed.
+Breadcrumb uses a per-user Nullsoft (NSIS) installer. It installs the app and both native helpers. Windows 10 and 11 already include the Microsoft Edge WebView2 runtime; if it is missing, setup downloads and installs it silently, which needs an internet connection. No development tools are needed.
 
 ## Install
 

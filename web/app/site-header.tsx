@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { authClient } from "../lib/auth-client";
 import { BrandIcon } from "../lib/brand";
 import { applyTheme, readTheme, themes, type Theme } from "../lib/theme";
 
@@ -78,10 +77,15 @@ export function SiteHeader({
               disabled={signingOut}
               onClick={async () => {
                 setSigningOut(true);
-                const result = await authClient.signOut();
-                if (result.error) {
+                // A plain request keeps the auth client out of every page's bundle.
+                const response = await fetch("/api/auth/sign-out", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: "{}",
+                }).catch(() => null);
+                if (!response?.ok) {
                   setSigningOut(false);
-                  alert(result.error.message ?? "Could not sign out");
+                  alert("Could not sign out");
                   return;
                 }
                 location.assign("/");

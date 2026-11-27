@@ -1,8 +1,16 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { SyncProgress } from "./sync-progress";
 import { SyncPage } from "./sync-page";
-import { engine, isNative, hidePanel, withPanelDialog, confirmAction, onPanelOpen } from "./bridge";
+import {
+  engine,
+  isNative,
+  hidePanel,
+  withPanelDialog,
+  confirmAction,
+  onPanelOpen,
+  openLocalDashboard,
+} from "./bridge";
 import {
   activities,
   activity,
@@ -19,10 +27,11 @@ import { SlidingPanels } from "./sliding-panels";
 import { useUpdates } from "./updates";
 import { SettingsPage } from "./settings-page";
 import { applyTheme, readTheme } from "../../web/lib/theme";
-import { LocalDashboard, openLocalDashboard } from "./local-dashboard";
 import "./style.css";
-import "../../web/app/dashboard.css";
-import "./local-dashboard.css";
+// The dashboard window loads its charts, pricing table and worker separately.
+const LocalDashboard = lazy(() =>
+  import("./local-dashboard").then((m) => ({ default: m.LocalDashboard })),
+);
 const time = (v: number) => date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 applyTheme(readTheme());
 function App() {
@@ -841,7 +850,9 @@ function PageTitle({ title, text }: { title: string; text: string }) {
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {new URLSearchParams(location.search).get("view") === "dashboard" ? (
-      <LocalDashboard />
+      <Suspense fallback={null}>
+        <LocalDashboard />
+      </Suspense>
     ) : (
       <App />
     )}

@@ -15,6 +15,6 @@ The [installer check](../scripts/windows-installer-smoke.ps1) runs in CI. Detail
 
 ## Compatibility
 
-Interactive coverage currently includes Windows 11 x64. Windows 10, ARM64, a clean installation without WebView2, and every protected/elevated application have not been validated. Setup includes Microsoft's offline WebView2 installer.
+Interactive coverage currently includes Windows 11 x64. Windows 10, ARM64, a clean installation without WebView2, and every protected/elevated application have not been validated. Setup embeds Microsoft's WebView2 bootstrapper, which installs the runtime only when it is missing.
 
 Update signatures protect downloaded updates. Windows publisher signing is separate and is not yet configured, so Windows may show an unknown-publisher warning.

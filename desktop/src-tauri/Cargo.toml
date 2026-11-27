@@ -24,3 +24,10 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 # Backport the upstream VariantStrIter soundness fix for Tauri’s GTK3 dependency.
 [patch.crates-io]
 glib = { path = "vendor/glib" }
+
+# The shell is UI glue; heavy work runs in the engine and capture helpers, so favor size.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

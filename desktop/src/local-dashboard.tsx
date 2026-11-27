@@ -1,17 +1,18 @@
-import { AgentUsageView } from "./agent-usage";
+import { AgentUsageView } from "../../web/app/agent-usage-view";
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { TimeDashboard } from "../../web/app/time-dashboard";
 import { REFERENCE, calendarClock, type InsightDay } from "../../web/lib/insights";
 import { applyTheme, readTheme } from "../../web/lib/theme";
 import InsightsWorker from "./local-insights-worker?worker&inline";
 import { engine, isNative } from "./bridge";
 import type { State } from "./types";
+import type { AgentUsage } from "./agent-usage-types";
+import "../../web/app/dashboard.css";
+import "./local-dashboard.css";
 
-export async function openLocalDashboard() {
-  if (isNative) await invoke("open_dashboard");
-  else window.open("/?view=dashboard", "breadcrumb-dashboard");
-}
+// Loaded only in the dashboard window, so the tray popup never parses this code.
+const loadUsage = (range: number, timeZone: string) =>
+  engine<AgentUsage>("agentUsage", { range, timeZone });
 
 export function LocalDashboard() {
   const [view, setView] = useState("time");
@@ -105,7 +106,7 @@ export function LocalDashboard() {
       </nav>
       {error && <p role="alert">{error}</p>}
       {view === "agents" ? (
-        <AgentUsageView />
+        <AgentUsageView loadUsage={loadUsage} />
       ) : (
         <TimeDashboard days={days ?? []} loading={days === null} timeZone={timeZone} local />
       )}
