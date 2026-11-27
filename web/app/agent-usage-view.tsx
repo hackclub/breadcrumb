@@ -61,6 +61,8 @@ export function AgentUsageView({
       ...hours.map((h) => h.provider),
     ]),
   );
+  const label = (a: string) =>
+    data?.status.providers.find((p) => (p.usageID ?? p.id) === a)?.name ?? a;
   const days = Array.from(
     new Set(
       Array.from(
@@ -146,9 +148,7 @@ export function AgentUsageView({
             : "—";
           return (
             <div className="agent-row" key={data ? a : `loading-${a}`}>
-              <strong>
-                {data?.status.providers.find((p) => (p.usageID ?? p.id) === a)?.name ?? a}
-              </strong>
+              <strong>{label(a)}</strong>
               <span>{`${sessions} ${remote ? "sessions started" : "sessions"}`}</span>
               <span>{`${total ? ((value / total) * 100).toFixed(1) : "0"}%`}</span>
               <span>{`${data ? count(rows.reduce((n, h) => n + processedTokens(h), 0)) : "—"} tokens`}</span>
@@ -169,7 +169,7 @@ export function AgentUsageView({
             <polyline
               key={a}
               fill="none"
-              stroke={`var(--agent-${i % 4})`}
+              stroke={`var(--agent-${i % 5})`}
               strokeWidth="2"
               points={days
                 .map(
@@ -182,8 +182,8 @@ export function AgentUsageView({
         </svg>
         <div className="agent-controls">
           {agents.map((a, i) => (
-            <span key={a} style={{ color: `var(--agent-${i % 4})` }}>
-              {a}
+            <span key={a} style={{ color: `var(--agent-${i % 5})` }}>
+              {label(a)}
             </span>
           ))}
         </div>

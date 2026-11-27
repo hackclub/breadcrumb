@@ -4,7 +4,9 @@ import type { AgentUsage, AgentHour } from "../../lib/agent-usage-types";
 const names: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
+  grok: "Grok Build",
   opencode: "OpenCode",
+  antigravity: "Antigravity",
 };
 async function loadUsage(range: number, timeZone: string): Promise<AgentUsage> {
   const response = await fetch(
