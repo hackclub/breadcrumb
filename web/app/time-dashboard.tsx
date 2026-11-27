@@ -611,9 +611,15 @@ export function TimeDashboard({
               <span className="day-bar-space">
                 <span
                   className={`day-bar ${pending ? "skeleton" : ""}`}
-                  style={{
-                    height: `${100 * (pending ? 0.3 + (index % 4) * 0.15 : day.seconds ? Math.max(0.015, day.seconds / maximum) : 0)}%`,
-                  }}
+                  style={
+                    {
+                      "--h": pending
+                        ? 0.3 + (index % 4) * 0.15
+                        : day.seconds
+                          ? Math.max(0.015, day.seconds / maximum)
+                          : 0,
+                    } as CSSProperties
+                  }
                 />
               </span>
               <span className="day-tick" style={{ visibility: pending ? "hidden" : undefined }}>
