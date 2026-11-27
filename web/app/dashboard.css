@@ -19,11 +19,11 @@
   justify-content: space-between;
   gap: 14px;
   width: 136px;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  border: 1px solid var(--frame);
+  background: transparent;
   color: var(--ink);
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 999px;
+  padding: 8px 14px;
   font-size: 12px;
 }
 .time-range-menu {
@@ -88,15 +88,15 @@
   }
 }
 .week-recap {
-  margin: 0 0 30px;
-  padding: 14px 18px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  margin: 0 0 36px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: var(--surface);
 }
 .week-recap h2 {
   margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
 }
 .week-recap dl {
   display: grid;
@@ -129,10 +129,10 @@
   font-size: 11px;
 }
 .insight-stats strong {
-  font-size: 34px;
-  letter-spacing: -1px;
-  line-height: 1.35;
-  font-weight: 500;
+  font-size: 40px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .insight-stats strong.stat-app {
@@ -160,11 +160,17 @@
   color: inherit;
 }
 .insight-panel {
-  padding: 22px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  padding: 24px;
+  border-radius: 18px;
+  background: var(--surface);
   margin-bottom: 18px;
   min-width: 0;
+}
+/* The daily trail is the page's centerpiece, so it sits on the page itself. */
+.insight-panel.daily-panel {
+  background: none;
+  padding: 8px 0 36px;
+  border-radius: 0;
 }
 .panel-heading {
   display: flex;
@@ -174,8 +180,8 @@
   margin-bottom: 22px;
 }
 .panel-heading h2 {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 600;
   margin: 0;
 }
 .panel-heading > span {
@@ -221,17 +227,18 @@
 .day-bar {
   display: block;
   width: 100%;
-  background: var(--fill);
-  border-radius: 3px 3px 0 0;
-  max-width: 70px;
+  background: var(--crumb);
+  max-width: 56px;
   margin: 0 auto;
-  opacity: 0.65;
+  opacity: 0.8;
+  /* Clipping (not height) shows the bar, so loading data never shifts layout. */
+  clip-path: inset(calc((1 - var(--h, 0)) * 100%) 0 0 round 6px 6px 1px 1px);
   transition: opacity 120ms ease;
 }
 .day-column:hover .day-bar,
 .day-column[aria-pressed="true"] .day-bar {
   opacity: 1;
-  background: var(--accent);
+  background: var(--crumb-strong);
 }
 .day-tick {
   font-size: 10px;
@@ -255,8 +262,8 @@
 .breakdown-tabs {
   display: flex;
   gap: 2px;
-  background: var(--surface);
-  border-radius: 5px;
+  background: var(--bg);
+  border-radius: 999px;
   padding: 2px;
 }
 .breakdown-tabs button {
@@ -327,7 +334,7 @@
   transform-origin: left;
   display: block;
   height: 100%;
-  background: var(--fill);
+  background: var(--crumb);
   border-radius: 2px;
 }
 .show-all {
@@ -371,7 +378,7 @@
     gap: 4px;
   }
   .chart-footnote {
-    font-size: 9px;
+    font-size: 10px;
   }
   .panel-heading {
     flex-wrap: wrap;
@@ -401,21 +408,38 @@
   display: contents;
 }
 .hour-grid-label {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--subtle);
   padding-bottom: 6px;
 }
+/* Each hour is a crumb: it grows and warms with the time recorded in it. */
 .hour-grid .hour-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 22px;
   padding: 0;
   border: 0;
-  background: var(--track);
-  border-radius: 3px;
+  background: none;
+  border-radius: 50%;
 }
-.hour-grid .hour-cell:hover,
-.hour-grid .hour-cell[aria-pressed="true"] {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
+.hour-grid .hour-cell::before {
+  content: "";
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--crumb) var(--mix, 0%), var(--raised));
+  transform: scale(calc(0.3 + 0.7 * var(--t, 0)));
+}
+.hour-grid .hour-cell.skeleton::before {
+  background: var(--raised);
+}
+.hour-grid .hour-cell:hover::before,
+.hour-grid .hour-cell[aria-pressed="true"]::before {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 3px var(--ink);
 }
 .hour-grid .hour-day {
   padding: 4px 0;
@@ -443,10 +467,20 @@
   gap: 7px;
 }
 .hour-legend i {
-  width: 56px;
-  height: 6px;
-  border-radius: 2px;
-  background: linear-gradient(to right, var(--track), var(--accent));
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--raised);
+}
+.hour-legend i + i {
+  width: 10px;
+  height: 10px;
+  background: color-mix(in srgb, var(--crumb) 65%, var(--raised));
+}
+.hour-legend i + i + i {
+  width: 16px;
+  height: 16px;
+  background: var(--crumb);
 }
 .hour-detail {
   margin-top: 22px;
@@ -784,8 +818,8 @@ button.rank-row:focus-visible .rank-name::after {
   margin: 26px 0;
 }
 .activity-total strong {
-  font-size: 32px;
-  font-weight: 500;
+  font-size: 36px;
+  font-weight: 600;
 }
 .activity-total span {
   font-size: 12px;
@@ -814,8 +848,8 @@ button.rank-row:focus-visible .rank-name::after {
 }
 .activity-day-space > span {
   width: 100%;
-  background: var(--accent);
-  border-radius: 3px 3px 0 0;
+  background: var(--crumb);
+  border-radius: 6px 6px 1px 1px;
 }
 .activity-days small {
   display: block;

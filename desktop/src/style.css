@@ -1,11 +1,21 @@
 @import "../../web/app/themes.css";
 
+/* Bundled with the app, so it is ready before first paint. */
+@font-face {
+  font-family: "Familjen Grotesk";
+  font-style: normal;
+  font-display: block;
+  font-weight: 400 700;
+  src: url("../../web/app/fonts/familjen-grotesk.woff2") format("woff2-variations");
+}
+
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
-  --radius: 6px;
+  --radius: 8px;
   color: var(--ink);
   background: transparent;
 }
@@ -26,7 +36,7 @@ body,
   border-radius: 14px;
 }
 body {
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.4;
 }
 button,
@@ -51,11 +61,11 @@ button {
   min-height: 30px;
   padding: 6px 11px;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: 999px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
   transition:
@@ -84,6 +94,7 @@ button.outline:hover {
 button.quiet {
   background: transparent;
   color: var(--muted);
+  font-weight: 500;
 }
 button.quiet:hover {
   background: var(--surface);
@@ -204,9 +215,9 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.15px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .topbar .actions {
   gap: 8px;
@@ -268,7 +279,7 @@ p {
 }
 .record-status b {
   color: var(--subtle);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 400;
 }
 .panel-nav {
@@ -290,7 +301,7 @@ p {
   padding: 5px 8px;
   color: var(--muted);
   background: transparent;
-  font-weight: 400;
+  font-weight: 500;
 }
 .panel-nav button:hover {
   color: var(--ink);
@@ -377,7 +388,7 @@ p {
 }
 .quick-title {
   overflow: hidden;
-  margin: 4px 0 14px;
+  margin: 4px 0 8px;
   color: var(--muted);
   font-size: 11px;
   line-height: 15px;
@@ -389,6 +400,27 @@ p {
 .quick-actions {
   flex-shrink: 0;
 }
+/* Today's hours as crumbs; gold appears only for recorded time. */
+.today-trail {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  align-items: center;
+  justify-items: center;
+  flex-shrink: 0;
+  height: 14px;
+  margin: 2px 0 10px;
+}
+.today-trail i {
+  width: calc(4px + 7px * var(--t, 0));
+  height: calc(4px + 7px * var(--t, 0));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--crumb) var(--mix, 0%), var(--raised));
+}
+.today-trail i.now {
+  box-shadow:
+    0 0 0 1.5px var(--bg),
+    0 0 0 2.5px var(--muted);
+}
 .quick-actions {
   display: flex;
   flex-direction: column;
@@ -398,6 +430,21 @@ p {
   width: 100%;
   height: 34px;
   font-size: 12px;
+}
+.overview-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.overview-links .history-link {
+  flex: 1;
+  min-width: 0;
+}
+.overview-links .dashboard-link {
+  flex-shrink: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 500;
 }
 .history-link {
   justify-content: space-between;
@@ -486,7 +533,7 @@ p {
   border-radius: 3px;
   background: #000c;
   color: #ddd;
-  font-size: 9px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 .capture-caption {
@@ -520,7 +567,7 @@ p {
   border-radius: 4px;
   color: var(--secondary);
   background: var(--raised);
-  font-size: 9px;
+  font-size: 10px;
   white-space: nowrap;
 }
 .scrubber {
@@ -531,13 +578,13 @@ p {
   width: 100%;
   height: 3px;
   margin: 0 0 9px;
-  accent-color: var(--accent);
+  accent-color: var(--crumb);
 }
 .scrubber > div {
   display: flex;
   justify-content: space-between;
   color: var(--subtle);
-  font-size: 9px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 .card {
@@ -954,7 +1001,7 @@ summary::marker {
   flex: none;
   border-radius: 6px;
   background: var(--raised);
-  color: var(--accent);
+  color: var(--secondary);
   font-weight: 600;
   overflow: hidden;
   vertical-align: middle;
@@ -1035,7 +1082,7 @@ summary::marker {
 }
 .session-focus > .pill {
   margin-left: auto;
-  font-size: 9px;
+  font-size: 10px;
   padding: 2px 5px;
 }
 .alongside-apps {
@@ -1185,7 +1232,7 @@ summary::marker {
   font-variant-numeric: tabular-nums;
 }
 .sync-eta {
-  font-size: 9px;
+  font-size: 10px;
 }
 .sync-progress progress {
   appearance: none;

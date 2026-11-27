@@ -12,8 +12,19 @@
   flex-wrap: wrap;
   margin: 12px 0;
 }
+.agent-controls button {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--frame);
+}
+.agent-controls button:hover {
+  background: transparent;
+  color: var(--ink);
+}
 .agent-controls button[aria-pressed="true"] {
-  outline: 1px solid var(--ink);
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
 }
 .agent-setting {
   display: flex;

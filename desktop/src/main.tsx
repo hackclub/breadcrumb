@@ -24,6 +24,7 @@ import { Icon } from "./icons";
 import { AppIcon } from "./app-icon";
 import { estimateTimeline, estimatedTime, sessionContext } from "./activity";
 import { SlidingPanels } from "./sliding-panels";
+import { TodayTrail } from "./today-trail";
 import { useUpdates } from "./updates";
 import { SettingsPage } from "./settings-page";
 import { applyTheme, readTheme } from "../../web/lib/theme";
@@ -330,6 +331,7 @@ function App() {
               <p className="quick-title">
                 {current?.windowTitle || "Start recording, then return to another app."}
               </p>
+              <TodayTrail observations={state.observations} byCapture={estimates.byCapture} />
               {["required", "portal-required"].includes(state.capabilities.permission) && (
                 <button className="outline compact" onClick={() => expand("settings")}>
                   Set up screen recording
@@ -847,6 +849,11 @@ function PageTitle({ title, text }: { title: string; text: string }) {
     </div>
   );
 }
+// The bundled font loads in milliseconds; waiting for it keeps text from reflowing after first paint.
+await Promise.race([
+  document.fonts.load('600 12px "Familjen Grotesk"').catch(() => null),
+  new Promise((resolve) => setTimeout(resolve, 1000)),
+]);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {new URLSearchParams(location.search).get("view") === "dashboard" ? (

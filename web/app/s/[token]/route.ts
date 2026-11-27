@@ -7,7 +7,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   try {
     await new Screenshots(new R2Store(), platformDB()).resolve(token);
     return new Response(
-      `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Shared screenshot · Breadcrumb</title><style>body{margin:0;background:#000;color:#eee;font:14px system-ui;padding:24px}main{max-width:1200px;margin:auto}img{display:block;width:100%;height:auto;border-radius:8px}p{color:#aaa}</style><main><h1>Shared screenshot</h1><p>Shared by its owner through Breadcrumb. This link expires and may be revoked.</p><img src="/s/${token}/image" alt="Screenshot shared by its owner"></main></html>`,
+      `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Shared screenshot · Breadcrumb</title><style>body{margin:0;background:#161a25;color:#eeeae1;font:14px system-ui;padding:24px}main{max-width:1200px;margin:auto}img{display:block;width:100%;height:auto;border-radius:8px}p{color:#aaa}</style><main><h1>Shared screenshot</h1><p>Shared by its owner through Breadcrumb. This link expires and may be revoked.</p><img src="/s/${token}/image" alt="Screenshot shared by its owner"></main></html>`,
       {
         headers: {
           "Content-Type": "text/html; charset=utf-8",

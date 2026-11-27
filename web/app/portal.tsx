@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { TimeDashboard } from "./time-dashboard";
 import type { InsightDay as Day } from "../lib/insights";
 import { SiteHeader } from "./site-header";
+import { HomeTrail } from "./home-trail";
 async function request(path: string, body?: unknown) {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
@@ -142,14 +143,28 @@ export default function Portal({
   return (
     <main className="portal">
       <SiteHeader signedIn={signedIn} />
-      <div className={dashboardVisible ? "dashboard" : "auth-page"}>
+      <div
+        className={dashboardVisible ? "dashboard" : !signedIn && !desktop ? "home" : "auth-page"}
+      >
+        {!signedIn && !desktop && (
+          <section className="home-intro">
+            <h1>See where your day went.</h1>
+            <p>
+              Breadcrumb runs quietly on your computer, taking periodic screenshots and noting which
+              app and project you’re in. It turns them into a trail of your hours, kept on your
+              device until you choose to sync.
+            </p>
+            <HomeTrail />
+            <a className="button-link" href="/download">
+              Download Breadcrumb
+            </a>
+          </section>
+        )}
         {!signedIn ? (
           <section className="sign-in">
-            <h1>Sign in to Breadcrumb</h1>
+            <h1>{desktop ? "Sign in to Breadcrumb" : "Sign in"}</h1>
             <p>
-              {desktop
-                ? "Sign in to connect an app."
-                : "See your synced history and connect your desktop."}
+              {desktop ? "Sign in to connect an app." : "See your synced history across devices."}
             </p>
             <form
               onSubmit={(event) => {

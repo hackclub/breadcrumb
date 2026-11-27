@@ -135,7 +135,7 @@ try {
   assert.equal(state.recording, true);
   await control("toggle");
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await page.getByRole("heading", { name: "Sign in to Breadcrumb", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
   await page.screenshot({ path: join(artifacts, "sign-in.png"), fullPage: true });
   console.log(
     "Passed: Better Auth email sign-in, browser consent, native PKCE, chunked backlog sync, restart and OAuth refresh, new capture sync, sign-out, and 320px mobile layout.",

@@ -4,22 +4,17 @@
 .leaderboard-heading {
   margin-bottom: 32px;
 }
-.leaderboard-eyebrow {
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
 .leaderboard-heading h1 {
-  margin: 14px 0 10px;
-  font-size: 36px;
-  font-weight: 500;
-  letter-spacing: -1.4px;
+  margin: 0 0 12px;
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
 }
 .leaderboard-heading p {
   max-width: 480px;
-  color: var(--muted);
-  font-size: 13px;
+  color: var(--secondary);
+  font-size: 16px;
   margin: 0;
 }
 .leaderboard-sharing {
@@ -33,8 +28,8 @@
 }
 .leaderboard-sharing h2,
 .leaderboard-toolbar h2 {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 600;
   margin: 0 0 8px;
 }
 .leaderboard-sharing p {
