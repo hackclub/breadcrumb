@@ -428,10 +428,8 @@ func (antigravity) read(db *sql.DB, path string, _ *Cursor) ([]Event, error) {
 			if err := rows.Scan(&idx, &blob); err != nil {
 				return err
 			}
-			name, enum, at, hasTime, usages, err := antigravityMetadata(blob, step)
-			if err != nil {
-				return err
-			}
+			// A row this reader cannot decode is skipped; the conversation's other rows still count.
+			name, enum, at, hasTime, usages, _ := antigravityMetadata(blob, step)
 			for i, u := range usages {
 				output := max(u.number(3), u.number(9)+u.number(10))
 				t := Tokens{Input: int64(min(u.number(2), 1e12)), CacheRead: int64(min(u.number(5), 1e12)), CacheWrite: int64(min(u.number(4), 1e12)), Output: int64(min(output, 1e12)), Reasoning: int64(min(output, u.number(9), 1e12))}
