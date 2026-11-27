@@ -1,52 +1,68 @@
-/* Shared by the web portal and desktop. Catppuccin uses the official Mocha palette:
-   https://github.com/catppuccin/catppuccin#-palette */
+/* Shared by the web portal and desktop.
+   Gold ("crumb") only ever marks recorded time: bars, crumbs, shares. Controls use ink.
+   Catppuccin uses the official Mocha palette: https://github.com/catppuccin/catppuccin#-palette */
+@font-face {
+  font-family: "Familjen Grotesk";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("./fonts/familjen-grotesk.woff2") format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 :root {
   color-scheme: dark;
-  --bg: #000;
-  --ink: #ebebed;
-  --secondary: #c9c9ce;
-  --muted: #99999f;
-  --subtle: #888890;
-  --accent: #b5d6c0;
-  --accent-ink: #101a13;
-  --accent-hover: #c6e2cf;
-  --line: rgb(255 255 255 / 10%);
-  --frame: rgb(255 255 255 / 12%);
-  --surface: #0e0e10;
-  --raised: #1b1b1e;
-  --hover: #17171a;
-  --selected: #1a1a1d;
-  --preview-bg: #080808;
-  --danger: #e89893;
-  --live: #ee6868;
-  --track: #19191b;
-  --fill: #91af9a;
-  --positive: #c9dfd0;
-  --permission: #141b16;
+  --font: "Familjen Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: #161a25;
+  --ink: #eeeae1;
+  --secondary: #cfccc6;
+  --muted: #a1a6b5;
+  --subtle: #8c91a2;
+  --accent: #eeeae1;
+  --accent-ink: #161a25;
+  --accent-hover: #fff;
+  --line: rgb(238 234 225 / 10%);
+  --frame: rgb(238 234 225 / 15%);
+  --surface: #1d2230;
+  --raised: #282e3f;
+  --hover: #222838;
+  --selected: #2a3143;
+  --preview-bg: #10131b;
+  --danger: #f2a49c;
+  --live: #f27c6b;
+  --track: #242a3a;
+  --fill: #e7b24a;
+  --crumb: #e7b24a;
+  --crumb-strong: #ffd684;
+  --positive: #acd9a3;
+  --permission: #1f2533;
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #fff;
-  --ink: #202126;
-  --secondary: #3e4048;
-  --muted: #5f6068;
-  --subtle: #6b6c74;
-  --accent: #2e6149;
+  --bg: #f6f7fa;
+  --ink: #1b2131;
+  --secondary: #394053;
+  --muted: #565d71;
+  --subtle: #646b80;
+  --accent: #1b2131;
   --accent-ink: #fff;
-  --accent-hover: #234d39;
-  --line: rgb(0 0 0 / 12%);
-  --frame: rgb(0 0 0 / 16%);
-  --surface: #f5f5f7;
-  --raised: #e9eaed;
-  --hover: #f0f0f3;
-  --selected: #e5e6ea;
-  --preview-bg: #f1f1f3;
-  --danger: #ac3039;
-  --live: #ce3540;
-  --track: #e2e3e7;
-  --fill: #467c60;
-  --positive: #285e41;
-  --permission: #edf5ef;
+  --accent-hover: #323a51;
+  --line: rgb(27 33 49 / 11%);
+  --frame: rgb(27 33 49 / 17%);
+  --surface: #fff;
+  --raised: #e8ebf2;
+  --hover: #eef0f5;
+  --selected: #e3e7ef;
+  --preview-bg: #eceef3;
+  --danger: #b3261e;
+  --live: #d13b2f;
+  --track: #e2e5ed;
+  --fill: #c98a1b;
+  --crumb: #c98a1b;
+  --crumb-strong: #8f5b05;
+  --positive: #2f6b3a;
+  --permission: #eef1f7;
 }
 :root[data-theme="catppuccin"] {
   color-scheme: dark;
@@ -68,7 +84,9 @@
   --danger: #f38ba8;
   --live: #f38ba8;
   --track: #313244;
-  --fill: #cba6f7;
+  --fill: #f9e2af;
+  --crumb: #f9e2af;
+  --crumb-strong: #fab387;
   --positive: #a6e3a1;
   --permission: #313244;
 }

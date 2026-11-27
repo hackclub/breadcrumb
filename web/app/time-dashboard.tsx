@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import {
   duration,
   calendarClock,
@@ -612,7 +612,7 @@ export function TimeDashboard({
                 <span
                   className={`day-bar ${pending ? "skeleton" : ""}`}
                   style={{
-                    transform: `scaleY(${pending ? 0.3 + (index % 4) * 0.15 : day.seconds ? Math.max(0.015, day.seconds / maximum) : 0})`,
+                    height: `${100 * (pending ? 0.3 + (index % 4) * 0.15 : day.seconds ? Math.max(0.015, day.seconds / maximum) : 0)}%`,
                   }}
                 />
               </span>
@@ -726,9 +726,10 @@ export function TimeDashboard({
                       style={
                         pending
                           ? undefined
-                          : {
-                              background: `color-mix(in srgb, var(--accent) ${seconds ? 15 + 85 * Math.min(1, seconds / 3600) : 0}%, var(--track))`,
-                            }
+                          : ({
+                              "--t": Math.min(1, seconds / 3600),
+                              "--mix": `${seconds ? 30 + 70 * Math.min(1, seconds / 3600) : 0}%`,
+                            } as CSSProperties)
                       }
                       disabled={pending}
                       aria-label={`${readable(day.day)}, ${String(hour).padStart(2, "0")}:00 ${zoneLabel}: ${duration(seconds)}`}
@@ -747,10 +748,12 @@ export function TimeDashboard({
         </div>
         <div className="hour-legend">
           <span>
-            {!selected && chartDays.length > 14 ? "Most recent 14 days" : "Each square is one hour"}
+            {!selected && chartDays.length > 14 ? "Most recent 14 days" : "Each crumb is one hour"}
           </span>
           <span>
-            0 min <i /> 60 min
+            0 min <i />
+            <i />
+            <i /> 60 min
           </span>
         </div>
         {hourSelection && (

@@ -193,7 +193,6 @@ export function Leaderboard() {
   return (
     <div className="leaderboard-content">
       <div className="leaderboard-heading">
-        <span className="leaderboard-eyebrow">A little shared momentum</span>
         <h1>Keep good company.</h1>
         <p>
           See where the community spends its time, and discover the apps people use along the way.
