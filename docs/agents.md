@@ -1,7 +1,8 @@
 # Coding-agent usage
 
 Coding-agent usage is optional and disabled by default. Enable Claude Code, Codex,
-or usage plugins individually in desktop Settings → Coding agents. Open the local
+Grok Build, OpenCode, Antigravity or usage plugins individually in desktop
+Settings → Coding agents. Open the local
 dashboard and select Coding agents for Cost and Tokens, past 24 hours or 7/30/90
 days, daily trends, session counts, model/day breakdowns and cache savings.
 
@@ -22,19 +23,34 @@ Capture sync does not upload this database. Token usage uploads are a separate o
   Response IDs are deduplicated across rollouts. Legacy cumulative totals reject
   repeats. Inherited legacy events before a fork's creation time are excluded;
   legacy forks without a creation timestamp are excluded conservatively.
+- Grok Build: `GROK_HOME` (default `~/.grok`), beneath `sessions`, reading only
+  each session's `updates.jsonl`. Each `turn_completed` record reports usage per
+  model; turns without one are not counted. Routed model IDs such as
+  `inception/mercury-2.5` keep the part after the last slash.
+- OpenCode v2: `OPENCODE_DATA_DIR` (default `$XDG_DATA_HOME/opencode`, then
+  `~/.local/share/opencode`), reading `opencode.db` read-only. Only completed
+  assistant responses count. Forks skip the earlier responses they copy. Message
+  data stays inside SQLite; only the model ID, completion time and token counts are
+  selected. The earlier [usage exporter](../plugins/opencode/README.md) uses the same
+  response IDs, so enabling both counts each response once.
+- Antigravity: `ANTIGRAVITY_DATA_DIR` (a list of directories), otherwise
+  `~/.gemini/antigravity-cli`, `~/.gemini/antigravity`, `~/.gemini/antigravity-ide`
+  and `~/.config/antigravity`, reading each `conversations/*.db` read-only. Usage
+  comes from the protobuf metadata saved with each generation and step, never from
+  step contents. Records that share a response ID count once. A model code
+  without a saved name takes the name the same conversation saved with that code.
 - JSONL plugins: `agent-imports` beneath Breadcrumb's library directory. Each
   immediate provider subdirectory registers a separate, initially disabled toggle.
   The generic importer reads only files directly in `agent-imports`.
-- OpenCode v2: the optional [usage exporter](../plugins/opencode/README.md) streams
-  SQLite metadata into `agent-imports/opencode`; enable its separate plugin toggle.
+
+SQLite stores are re-read when the database or its write-ahead log changes.
 
 Home discovery uses the operating system home directory, including Windows user
 profiles. Windows working-directory separators are recognized. Project names use
 the nearest git root directory when available; no project path is returned in
 usage results. Provider roots and cursor paths remain local.
 
-Grok Build, Gemini CLI, opencode, Cursor and Copilot do not yet have native
-Breadcrumb readers. An adapter can export the format below without a Go change.
+Gemini CLI, Cursor and Copilot do not yet have native Breadcrumb readers. An adapter can export the format below without a Go change.
 No estimates are inferred from conversation text. Logs outside the documented
 roots and missing usage records cannot contribute statistics.
 
@@ -90,7 +106,8 @@ file identity, size, modification time and offsets; truncation and replacement
 restart that file without counting previously imported response IDs twice.
 
 The Go `Provider` interface defines ID, display name, root discovery and incremental
-record parsing with persistent session context. The generic importer is the
+record parsing with persistent session context; one record can yield an event per
+model. Database providers read a store's allowlisted values on change instead. The generic importer is the
 extension point for independent harnesses. New native readers must honor the same
 privacy boundary and synthetic-fixture tests.
 
@@ -102,8 +119,13 @@ hourly precision. Session start/end times are retained for future build-time
 accounting but do not currently add to observed time.
 
 `web/lib/model-prices.json` is a versioned shared price table with source links
-and verification dates. Estimates use standard API rates and are labeled **API
-estimate**. They are not subscription bills. Unknown models remain **Unpriced**:
+and verification dates. `bun scripts/update-model-prices.ts [--add model ...]`
+refreshes it from LiteLLM's public price list, using each model's first-party API
+entry. Dated snapshots such as `gpt-6.1-sol-2026-09-29` use their model's price,
+and OpenCode's `-free` models cost nothing. Grok Build models use the rates Grok
+Build reports per turn; its fast variants cost twice as much. Estimates use
+standard API rates and are labeled **API estimate**. They are not subscription
+bills. Unknown models remain **Unpriced**:
 their tokens still count, but their cost does not enter shares. Cache savings are
 cache reads priced as uncached input minus the actual cache-read estimate.
 Long-context surcharges, premium speed tiers and negotiated discounts are not
@@ -114,8 +136,10 @@ Official references: [Claude pricing](https://platform.claude.com/docs/en/about-
 and [GPT-5.1-Codex pricing](https://developers.openai.com/api/docs/models/gpt-5.1-codex).
 
 [T3 Code usage documentation](https://github.com/pingdotgg/t3code/blob/main/docs/user/usage.md)
-was consulted for comparison. Its [MIT license](https://github.com/pingdotgg/t3code/blob/main/LICENSE)
-permits reuse; Breadcrumb's reader implementation is independent.
+was consulted for comparison, and its usage readers for the Grok Build, OpenCode
+and Antigravity storage layouts, including Antigravity's metadata field numbers
+and older model codes. Its [MIT license](https://github.com/pingdotgg/t3code/blob/main/LICENSE)
+permits reuse; Breadcrumb's readers are written separately in Go.
 
 ## Optional private uploads
 

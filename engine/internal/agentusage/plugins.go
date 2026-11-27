@@ -20,19 +20,21 @@ func (p importPlugin) Name() string {
 	return p.id + " (plugin)"
 }
 func (p importPlugin) Root(_ string) string { return p.root }
-func (p importPlugin) Parse(r io.Reader, c *Context) (*Event, error) {
-	e, err := (builtin{id: "import"}).Parse(r, c)
-	if err == nil && e != nil && e.Provider != p.id {
-		return nil, errJSON
+func (p importPlugin) Parse(r io.Reader, c *Context) ([]Event, error) {
+	events, err := (builtin{id: "import"}).Parse(r, c)
+	for _, e := range events {
+		if e.Provider != p.id {
+			return nil, errJSON
+		}
 	}
-	return e, err
+	return events, err
 }
-func (s *Store) providers() []Provider {
-	providers := Providers()
+func (s *Store) providers() []Source {
+	providers := Sources()
 	root := filepath.Join(s.dir, "agent-imports")
 	entries, _ := os.ReadDir(root)
 	for _, e := range entries {
-		if e.IsDir() && e.Type()&os.ModeSymlink == 0 && ident.MatchString(e.Name()) && !strings.ContainsAny(e.Name(), ":@+") && e.Name() != "claude" && e.Name() != "codex" {
+		if e.IsDir() && e.Type()&os.ModeSymlink == 0 && ident.MatchString(e.Name()) && !strings.ContainsAny(e.Name(), ":@+") && !reserved[e.Name()] {
 			providers = append(providers, importPlugin{e.Name(), filepath.Join(root, e.Name())})
 		}
 	}

@@ -1,5 +1,9 @@
 # OpenCode usage plugin
 
+Breadcrumb now reads OpenCode v2 directly: enable **OpenCode** in Settings →
+Coding agents. This exporter remains for existing setups. Both use OpenCode's
+response IDs, so a response read by both is counted once.
+
 This opt-in exporter reads completed OpenCode v2 assistant usage from its local
 SQLite database and appends Breadcrumb's normalized JSONL format. It requires
 Python 3.11 or later with `sqlite3.Connection.blobopen`, with no extra packages.

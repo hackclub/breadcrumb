@@ -23,7 +23,7 @@ type extractor struct {
 
 func extract(r io.Reader, paths map[string]bool, strict ...bool) (fields, error) {
 	x := extractor{r: bufio.NewReaderSize(r, 4096), paths: paths, out: fields{}, strict: len(strict) > 0 && strict[0]}
-	if err := x.value("", 0); err != nil {
+	if err := x.value("", "", 0); err != nil {
 		return nil, err
 	}
 	if _, err := x.next(); err != io.EOF {
@@ -80,7 +80,10 @@ func (x *extractor) str(keep bool) (string, error) {
 	}
 	return s, nil
 }
-func (x *extractor) value(path string, depth int) error {
+
+// pattern is path with each wildcard-matched key replaced by "*". Wildcards let a
+// provider keep usage keyed by model ID without keeping any other key.
+func (x *extractor) value(path, pattern string, depth int) error {
 	if depth > 64 {
 		return errJSON
 	}
@@ -88,9 +91,9 @@ func (x *extractor) value(path string, depth int) error {
 	if e != nil {
 		return e
 	}
-	keep := x.paths[path]
+	keep := x.paths[pattern]
 	// Usage leaves are numbers, never strings that happen to occupy a usage key.
-	numeric := strings.HasSuffix(path, "_tokens") || path == "payload.subagent_history_start_ordinal"
+	numeric := strings.HasSuffix(path, "_tokens") || strings.HasSuffix(path, "Tokens") || path == "payload.subagent_history_start_ordinal"
 	switch path {
 	case "input", "cacheRead", "cacheWrite", "cacheWrite1h", "output", "reasoning":
 		numeric = true
@@ -135,12 +138,12 @@ func (x *extractor) value(path string, depth int) error {
 			}
 			// Keys of discarded objects are discarded too; they cannot contain usage.
 			wanted := false
-			prefix := path + "."
+			prefix, patternPrefix := path+".", pattern+"."
 			if path == "" {
-				prefix = ""
+				prefix, patternPrefix = "", ""
 			}
 			for p := range x.paths {
-				if strings.HasPrefix(p, prefix) {
+				if strings.HasPrefix(p, patternPrefix) {
 					wanted = true
 					break
 				}
@@ -153,11 +156,14 @@ func (x *extractor) value(path string, depth int) error {
 			if e != nil || c != ':' {
 				return errJSON
 			}
-			child := "!"
+			child, childPattern := "!", "!"
 			if wanted {
-				child = prefix + key
+				child, childPattern = prefix+key, patternPrefix+key
+				if !x.under(childPattern) && x.under(patternPrefix+"*") {
+					childPattern = patternPrefix + "*"
+				}
 			}
-			if e = x.value(child, depth+1); e != nil {
+			if e = x.value(child, childPattern, depth+1); e != nil {
 				return e
 			}
 			c, e = x.next()
@@ -184,7 +190,7 @@ func (x *extractor) value(path string, depth int) error {
 		}
 		x.r.UnreadByte()
 		for {
-			if e = x.value("!", depth+1); e != nil {
+			if e = x.value("!", "!", depth+1); e != nil {
 				return e
 			}
 			c, e = x.next()
@@ -229,4 +235,13 @@ func (x *extractor) value(path string, depth int) error {
 		}
 	}
 	return nil
+}
+
+func (x *extractor) under(pattern string) bool {
+	for p := range x.paths {
+		if p == pattern || strings.HasPrefix(p, pattern+".") {
+			return true
+		}
+	}
+	return false
 }

@@ -40,6 +40,9 @@ const demoAgentStatus: AgentStatus = {
   providers: [
     { id: "claude", name: "Claude Code", detected: true, enabled: false },
     { id: "codex", name: "Codex", detected: true, enabled: false },
+    { id: "grok", name: "Grok Build", detected: true, enabled: false },
+    { id: "opencode", name: "OpenCode", detected: false, enabled: false },
+    { id: "antigravity", name: "Antigravity", detected: false, enabled: false },
     { id: "import", name: "JSONL plugins", detected: false, enabled: false },
   ],
   lastScan: new Date().toISOString(),

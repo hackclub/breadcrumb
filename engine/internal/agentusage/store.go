@@ -31,7 +31,7 @@ type Store struct {
 }
 type logFile struct {
 	path string
-	p    Provider
+	p    Source
 }
 type Cursor struct {
 	Identity   string
@@ -211,6 +211,13 @@ func (s *Store) Scan(budget int) error {
 				continue
 			}
 			root := p.Root(s.dir)
+			if d, ok := p.(databaseSource); ok {
+				for _, path := range d.databases(root) {
+					s.queue = append(s.queue, logFile{path, p})
+				}
+				continue
+			}
+			b, _ := p.(builtin)
 			err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 				if err != nil {
 					return nil
@@ -221,7 +228,7 @@ func (s *Store) Scan(budget int) error {
 				if d.Type()&os.ModeSymlink != 0 {
 					return nil
 				}
-				if !d.IsDir() && filepath.Ext(path) == ".jsonl" {
+				if !d.IsDir() && filepath.Ext(path) == ".jsonl" && b.accepts(path) {
 					s.queue = append(s.queue, logFile{path, p})
 				}
 				return nil
@@ -260,6 +267,10 @@ func (s *Store) Scan(budget int) error {
 	return nil
 }
 func (s *Store) scanFile(log logFile, budget int) (int, bool, error) {
+	if d, ok := log.p.(databaseSource); ok {
+		return s.scanDatabase(log.path, d, budget)
+	}
+	p := log.p.(Provider)
 	f, err := os.Open(log.path)
 	if err != nil {
 		return 0, true, nil
@@ -310,11 +321,16 @@ func (s *Store) scanFile(log logFile, budget int) (int, bool, error) {
 				continue
 			}
 			length := c.Search - c.Offset
+			if c.Offset == 0 {
+				if b, ok := p.(builtin); ok {
+					b.begin(log.path, &c.Context)
+				}
+			}
 			// A pathological line is skipped with bounded work and no allocation.
 			if length <= 16<<20 {
-				ev, e := log.p.Parse(io.NewSectionReader(f, c.Offset, length), &c.Context)
-				if e == nil && ev != nil {
-					if err := s.record(tx, *ev, log.p.ID() == "codex" && c.Context.Modern); err != nil {
+				events, _ := p.Parse(io.NewSectionReader(f, c.Offset, length), &c.Context)
+				for _, ev := range events {
+					if err := s.record(tx, ev, p.ID() == "codex" && c.Context.Modern); err != nil {
 						return err
 					}
 				}
@@ -327,6 +343,64 @@ func (s *Store) scanFile(log logFile, budget int) (int, bool, error) {
 		return put(b, key, c)
 	})
 	return used, done, err
+}
+
+// scanDatabase re-reads a SQLite store after it or its write-ahead log changes.
+// A store that cannot be read now, for example while its app migrates it, is
+// retried at the next discovery.
+func (s *Store) scanDatabase(path string, d databaseSource, budget int) (int, bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, true, nil
+	}
+	info, err := f.Stat()
+	id := identity(f)
+	f.Close()
+	if err != nil || !info.Mode().IsRegular() {
+		return 0, true, nil
+	}
+	size, modified, pending := info.Size(), info.ModTime().UnixNano(), false
+	if wal, err := os.Stat(path + "-wal"); err == nil {
+		size += wal.Size()
+		modified = max(modified, wal.ModTime().UnixNano())
+		pending = wal.Size() > 0
+	}
+	err = s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("cursors"))
+		c := Cursor{}
+		get(b, path, &c)
+		if c.Identity != id {
+			c = Cursor{Identity: id}
+		}
+		if c.Size == size && c.Modified == modified {
+			return nil
+		}
+		read := func(immutable bool) ([]Event, Cursor, error) {
+			next := c
+			db, err := openReadOnly(path, immutable)
+			if err != nil {
+				return nil, next, err
+			}
+			defer db.Close()
+			events, err := d.read(db, path, &next)
+			return events, next, err
+		}
+		events, next, err := read(false)
+		if err != nil && !pending {
+			events, next, err = read(true)
+		}
+		if err != nil {
+			return nil
+		}
+		for _, e := range events {
+			if err := s.record(tx, e, false); err != nil {
+				return err
+			}
+		}
+		next.Size, next.Modified = size, modified
+		return put(b, path, next)
+	})
+	return int(min(info.Size(), int64(budget))), true, err
 }
 func (s *Store) record(tx *bolt.Tx, e Event, modern bool) error {
 	if e.Time.Before(time.Now().Add(-92*24*time.Hour)) || e.Time.After(time.Now().Add(5*time.Minute)) {

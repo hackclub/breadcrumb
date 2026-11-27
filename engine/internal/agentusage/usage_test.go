@@ -19,6 +19,9 @@ func setup(t *testing.T) (*Store, string) {
 	home := filepath.Join(dir, "claude")
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
 	t.Setenv("CODEX_HOME", filepath.Join(dir, "codex"))
+	t.Setenv("GROK_HOME", filepath.Join(dir, "grok"))
+	t.Setenv("OPENCODE_DATA_DIR", filepath.Join(dir, "opencode"))
+	t.Setenv("ANTIGRAVITY_DATA_DIR", filepath.Join(dir, "antigravity"))
 	root := filepath.Join(home, "projects", "project")
 	os.MkdirAll(root, 0700)
 	s, e := Open(filepath.Join(dir, "library"))
@@ -154,12 +157,12 @@ func TestCodexPreferenceReplayAndRestart(t *testing.T) {
 func TestPluginStrict(t *testing.T) {
 	p := Providers()[2]
 	valid := fmt.Sprintf(`{"provider":"custom","id":"one","session":"session","model":"model","time":%q,"project":"demo","input":100,"output":5}`, time.Now().Format(time.RFC3339))
-	e, err := p.Parse(strings.NewReader(valid), &Context{})
+	e, err := parseOne(p, valid, &Context{})
 	if err != nil || e == nil {
 		t.Fatalf("valid plugin: %v", err)
 	}
 	for _, bad := range []string{strings.Replace(valid, `"input":100`, `"input":-1`, 1), strings.Replace(valid, `"input":100`, `"input":"100"`, 1), strings.Replace(valid, `"input":100`, `"input":1.5`, 1), strings.Replace(valid, `"project":"demo"`, `"project":"/Users/person/demo"`, 1), strings.Replace(valid, `"output":5`, `"output":5,"prompt":"SECRET"`, 1), strings.Replace(valid, `"output":5`, `"output":5,"anything":{"text":"SECRET"}`, 1)} {
-		if e, err := p.Parse(strings.NewReader(bad), &Context{}); err == nil || e != nil {
+		if e, err := parseOne(p, bad, &Context{}); err == nil || e != nil {
 			t.Fatalf("accepted invalid plugin: %s", bad)
 		}
 	}
@@ -169,7 +172,7 @@ func TestDiscardedContentMemory(t *testing.T) {
 	p := Providers()[0]
 	record := strings.TrimSuffix(claude("large"), "\n")
 	record = strings.Replace(record, "PROMPT_SENTINEL", strings.Repeat("x", 2<<20), 1)
-	if e, err := p.Parse(strings.NewReader(record), &Context{}); err != nil || e == nil {
+	if e, err := parseOne(p, record, &Context{}); err != nil || e == nil {
 		t.Fatal(err)
 	}
 }
@@ -208,7 +211,7 @@ func TestNativeReadersDiscardImportNamedContent(t *testing.T) {
 	content := strings.Repeat("PROMPT_SENTINEL", 10000)
 	line := strings.TrimSpace(claude("privacy"))
 	line = strings.TrimSuffix(line, "}") + fmt.Sprintf(`,"input":%q,"output":%q,"payload":{"usage":{"input_tokens":"TOOL_SENTINEL"}}}`, content, content)
-	event, err := Providers()[0].Parse(strings.NewReader(line), &Context{})
+	event, err := parseOne(Providers()[0], line, &Context{})
 	if err != nil || event == nil || event.Input != 10 {
 		t.Fatalf("discarded content affected usage: %v", err)
 	}
@@ -222,7 +225,7 @@ func TestNativeReadersDiscardImportNamedContent(t *testing.T) {
 		}
 	}
 	codex := fmt.Sprintf(`{"type":"token_usage_record","timestamp":%q,"input":%q,"output":%q,"message":{"usage":{"input_tokens":"TOOL_SENTINEL"}},"payload":{"response_id":"r","usage":{"input_tokens":100,"output_tokens":10}}}`, time.Now().Format(time.RFC3339), content, content)
-	event, err = Providers()[1].Parse(strings.NewReader(codex), &Context{Session: "s", Model: "model"})
+	event, err = parseOne(Providers()[1], codex, &Context{Session: "s", Model: "model"})
 	if err != nil || event == nil || event.Input != 100 {
 		t.Fatalf("Codex content affected usage: %v", err)
 	}
@@ -238,22 +241,30 @@ func TestLegacyForkCountsFreshUsageAfterCounterReset(t *testing.T) {
 	started := time.Now().UTC().Add(-10 * time.Minute)
 	meta := fmt.Sprintf(`{"type":"session_meta","payload":{"id":"child","forked_from_id":"parent","timestamp":%q}}`, started.Format(time.RFC3339))
 	c := Context{Model: "gpt-5.4"}
-	if _, err := p.Parse(strings.NewReader(meta), &c); err != nil {
+	if _, err := parseOne(p, meta, &c); err != nil {
 		t.Fatal(err)
 	}
 	record := func(at time.Time, total int) string {
 		return fmt.Sprintf(`{"type":"event_msg","timestamp":%q,"payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":%d},"last_token_usage":{"input_tokens":15,"cached_input_tokens":5,"output_tokens":5}}}}`, at.Format(time.RFC3339), total)
 	}
 	inherited := record(started.Add(-time.Minute), 1000)
-	if event, err := p.Parse(strings.NewReader(inherited), &c); err != nil || event != nil {
+	if event, err := parseOne(p, inherited, &c); err != nil || event != nil {
 		t.Fatal("inherited usage counted")
 	}
 	fresh := record(started.Add(time.Minute), 20)
-	event, err := p.Parse(strings.NewReader(fresh), &c)
+	event, err := parseOne(p, fresh, &c)
 	if err != nil || event == nil || event.Input != 10 {
 		t.Fatal("fresh fork usage lost after reset")
 	}
-	if event, err := p.Parse(strings.NewReader(fresh), &c); err != nil || event != nil {
+	if event, err := parseOne(p, fresh, &c); err != nil || event != nil {
 		t.Fatal("fresh usage counted twice")
 	}
+}
+
+func parseOne(p Provider, line string, c *Context) (*Event, error) {
+	events, err := p.Parse(strings.NewReader(line), c)
+	if len(events) == 0 {
+		return nil, err
+	}
+	return &events[0], err
 }
