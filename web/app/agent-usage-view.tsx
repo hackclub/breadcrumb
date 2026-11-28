@@ -3,10 +3,20 @@ import { useEffect, useState } from "react";
 import { calendarClock, REFERENCE } from "../lib/insights";
 import { estimate, processedTokens } from "../lib/agent-pricing";
 import type { AgentUsage, AgentHour } from "../lib/agent-usage-types";
+import { agentIcon, modelIcon } from "../lib/agent-icons";
 import "./agent-usage.css";
 const count = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 const money = (n: number) =>
   n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+function Mark({ icon, name }: { icon: string | null; name: string }) {
+  return icon ? (
+    <img className="catalog-app-icon" src={icon} alt="" width="22" height="22" />
+  ) : (
+    <span className="app-monogram" aria-hidden="true">
+      {name.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
 export function AgentUsageView({
   loadUsage,
   remote = false,
@@ -148,7 +158,10 @@ export function AgentUsageView({
             : "—";
           return (
             <div className="agent-row" key={data ? a : `loading-${a}`}>
-              <strong>{label(a)}</strong>
+              <strong className="agent-name">
+                <Mark icon={agentIcon(a)} name={label(a)} />
+                {label(a)}
+              </strong>
               <span>{`${sessions} ${remote ? "sessions started" : "sessions"}`}</span>
               <span>{`${total ? ((value / total) * 100).toFixed(1) : "0"}%`}</span>
               <span>{`${data ? count(rows.reduce((n, h) => n + processedTokens(h), 0)) : "—"} tokens`}</span>
@@ -230,7 +243,10 @@ export function AgentUsageView({
               const rows = hours.filter((h) => (by === "model" ? h.model : day(h)) === k);
               return (
                 <tr key={k}>
-                  <th>{k}</th>
+                  <th>
+                    {by === "model" && <Mark icon={modelIcon(k)} name={k} />}
+                    {k}
+                  </th>
                   <td>{count(rows.reduce((n, h) => n + processedTokens(h), 0))}</td>
                   <td>
                     {rows.every((h) => !estimate(h, h.model))
