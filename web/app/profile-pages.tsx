@@ -1,7 +1,16 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import type { Profile, PublicProfile as ProfileView } from "../lib/profiles";
+import type { ProfileStats } from "../lib/leaderboards";
 import { appSeed, type AppEntry } from "../lib/apps";
+import { duration } from "../lib/insights";
 import { AppIcon } from "./app-icon";
 import { SiteHeader } from "./site-header";
 
@@ -143,14 +152,15 @@ export function ProfileSettings({
   initialSignedIn = true,
   initialProfile,
   initialCatalog = appSeed,
+  stats = null,
 }: {
   initialSignedIn?: boolean;
   initialProfile?: Profile | null;
   initialCatalog?: AppEntry[];
+  stats?: ProfileStats | null;
 }) {
   const [profile, setProfile] = useState<Profile | null>(initialProfile ?? null),
     [draft, setDraft] = useState(initialProfile ? { ...empty, ...initialProfile } : empty),
-    [catalog, setCatalog] = useState<AppEntry[]>(initialCatalog),
     [loading, setLoading] = useState(initialProfile === undefined),
     [editing, setEditing] = useState(false),
     [unauthorized, setUnauthorized] = useState(!initialSignedIn),
@@ -158,7 +168,6 @@ export function ProfileSettings({
     [message, setMessage] = useState(""),
     [failed, setFailed] = useState(false),
     [retry, setRetry] = useState(0),
-    [query, setQuery] = useState(""),
     [availability, setAvailability] = useState({ state: "idle", message: "" }),
     [uploading, setUploading] = useState(false),
     [progress, setProgress] = useState(0),
@@ -189,15 +198,9 @@ export function ProfileSettings({
     setLoading(true);
     setMessage("");
     setFailed(false);
-    Promise.all([
-      request("/api/profile"),
-      fetch("/api/apps")
-        .then((response) => (response.ok ? response.json() : null))
-        .catch(() => null),
-    ])
-      .then(([value, apps]) => {
+    request("/api/profile")
+      .then((value) => {
         if (!active) return;
-        if (Array.isArray(apps?.apps)) setCatalog(apps.apps);
         setProfile(value.profile);
         if (value.profile)
           window.history.replaceState(window.history.state, "", `/@${value.profile.username}`);
@@ -279,8 +282,6 @@ export function ProfileSettings({
         displayName: draft.displayName,
         bio: draft.bio,
         visibility: draft.visibility,
-        shareApps: draft.shareApps,
-        apps: draft.apps,
         githubUrl: draft.githubUrl,
         websiteUrl: draft.websiteUrl,
         ...(draft.avatarMode !== "upload" ? { avatarMode: draft.avatarMode } : {}),
@@ -377,9 +378,6 @@ export function ProfileSettings({
       setUploading(false);
     }
   }
-  const apps = catalog.filter((app) =>
-    `${app.name} ${app.aliases.join(" ")}`.toLowerCase().includes(query.toLowerCase()),
-  );
   const editor = (
     <form onSubmit={save} aria-busy={loading} className="profile-form">
       <fieldset disabled={loading || busy || uploading || (failed && !profile && !draft.username)}>
@@ -522,11 +520,8 @@ export function ProfileSettings({
             </div>
           </div>
           <p className="profile-help">
-            Gravatar receives a hash of your account email only if you choose it and save. Visitors
-            receive the picture through Breadcrumb; your email is not published.
-          </p>
-          <p className="profile-help">
-            JPG, PNG, or WebP · up to 2 MiB. Uploading or removing a picture applies immediately.
+            JPG, PNG, or WebP up to 2 MiB, saved as soon as you choose it. Gravatar sees a hash of
+            your email only if you pick it. Your email is never shown.
           </p>
           <div
             className="profile-upload-track"
@@ -588,13 +583,13 @@ export function ProfileSettings({
           />
         </section>
         <section className="profile-section">
-          <h2>What people can see</h2>
           <label className="profile-switch">
             <span>
               Public profile
               <small>
-                Anyone can see your name, picture, bio, and links when this is on. Turning it off
-                keeps your username reserved.
+                Shows your name, picture, bio, and links, plus the time and apps you share on the
+                leaderboard. Screenshots and window titles never appear. Turning it off keeps your
+                username.
               </small>
             </span>
             <input
@@ -609,80 +604,6 @@ export function ProfileSettings({
               }
             />
           </label>
-          <label className="profile-switch">
-            <span>
-              Share my selected apps
-              <small>Only the apps you select below. No usage time or capture history.</small>
-            </span>
-            <input
-              type="checkbox"
-              role="switch"
-              checked={draft.shareApps}
-              onChange={(event) => setDraft({ ...draft, shareApps: event.target.checked })}
-            />
-          </label>
-          <p className="profile-help">
-            Screenshots, window titles, email, and raw history never appear on your public profile.
-          </p>
-        </section>
-        <section className="profile-section">
-          <div className="profile-app-heading">
-            <h2>Apps you use</h2>
-            <span>{draft.apps.length} selected</span>
-          </div>
-          <p className="profile-help">
-            Curate your toolkit. These choices are separate from the apps in your captures.
-          </p>
-          <label htmlFor="profile-app-search" className="sr-only">
-            Find an app
-          </label>
-          <input
-            id="profile-app-search"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find an app…"
-            disabled={!draft.shareApps}
-          />
-          <div
-            className={`profile-app-options ${!draft.shareApps ? "not-shared" : ""}`}
-            aria-label="Choose apps to share"
-          >
-            {loading
-              ? Array.from({ length: 8 }, (_, i) => (
-                  <span className="profile-app-skeleton skeleton" key={i} />
-                ))
-              : apps.map((app) => (
-                  <label key={app.id} className="profile-app-option">
-                    <AppIcon apps={catalog} name={app.name} id={app.id} />
-                    <span>{app.name}</span>
-                    <input
-                      type="checkbox"
-                      checked={draft.apps.includes(app.id)}
-                      disabled={
-                        !draft.shareApps ||
-                        (!draft.apps.includes(app.id) && draft.apps.length >= 30)
-                      }
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          apps: event.target.checked
-                            ? [...draft.apps, app.id]
-                            : draft.apps.filter((id) => id !== app.id),
-                        })
-                      }
-                    />
-                  </label>
-                ))}
-            {!loading && !apps.length && <p className="profile-help">No matching apps.</p>}
-          </div>
-          <p className="profile-help">
-            {draft.shareApps
-              ? draft.visibility === "public"
-                ? "Selected apps will be visible on your public profile."
-                : "Private profiles hide selected apps."
-              : "App sharing is off. Your selections stay private."}
-          </p>
         </section>
       </fieldset>
       <div className="profile-save-row">
@@ -735,13 +656,9 @@ export function ProfileSettings({
               </>
             ) : (
               <ProfileDetails
-                profile={{
-                  ...profile,
-                  avatarURL: profile.avatarURL ?? undefined,
-                  apps: profile.shareApps
-                    ? catalog.filter((app) => profile.apps.includes(app.id))
-                    : [],
-                }}
+                profile={{ ...profile, avatarURL: profile.avatarURL ?? undefined }}
+                stats={stats}
+                catalog={initialCatalog}
                 actions={
                   <button
                     type="button"
@@ -795,9 +712,16 @@ export function ProfileSettings({
         )}
         {profile && !editing && (
           <p className="profile-public-note">
-            {profile.visibility === "private"
-              ? "Your profile is private. Only you can see it."
-              : "Capture history stays private."}{" "}
+            {profile.visibility === "private" ? (
+              "Your profile is private. Only you can see it."
+            ) : stats ? (
+              "Screenshots and window titles stay private."
+            ) : (
+              <>
+                Your time isn’t shown yet. Join the <a href="/leaderboard">leaderboard</a> to add
+                it.
+              </>
+            )}{" "}
             <a href={`/@${profile.username}`}>View your profile ↗</a>
           </p>
         )}
@@ -806,7 +730,69 @@ export function ProfileSettings({
   );
 }
 
-function ProfileDetails({ profile, actions }: { profile: ProfileView; actions?: ReactNode }) {
+const weekday = (day: string, style: "narrow" | "long") =>
+  new Date(day + "T12:00:00Z").toLocaleDateString("en-US", { weekday: style, timeZone: "UTC" });
+function Stats({ stats, catalog }: { stats: ProfileStats; catalog: AppEntry[] }) {
+  const peak = Math.max(1, ...stats.days.map((day) => day.seconds));
+  return (
+    <section className="profile-stats" aria-label="Time">
+      <dl className="profile-totals">
+        <div>
+          <dt>Last 7 days</dt>
+          <dd>{duration(stats.weekSeconds)}</dd>
+        </div>
+        <div>
+          <dt>All time</dt>
+          <dd>{duration(stats.totalSeconds)}</dd>
+        </div>
+      </dl>
+      <ol className="profile-week" aria-label="Time each day">
+        {stats.days.map(({ day, seconds }) => (
+          <li
+            key={day}
+            title={`${weekday(day, "long")}: ${duration(seconds)}`}
+            style={{ "--h": seconds / peak } as CSSProperties}
+          >
+            <i aria-hidden="true" />
+            <span aria-hidden="true">{weekday(day, "narrow")}</span>
+            <span className="sr-only">
+              {weekday(day, "long")}: {duration(seconds)}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {stats.apps && (
+        <div className="public-apps">
+          <h2>Top apps</h2>
+          {stats.apps.length ? (
+            <div className="public-app-list">
+              {stats.apps.map((app) => (
+                <div className="public-app" key={app.id ?? app.name}>
+                  <AppIcon apps={catalog} name={app.name} id={app.id} />
+                  <span>{app.name}</span>
+                  <small>{duration(app.seconds)}</small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">No app time in the last 7 days.</p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+function ProfileDetails({
+  profile,
+  stats,
+  catalog,
+  actions,
+}: {
+  profile: Omit<ProfileView, "apps">;
+  stats: ProfileStats | null;
+  catalog: AppEntry[];
+  actions?: ReactNode;
+}) {
   return (
     <>
       <div className="profile-card-heading">
@@ -826,31 +812,21 @@ function ProfileDetails({ profile, actions }: { profile: ProfileView; actions?: 
           <ProfileLink url={profile.websiteUrl} kind="website" />
         </nav>
       )}
-      <div className="public-apps">
-        <h2>Apps</h2>
-        <div className="public-app-list">
-          {profile.apps?.length ? (
-            profile.apps.map((app) => (
-              <div className="public-app" key={app.id}>
-                <AppIcon apps={profile.apps!} name={app.name} id={app.id} />
-                <span>{app.name}</span>
-              </div>
-            ))
-          ) : (
-            <p className="muted">No apps shared.</p>
-          )}
-        </div>
-      </div>
+      {stats && <Stats stats={stats} catalog={catalog} />}
     </>
   );
 }
 
 export function PublicProfile({
   profile,
+  stats = null,
+  catalog = appSeed,
   failed = false,
   signedIn = false,
 }: {
   profile: ProfileView | null;
+  stats?: ProfileStats | null;
+  catalog?: AppEntry[];
   failed?: boolean;
   signedIn?: boolean;
 }) {
@@ -859,9 +835,7 @@ export function PublicProfile({
       <section className="public-profile-page">
         <div className="public-profile-card">
           {profile ? (
-            <>
-              <ProfileDetails profile={profile} />
-            </>
+            <ProfileDetails profile={profile} stats={stats} catalog={catalog} />
           ) : (
             <div className="profile-unavailable">
               <h1>{failed ? "Profile unavailable" : "Profile not found"}</h1>
@@ -874,9 +848,7 @@ export function PublicProfile({
             </div>
           )}
         </div>
-        <p className="profile-public-note">
-          A personally curated profile. Capture history stays private.
-        </p>
+        <p className="profile-public-note">Screenshots and window titles stay private.</p>
       </section>
     </Shell>
   );
