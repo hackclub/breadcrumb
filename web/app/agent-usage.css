@@ -26,6 +26,15 @@
   color: var(--accent-ink);
   box-shadow: none;
 }
+.agent-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
 .agent-setting {
   display: flex;
   align-items: center;

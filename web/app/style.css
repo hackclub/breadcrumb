@@ -66,6 +66,23 @@ input {
 input::placeholder {
   color: var(--subtle);
 }
+select {
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  padding: 7px 30px 7px 13px;
+  border: 1px solid var(--frame);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--surface) var(--chevron) no-repeat right 12px center / 10px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 120ms ease-out;
+}
+select:hover {
+  border-color: var(--muted);
+}
 :where(input, button, a, select):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -155,14 +172,9 @@ form button {
   }
 }
 .header-actions select {
-  font-size: 12px;
   color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 8px;
+  padding: 6px 28px 6px 12px;
   max-width: 116px;
-  cursor: pointer;
 }
 .auth-page {
   width: 100%;
@@ -383,7 +395,8 @@ form button {
   }
   .header-actions select {
     font-size: 11px;
-    padding: 5px 6px;
+    padding: 5px 24px 5px 10px;
+    background-position: right 9px center;
     max-width: 103px;
   }
   .header-actions button {
@@ -767,12 +780,7 @@ form button {
 }
 .profile-avatar-controls > select {
   width: 100%;
-  padding: 9px 11px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
+  padding: 9px 30px 9px 13px;
   font-size: 13px;
 }
 .profile-avatar-actions {
@@ -1039,11 +1047,6 @@ form button {
 }
 .download-actions select {
   width: 140px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--ink);
-  padding: 8px;
 }
 @media (max-width: 600px) {
   .download-option {
