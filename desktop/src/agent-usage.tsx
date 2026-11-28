@@ -136,8 +136,11 @@ function AgentUploadSettings() {
     setError("");
     try {
       setState(await work());
-    } catch {
-      setError(failure);
+    } catch (cause) {
+      // The engine rejects with its own message, such as an unreachable server.
+      const reason =
+        typeof cause === "string" ? cause : cause instanceof Error ? cause.message : "";
+      setError(reason ? `${failure} ${reason}` : failure);
     } finally {
       setBusy(false);
     }
@@ -145,10 +148,15 @@ function AgentUploadSettings() {
   const allow = () =>
     run(async () => {
       const result = await engine<{ url: string }>("beginAgentSignIn", {});
-      if (isNative) {
-        const { openUrl } = await import("@tauri-apps/plugin-opener");
-        await openUrl(result.url);
-      } else window.open(result.url, "_blank", "noopener");
+      try {
+        if (isNative) {
+          const { openUrl } = await import("@tauri-apps/plugin-opener");
+          await openUrl(result.url);
+        } else window.open(result.url, "_blank", "noopener");
+      } catch (cause) {
+        await engine("cancelSignIn");
+        throw cause;
+      }
       return engine<UploadStatus>("agentUsageSync", {});
     }, "Could not start sign-in.");
   const detail = !state?.connected
@@ -163,6 +171,7 @@ function AgentUploadSettings() {
   return (
     <>
       {error && <p role="alert">{error}</p>}
+      {state?.authError && !signingIn && <p role="alert">{state.authError}</p>}
       {state?.connected && state.allowed && state.enabled && state.error && (
         <p role="alert">{state.error}</p>
       )}
