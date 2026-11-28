@@ -94,11 +94,13 @@ export function SiteHeader({
               Sign out
             </button>
           ) : (
-            path !== "/" && (
-              <a className="sign-in-nav" href={"/?next=" + encodeURIComponent(path)}>
-                Sign in
-              </a>
-            )
+            // Home keeps its sign-in form near the bottom of the page.
+            <a
+              className="sign-in-nav"
+              href={path === "/" ? "#sign-in" : "/?next=" + encodeURIComponent(path)}
+            >
+              Sign in
+            </a>
           ))}
       </div>
     </header>

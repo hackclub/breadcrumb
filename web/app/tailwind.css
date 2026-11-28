@@ -1,0 +1,65 @@
+/* Tailwind without Preflight: existing pages keep their own base styles. Layers are declared
+   first so every Tailwind utility beats the element defaults in style.css (@layer base). */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* The shared theme tokens (themes.css), so `bg-surface` or `text-muted` follow every theme. */
+@theme inline {
+  --font-sans: var(--font);
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --color-bg: var(--bg);
+  --color-ink: var(--ink);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-hover: var(--accent-hover);
+  --color-line: var(--line);
+  --color-frame: var(--frame);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-preview: var(--preview-bg);
+  --color-crumb: var(--crumb);
+  --color-crumb-strong: var(--crumb-strong);
+  --color-positive: var(--positive);
+  --color-danger: var(--danger);
+}
+
+/* Home page motion: the recorder's light, shutter flash, new frames and window changes. */
+@theme {
+  --animate-breathe: breathe 2.6s ease-in-out infinite;
+  --animate-flash: flash 650ms ease-out forwards;
+  --animate-drop: drop 800ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-window: window 450ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --ease-settle: cubic-bezier(0.2, 0.8, 0.2, 1);
+  @keyframes breathe {
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @keyframes flash {
+    from {
+      opacity: 0.5;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes drop {
+    from {
+      opacity: 0;
+      transform: translate(-40cqw, -38cqw) scale(2.4);
+    }
+    45% {
+      opacity: 1;
+    }
+  }
+  @keyframes window {
+    from {
+      opacity: 0;
+      transform: translateY(3cqw) scale(0.98);
+    }
+  }
+}

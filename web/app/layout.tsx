@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { PerformanceInsights } from "./performance-insights";
+import "./tailwind.css";
 import "./style.css";
 import "./dashboard.css";
 import { themeScript } from "../lib/theme";
