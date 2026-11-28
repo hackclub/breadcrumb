@@ -525,73 +525,12 @@ form button {
   margin-top: 4px;
   max-width: 440px;
 }
-.profile-switch input,
-.profile-app-option input {
+.profile-switch input {
   width: 16px;
   height: 16px;
   margin: 0;
   accent-color: var(--accent);
   flex-shrink: 0;
-}
-.profile-app-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
-}
-.profile-app-heading > span {
-  font-size: 11px;
-  color: var(--muted);
-}
-#profile-app-search {
-  margin-top: 15px;
-}
-.profile-app-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  height: 260px;
-  align-content: start;
-  overflow-y: auto;
-  margin-top: 12px;
-  padding: 3px;
-}
-.profile-app-options.not-shared {
-  opacity: 0.55;
-}
-.profile-app-option {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  height: 41px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px;
-  margin: 0;
-  cursor: pointer;
-}
-.profile-app-option:hover {
-  background: var(--hover);
-}
-.profile-app-option > span:not(.app-monogram) {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.profile-app-option .catalog-app-icon,
-.public-app .catalog-app-icon,
-.profile-app-option .app-monogram,
-.public-app .app-monogram {
-  flex-shrink: 0;
-  margin-right: 4px;
-}
-.profile-app-skeleton {
-  display: block;
-  min-width: 0;
-  height: 41px;
-  border-radius: 6px;
 }
 .profile-save-row {
   display: flex;
@@ -827,14 +766,78 @@ form button {
   min-width: 0;
 }
 .public-app > span {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.public-app-list > p {
+.public-app .catalog-app-icon,
+.public-app .app-monogram {
+  flex-shrink: 0;
+}
+.public-app > small {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.public-apps > p {
   font-size: 12px;
-  grid-column: 1/-1;
   margin: 0;
+}
+.profile-stats {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 22px;
+}
+.profile-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 40px;
+  margin: 0;
+}
+.profile-totals dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.profile-totals dd {
+  margin: 4px 0 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.profile-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
+}
+.profile-week li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.profile-week i {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 64px;
+  border-radius: 6px 6px 1px 1px;
+  background: var(--track);
+}
+/* Bars are clipped rather than resized, so they never move the layout. */
+.profile-week i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--crumb);
+  clip-path: inset(calc((1 - var(--h, 0)) * 100%) 0 0 round 6px 6px 1px 1px);
 }
 .profile-public-note {
   font-size: 11px;
@@ -897,7 +900,6 @@ form button {
   }
 }
 @media (max-width: 360px) {
-  .profile-app-options,
   .public-app-list {
     grid-template-columns: 1fr;
   }

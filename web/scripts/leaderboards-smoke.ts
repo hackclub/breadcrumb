@@ -105,6 +105,17 @@ try {
   await repo.savePreferences(ids[0], participants[0], { shareApps: true });
   list = await repo.leaderboard({ range: "all" });
   assert.deepEqual(list.entries[0].apps, [{ name: "Helium", id: "helium", seconds: 2000 }]);
+  assert.deepEqual(await repo.profileStats(`${prefix}_0`), {
+    days: [
+      { day: "2026-11-14", seconds: 100 },
+      ...["15", "16", "17", "18", "19"].map((d) => ({ day: `2026-11-${d}`, seconds: 0 })),
+      { day: "2026-11-20", seconds: 200 },
+    ],
+    weekSeconds: 300,
+    totalSeconds: 2000,
+    apps: [{ name: "Helium", id: "helium", seconds: 300 }],
+  });
+  assert.equal(await repo.profileStats(`${prefix}_9`), null, "Unknown usernames have no stats");
   const retryBefore = await pool.query(
     `SELECT d.xmin::text AS day_version,p.xmin::text AS totals_version
     FROM breadcrumb_leaderboards.days d JOIN breadcrumb_leaderboards.preferences p USING(participant)
@@ -145,12 +156,18 @@ try {
     false,
   );
   await rejects(repo.savePreferences(ids[0], participants[0], { enabled: true }), 409);
+  assert.equal(await repo.profileStats(`${prefix}_0`), null, "Private profiles show no stats");
   await pool.query(
     `UPDATE breadcrumb_profiles.profiles SET visibility='public' WHERE owner_id=$1`,
     [ids[0]],
   );
   await repo.savePreferences(ids[0], participants[0], { shareApps: false });
   assert.equal((await repo.leaderboard({ range: "all" })).entries[0].apps, undefined);
+  assert.equal(
+    (await repo.profileStats(`${prefix}_0`))?.apps,
+    undefined,
+    "Profiles show apps only when app usage is shared",
+  );
   await Promise.all([
     repo.write(participants[0], [day("2026-11-20", 600, 25, "2026-11-20T17:02:00Z")]),
     repo.savePreferences(ids[0], participants[0], { enabled: false }),
@@ -168,6 +185,11 @@ try {
   assert.equal(
     (await repo.leaderboard({ range: "all" })).entries.some((x) => x.username === `${prefix}_0`),
     false,
+  );
+  assert.equal(
+    await repo.profileStats(`${prefix}_0`),
+    null,
+    "Leaving the leaderboard hides profile stats",
   );
   const store = new MemoryStore();
   const sample = {

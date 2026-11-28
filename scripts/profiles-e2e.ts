@@ -213,9 +213,9 @@ try {
     const photo = { name: "photo.png", mimeType: "image/png", buffer: png };
     await page.goto(base + "/profile");
     await expect(page.locator(".profile-form")).toHaveAttribute("aria-busy", "false");
-    const before = await page.locator(".profile-app-options").boundingBox();
+    const before = await page.locator(".profile-save-row").boundingBox();
     await ready();
-    expect(before).toEqual(await page.locator(".profile-app-options").boundingBox());
+    expect(before).toEqual(await page.locator(".profile-save-row").boundingBox());
     await checkCLS("checkpoint1");
     await expect(page.getByLabel("Profile picture source")).toBeDisabled();
     expect(avatarRequests).toBe(0);
@@ -231,9 +231,6 @@ try {
     await page.getByLabel("GitHub", { exact: true }).fill("https://github.com/fellow-builder");
     await page.getByLabel("Personal website", { exact: true }).fill("https://builder.example/");
     await page.getByRole("switch", { name: /Public profile/ }).uncheck();
-    await page.getByRole("switch", { name: /Share my selected apps/ }).check();
-    for (const app of appSeed.slice(0, 2))
-      await page.getByRole("checkbox", { name: app.name, exact: true }).check();
     await page.getByRole("button", { name: "Reserve username" }).click();
     await expect(page.locator(".profile-feedback[role=alert]")).toContainText("just reserved");
     await expect(page.getByLabel(/Display name/)).toHaveValue("A fellow builder");
@@ -253,13 +250,8 @@ try {
     expect(patches.length).toBe(savedWrites);
     await page.getByRole("button", { name: "Edit profile", exact: true }).click();
     await expect(page.getByLabel(/Display name/)).toHaveValue("A fellow builder");
-    expect(patches.at(-1)).toMatchObject({
-      username,
-      visibility: "private",
-      shareApps: true,
-      avatarMode: "none",
-      apps: appSeed.slice(0, 2).map((app) => app.id),
-    });
+    expect(patches.at(-1)).toMatchObject({ username, visibility: "private", avatarMode: "none" });
+    expect(patches.at(-1)).not.toHaveProperty("apps");
     expect(avatarRequests).toBe(0);
     await page.getByLabel("Profile picture source").selectOption("gravatar");
     expect(avatarRequests).toBe(0); // Gravatar is not looked up until explicitly saved.
@@ -313,7 +305,6 @@ try {
     await uploadInput().setInputFiles(photo);
     await expect(page.locator(".profile-avatar-feedback")).toContainText("Picture uploaded");
     await page.getByRole("switch", { name: /Public profile/ }).check();
-    await page.getByRole("switch", { name: /Share my selected apps/ }).uncheck();
     await saveProfile();
     await expect(page.getByRole("link", { name: /View your profile/ })).toHaveAttribute(
       "href",
@@ -327,7 +318,8 @@ try {
     await page.reload();
     await expect(page).toHaveURL(base + "/@" + username);
     await expect(page.getByRole("heading", { name: "A fellow builder" })).toBeVisible();
-    await expect(page.getByText("No apps shared.", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Your time isn’t shown yet/)).toBeVisible();
+    await expect(page.locator(".profile-stats")).toHaveCount(0);
     await visitor.goto(base + "/@" + username);
     await expect(
       visitor.getByRole("heading", { name: "A fellow builder", exact: true }),
@@ -353,19 +345,23 @@ try {
     await checkCLS("checkpoint3");
     expect((await page.content()).includes("a".repeat(64))).toBe(false);
     expect((await page.content()).includes("avatar_hash")).toBe(false);
+    await fixture.share(ownerId, appSeed[1]);
     await page.goto(base + "/profile");
     await ready();
-    await page.getByRole("switch", { name: /Share my selected apps/ }).check();
-    await page.getByRole("checkbox", { name: appSeed[0].name, exact: true }).uncheck();
     await saveProfile();
     await page.waitForFunction(
       () => document.querySelector<HTMLImageElement>(".profile-avatar img")?.naturalWidth,
     );
     await page.screenshot({ path: `test-results/profiles/settings-${width}.png`, fullPage: true });
     await page.getByRole("link", { name: /View your profile/ }).click();
-    await expect(page.getByText(appSeed[1].name, { exact: true })).toBeVisible();
-    await expect(page.getByText(appSeed[0].name, { exact: true })).toHaveCount(0);
+    await expect(page.locator(".profile-totals")).toContainText("Last 7 days2h");
+    await expect(page.locator(".profile-week li")).toHaveCount(7);
+    await expect(page.locator(".public-app")).toHaveCount(1);
+    await expect(page.locator(".public-app")).toContainText(appSeed[1].name);
     await expect(page.locator(".public-app .catalog-app-icon")).toHaveCount(1);
+    await visitor.goto(base + "/@" + username);
+    await expect(visitor.locator(".profile-totals")).toContainText("All time2h");
+    await expect(visitor.locator(".public-app")).toContainText("2h");
     await page.waitForFunction(
       () => document.querySelector<HTMLImageElement>(".profile-avatar img")?.naturalWidth,
     );
@@ -394,7 +390,7 @@ try {
     }
     expect(errors).toEqual([]);
     console.log(
-      `Profiles ${width}px: immutable claims, actual public SSR/privacy, links, explicit Gravatar opt-in, upload limits/progress/error/retry/removal, no overflow, CLS=0.`,
+      `Profiles ${width}px: immutable claims, actual public SSR/privacy, links, shared time and apps, explicit Gravatar opt-in, upload limits/progress/error/retry/removal, no overflow, CLS=0.`,
     );
     await anonymous.close();
     await context.close();

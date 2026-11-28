@@ -28,6 +28,15 @@ export type Leaderboard = {
   nextCursor: string;
   updatedAt: string | null;
 };
+/** What a public profile shows: the same time, and apps, the person shares on the leaderboard. */
+export type ProfileStats = {
+  /** The last seven UTC days, oldest first. */
+  days: { day: string; seconds: number }[];
+  weekSeconds: number;
+  totalSeconds: number;
+  /** Most-used apps over those seven days, only when app usage is shared. */
+  apps?: Breakdown;
+};
 export class LeaderboardError extends Error {
   constructor(
     public status: number,
@@ -261,6 +270,58 @@ export class PostgresLeaderboards {
       ];
     });
     await this.write(participant, values);
+  }
+  async profileStats(username: string): Promise<ProfileStats | null> {
+    const { rows } = await this.pool.query<{
+      participant: string;
+      totalSeconds: number;
+      shareApps: boolean;
+    }>(
+      `SELECT l.participant,l.total_seconds AS "totalSeconds",l.share_app_usage AS "shareApps"
+      FROM breadcrumb_profiles.profiles p JOIN breadcrumb_leaderboards.preferences l ON l.owner_id=p.owner_id
+      WHERE p.username=$1 AND p.visibility='public' AND l.enabled`,
+      [username.toLowerCase()],
+    );
+    const owner = rows[0];
+    if (!owner) return null;
+    const today = this.now().toISOString().slice(0, 10),
+      since = dayOffset(today, -6);
+    const [daily, apps] = await Promise.all([
+      this.pool.query<{ day: string; seconds: number }>(
+        `SELECT to_char(day,'YYYY-MM-DD') AS day,seconds FROM breadcrumb_leaderboards.days
+        WHERE participant=$1 AND day >= $2::date AND day <= $3::date`,
+        [owner.participant, since, today],
+      ),
+      owner.shareApps
+        ? this.pool.query<{ name: string; id: string | null; seconds: number }>(
+            `SELECT app->>'name' AS name,app->>'id' AS id,SUM((app->>'seconds')::float8) AS seconds
+            FROM breadcrumb_leaderboards.days d CROSS JOIN LATERAL jsonb_array_elements(d.apps) app
+            WHERE d.participant=$1 AND d.day >= $2::date AND d.day <= $3::date
+            GROUP BY app->>'name',app->>'id' HAVING SUM((app->>'seconds')::float8)>0
+            ORDER BY seconds DESC,name LIMIT 6`,
+            [owner.participant, since, today],
+          )
+        : null,
+    ]);
+    const byDay = new Map(daily.rows.map((row) => [row.day, row.seconds]));
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const day = dayOffset(since, i);
+      return { day, seconds: byDay.get(day) ?? 0 };
+    });
+    return {
+      days,
+      weekSeconds: days.reduce((sum, day) => sum + day.seconds, 0),
+      totalSeconds: owner.totalSeconds,
+      ...(apps
+        ? {
+            apps: apps.rows.map(({ name, id, seconds }) => ({
+              name,
+              ...(id ? { id } : {}),
+              seconds,
+            })),
+          }
+        : {}),
+    };
   }
   async leaderboard(options: {
     range?: string;

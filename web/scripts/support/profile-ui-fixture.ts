@@ -7,6 +7,9 @@ import { createHash } from "node:crypto";
 import { Pool } from "pg";
 import { PostgresProfiles, type Profile } from "../../lib/profiles";
 import { profilesSchema } from "../../lib/profiles-schema";
+import { PostgresLeaderboards } from "../../lib/leaderboards";
+import { leaderboardsSchema } from "../../lib/leaderboards-schema";
+import type { AppEntry } from "../../lib/apps";
 
 export async function profileUIFixture(connection: string, baseURL: string, secret: string) {
   const url = new URL(connection);
@@ -44,7 +47,26 @@ export async function profileUIFixture(connection: string, baseURL: string, secr
     owners.add(owner);
   }
   await pool.query(profilesSchema);
+  await pool.query(leaderboardsSchema);
+  const leaderboards = new PostgresLeaderboards(pool);
   return {
+    /** Shares two hours today, all in one app, the way a synced desktop would. */
+    async share(owner: string, app: AppEntry) {
+      await ensureOwner(owner);
+      const participant = createHash("sha256").update(`${owner}@example.invalid`).digest("hex");
+      await leaderboards.ensureParticipant(participant, owner);
+      await leaderboards.savePreferences(owner, participant, { shareApps: true });
+      const now = new Date();
+      await leaderboards.write(participant, [
+        {
+          day: now.toISOString().slice(0, 10),
+          seconds: 7200,
+          captures: 120,
+          lastSynced: now.toISOString(),
+          apps: [{ name: app.name, id: app.id, seconds: 7200 }],
+        },
+      ]);
+    },
     async cookies(owner: string) {
       await ensureOwner(owner);
       return test.getCookies({ userId: owner });
