@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { engine, isNative } from "./bridge";
 import type { AgentStatus } from "./agent-usage-types";
+import { agentIcon } from "../../web/lib/agent-icons";
+
+/** "just now", "5 min ago", "3 h ago", then a date. */
+export function ago(iso: string, now = Date.now()) {
+  const seconds = (now - Date.parse(iso)) / 1000;
+  if (!Number.isFinite(seconds)) return "";
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
+}
 export function AgentUsageSettings() {
   const [status, setStatus] = useState<AgentStatus | null>(null),
     [error, setError] = useState(""),
@@ -25,6 +36,18 @@ export function AgentUsageSettings() {
     };
   }, []);
   const scanned = status?.lastScan && !status.lastScan.startsWith("0001");
+  const reading = status?.providers.filter((p) => p.enabled).map((p) => p.name) ?? [];
+  async function toggle(provider: string, enabled: boolean) {
+    setBusy(true);
+    setError("");
+    try {
+      setStatus(await engine<AgentStatus>("agentUsageSettings", { provider, enabled }));
+    } catch {
+      setError("Could not save coding-agent settings.");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="settings-section" aria-label="Coding agents">
       <h2>Coding agents</h2>
@@ -32,39 +55,37 @@ export function AgentUsageSettings() {
         Reads token counts from local agent logs. Chats and tool content are never stored.
       </p>
       {error && <p role="alert">{error}</p>}
-      {status?.providers.map((p) => (
-        <label key={p.id} className="setting-row">
-          <span>
-            {p.name}
-            <small>{p.detected ? "Detected" : "Not found"}</small>
-          </span>
-          <input
-            type="checkbox"
-            aria-label={`Track ${p.name}`}
-            checked={p.enabled}
-            disabled={busy}
-            onChange={async (e) => {
-              setBusy(true);
-              setError("");
-              try {
-                setStatus(
-                  await engine<AgentStatus>("agentUsageSettings", {
-                    provider: p.id,
-                    enabled: e.target.checked,
-                  }),
-                );
-              } catch {
-                setError("Could not save coding-agent settings.");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          />
-        </label>
-      ))}
       {status && (
-        <p className="muted">
-          {scanned ? `Last scan ${new Date(status.lastScan).toLocaleString()}` : "Not yet scanned"}
+        <div className="agent-picker" role="group" aria-label="Agents to read">
+          {status.providers.map((p) => {
+            const icon = agentIcon(p.usageID ?? p.id);
+            const label = `${p.name}, ${p.detected ? "detected" : "not found"}`;
+            return (
+              <button
+                key={p.id}
+                aria-label={label}
+                title={label}
+                aria-pressed={p.enabled}
+                data-missing={p.detected ? undefined : ""}
+                disabled={busy}
+                onClick={() => void toggle(p.id, !p.enabled)}
+              >
+                {icon ? (
+                  <img src={icon} alt="" width="24" height="24" />
+                ) : (
+                  <span aria-hidden="true">{p.name.slice(0, 1).toUpperCase()}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {status && (
+        <p className="muted agent-picker-note">
+          {reading.length
+            ? `Reading ${new Intl.ListFormat(undefined, { type: "conjunction" }).format(reading)}`
+            : "Select an agent to read its token counts"}
+          {scanned ? ` · scanned ${ago(status.lastScan)}` : ""}
           {status.pending ? ` · ${status.pending} files pending` : ""}
         </p>
       )}
@@ -137,7 +158,7 @@ function AgentUploadSettings() {
       : !state.allowed
         ? "Sign in again to allow hourly token counts."
         : state.lastSynced
-          ? `Last upload ${new Date(state.lastSynced).toLocaleString()}`
+          ? `Last upload ${ago(state.lastSynced)}`
           : "Hourly token counts and project names. Chats are never uploaded.";
   return (
     <>
