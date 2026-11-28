@@ -4,15 +4,18 @@ import { randomBytes, createHash } from "node:crypto";
 import { memoryAuth } from "../scripts/support/memory-auth";
 import { createAuthAccess } from "../lib/auth";
 const root = "https://breadcrumb.example";
-async function fixture() {
+async function fixture(rows: Record<string, unknown[]> = {}) {
   let link = "";
-  const auth = memoryAuth({
-    baseURL: root,
-    env: { NODE_ENV: "test", ALLOWED_EMAILS: "friend@example.com" },
-    send: async (_email, url) => {
-      link = url;
+  const auth = memoryAuth(
+    {
+      baseURL: root,
+      env: { NODE_ENV: "test", ALLOWED_EMAILS: "friend@example.com" },
+      send: async (_email, url) => {
+        link = url;
+      },
     },
-  });
+    rows,
+  );
   const call = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
     auth.handler(
       new Request(root + "/api/auth" + path, {
@@ -180,6 +183,33 @@ test("Better Auth rejects denied and tampered desktop requests", async () => {
   );
 });
 
+test("a resource saved before agents:sync existed still issues desktop tokens with it", async () => {
+  const saved = new Date("2026-11-20T00:00:00Z");
+  const f = await fixture({
+    oauthResource: [
+      {
+        id: "stale-v1",
+        identifier: root + "/v1",
+        allowedScopes: ["email", "offline_access", "captures:sync"],
+        accessTokenTtl: 300,
+        refreshTokenTtl: 90 * 86400,
+        disabled: false,
+        policyVersion: 1,
+        createdAt: saved,
+        updatedAt: saved,
+      },
+    ],
+  });
+  const token = await (
+    await (await authorize(f, true, "captures:sync agents:sync")).exchange()
+  ).json();
+  assert.deepEqual(token.scope.split(" ").sort(), [
+    "agents:sync",
+    "captures:sync",
+    "email",
+    "offline_access",
+  ]);
+});
 test("token usage consent cannot authorize captures and capture consent cannot authorize usage", async () => {
   const f = await fixture(),
     flow = await authorize(f, true, "agents:sync");

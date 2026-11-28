@@ -5,6 +5,7 @@ import { createAuth } from "../../lib/auth";
 
 export function memoryAuth(
   options: Pick<Parameters<typeof createAuth>[0], "baseURL" | "env" | "send">,
+  rows: Record<string, unknown[]> = {},
 ) {
   const tables: Record<string, unknown[]> = {};
   const auth = createAuth({
@@ -12,6 +13,6 @@ export function memoryAuth(
     database: memoryAdapter(tables),
     secret: randomBytes(48).toString("base64url"),
   });
-  for (const model of Object.keys(getSchema(auth.options))) tables[model] = [];
+  for (const model of Object.keys(getSchema(auth.options))) tables[model] = rows[model] ?? [];
   return auth;
 }

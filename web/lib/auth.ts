@@ -94,6 +94,9 @@ export function authOptions(options: {
             refreshTokenTtl: 90 * 86400,
           },
         ],
+        // Better Auth saves each resource on first use. Merge keeps those saved rows in step when
+        // a scope is added here; insert-only left /v1 without agents:sync in production.
+        resourceSeedMode: "merge",
         clientRegistrationDefaultResources: [
           resource,
           ...["/api/v1", "/mcp"].map((path) => options.baseURL.replace(/\/$/, "") + path),
