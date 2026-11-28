@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { TimeDashboard } from "./time-dashboard";
 import type { InsightDay as Day } from "../lib/insights";
 import { SiteHeader } from "./site-header";
-import { HomeTrail } from "./home-trail";
+import { Home } from "./home";
 async function request(path: string, body?: unknown) {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
@@ -123,6 +123,42 @@ export default function Portal({
   useEffect(() => {
     if (signedIn && desktop) location.replace("/connect" + location.search);
   }, [signedIn, desktop]);
+  const form = (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void action(async () => {
+          // Loaded on demand: only this form and the consent page need the auth client.
+          const { authClient } = await import("../lib/auth-client");
+          const result = await authClient.signIn.magicLink({
+            email,
+            callbackURL: returnPath(),
+          });
+          if (result.error) throw Error(result.error.message ?? "Could not send sign-in email");
+          setStatus(
+            "Check your inbox for a sign-in link. Access is available to invited contributors.",
+          );
+        });
+      }}
+    >
+      <label htmlFor="email">Email address</label>
+      <input
+        id="email"
+        type="email"
+        autoComplete="email"
+        placeholder="you@example.com"
+        required
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+      />
+      <button disabled={busy}>{busy ? "Sending…" : "Send sign-in link"}</button>
+    </form>
+  );
+  const notice = status && (
+    <p className="notice visible" role="status" aria-live="polite">
+      {status}
+    </p>
+  );
   const dashboard = (
     <section>
       <TimeDashboard days={days ?? []} loading={days === null} timeZone={timeZone} />
@@ -144,58 +180,33 @@ export default function Portal({
     <main className="portal">
       <SiteHeader signedIn={signedIn} />
       <div
-        className={dashboardVisible ? "dashboard" : !signedIn && !desktop ? "home" : "auth-page"}
+        className={dashboardVisible ? "dashboard" : !signedIn && !desktop ? undefined : "auth-page"}
       >
-        {!signedIn && !desktop && (
-          <section className="home-intro">
-            <h1>See where your day went.</h1>
-            <p>
-              Breadcrumb runs quietly on your computer, taking periodic screenshots and noting which
-              app and project you’re in. It turns them into a trail of your hours, kept on your
-              device until you choose to sync.
-            </p>
-            <HomeTrail />
-            <a className="button-link" href="/download">
-              Download Breadcrumb
-            </a>
-          </section>
-        )}
-        {!signedIn ? (
+        {!signedIn && !desktop ? (
+          <Home
+            signIn={
+              <section
+                className="sign-in scroll-mt-6 rounded-[18px] bg-surface p-7"
+                id="sign-in"
+                aria-labelledby="sign-in-title"
+              >
+                <h2 id="sign-in-title" className="m-0 mb-1.5 text-2xl font-semibold">
+                  Sign in
+                </h2>
+                <p>
+                  Use Breadcrumb on more than one computer? Sync is optional: sign in to see your
+                  history from every device on the web.
+                </p>
+                {form}
+                {notice}
+              </section>
+            }
+          />
+        ) : !signedIn ? (
           <section className="sign-in">
-            <h1>{desktop ? "Sign in to Breadcrumb" : "Sign in"}</h1>
-            <p>
-              {desktop ? "Sign in to connect an app." : "See your synced history across devices."}
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void action(async () => {
-                  // Loaded on demand: only this form and the consent page need the auth client.
-                  const { authClient } = await import("../lib/auth-client");
-                  const result = await authClient.signIn.magicLink({
-                    email,
-                    callbackURL: returnPath(),
-                  });
-                  if (result.error)
-                    throw Error(result.error.message ?? "Could not send sign-in email");
-                  setStatus(
-                    "Check your inbox for a sign-in link. Access is available to invited contributors.",
-                  );
-                });
-              }}
-            >
-              <label htmlFor="email">Email address</label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-              <button disabled={busy}>{busy ? "Sending…" : "Send sign-in link"}</button>
-            </form>
+            <h1>Sign in to Breadcrumb</h1>
+            <p>Sign in to connect an app.</p>
+            {form}
           </section>
         ) : desktop ? (
           <section className="sign-in">
@@ -205,11 +216,7 @@ export default function Portal({
         ) : (
           dashboard
         )}
-        {status && (
-          <p className="notice visible" role="status" aria-live="polite">
-            {status}
-          </p>
-        )}
+        {(signedIn || desktop) && notice}
       </div>
       <footer>
         <a href="https://github.com/hackclub/breadcrumb" target="_blank" rel="noreferrer">
