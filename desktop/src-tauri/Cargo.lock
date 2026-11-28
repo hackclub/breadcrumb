@@ -326,7 +326,7 @@ dependencies = [
 
 [[package]]
 name = "breadcrumb-desktop"
-version = "0.2.12"
+version = "0.2.13"
 dependencies = [
  "objc2",
  "objc2-app-kit",
